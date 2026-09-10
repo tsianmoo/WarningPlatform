@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Save, Rocket, Table2, Wand2 } from 'lucide-react';
-import { buildSellerAlertFlow } from '@/lib/buildSellerAlertFlow';
+import { ArrowLeft, Save, Rocket, Table2 } from 'lucide-react';
 
 const STEPS = [
   { key: 'flow', label: '流程搭建' },
@@ -196,19 +195,6 @@ export function RuleConfigurator({
         />
         <div className="ml-auto flex items-center gap-2">
           <button
-            onClick={() => {
-              if (rule.flow.nodes.length === 0 || confirm('当前画布已有内容，替换为“销量第一款色·无销售门店预警”流程吗？')) {
-                const built = buildSellerAlertFlow(state.tables);
-                setFlow(built.nodes, built.edges);
-              }
-            }}
-            disabled={saving}
-            className="inline-flex items-center gap-1.5 rounded-lg border-2 border-dashed border-blue-300 px-3 py-1.5 text-sm text-blue-600 hover:border-blue-400 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
-            title="自动搭建：销量第一名款色 → 无销售门店预警"
-          >
-            <Wand2 size={15} /> 一键搭建
-          </button>
-          <button
             onClick={() => persist('save')}
             disabled={saving}
             className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
@@ -347,33 +333,7 @@ export function RuleConfigurator({
         </div>
       )}
 
-      {/* 底部导航：上一步 / 下一步 */}
-      <div className="flex shrink-0 items-center justify-between border-t bg-white px-4 py-2.5">
-        <button
-          disabled={step === 0}
-          onClick={() => {
-            persist('save');
-            setStep(Math.max(0, step - 1));
-          }}
-          className="rounded-lg border bg-white px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          ← 上一步
-        </button>
-        {step < STEPS.length - 1 ? (
-          <button
-            onClick={() => {
-              persist('save');
-              setStep(Math.min(step + 1, STEPS.length - 1));
-            }}
-            className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
-          >
-            下一步 →
-          </button>
-        ) : (
-          <span className="text-xs text-gray-400">已到最后一步，可返回调整</span>
-        )}
       </div>
-    </div>
   );
 }
 
@@ -397,7 +357,6 @@ export function NewRule({ onBack }: { onBack: () => void }) {
           setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
         }
         canStart={title.trim().length > 0 && selected.length > 0}
-        onCancel={onBack}
         onStart={() => setStarted(true)}
       />
     );
@@ -415,7 +374,6 @@ function NewRuleGate({
   selected,
   toggle,
   canStart,
-  onCancel,
   onStart,
 }: {
   tables: DataTable[];
@@ -424,7 +382,6 @@ function NewRuleGate({
   selected: string[];
   toggle: (id: string) => void;
   canStart: boolean;
-  onCancel: () => void;
   onStart: () => void;
 }) {
   return (
@@ -490,12 +447,6 @@ function NewRuleGate({
         )}
 
         <div className="mt-5 flex items-center justify-end gap-2">
-          <button
-            onClick={onCancel}
-            className="rounded-lg border px-3.5 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
-          >
-            取消
-          </button>
           <button
             onClick={onStart}
             disabled={!canStart}

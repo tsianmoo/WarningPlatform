@@ -56,8 +56,8 @@ function Shell() {
     content = <RuleList onNew={startNew} onEdit={startEdit} onHome={goHome} />;
   }
 
-  const withSidebar =
-    view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts' || view === 'new' || view === 'edit';
+  // 预警配置页（new / edit）隐藏左侧导航栏，聚焦画布编辑
+  const withSidebar = view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts';
   const currentView = view;
   const pendingAlerts = state.alerts.filter((a) => a.status === 'new' || a.status === 'processing').length;
 
