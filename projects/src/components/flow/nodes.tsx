@@ -631,16 +631,21 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
     case 'base':
       return [{ key: s(data.fieldKey) || 'key', label: s(data.fieldLabel) || s(data.resultLabel) || '值' }];
     case 'compute': {
-      // 计算节点若为节点结果运算，输出主表列 + 结果列；否则仅结果列（key 对齐真实输出列名 resultLabel）
+      // 计算节点结果列 = 上游主表透传列 + 自身结果列（与 evaluate 输出 columns: [...main.columns, label] 对齐）
       const cKey = s(data.resultLabel) || s(data.fieldLabel) || (s(data.sourceField) || 'value');
-      const e = data.expr as { leftType?: string; left?: { nodeId?: string } } | undefined;
       const cols: ColOpt[] = [{ key: cKey, label: s(data.resultLabel) || '结果' }];
-      // 两节点结果运算：左值来自上游节点，应带出上游节点的全部输出列，便于在此结果上直接引用二次计算
-      if (e && e.leftType === 'node' && e.left?.nodeId) {
-        if (e.left.nodeId === nid) return cols;
+      const upstreams: string[] = [];
+      // 字段聚合模式的主表来源（数据表或上游节点输出）
+      const aggNode = s(data.source) === 'node' ? s(data.sourceNode) : '';
+      if (aggNode) upstreams.push(aggNode);
+      // 两节点结果运算的基准（左值）节点
+      const e = data.expr as { leftType?: string; left?: { nodeId?: string } } | undefined;
+      if (e && e.leftType === 'node' && e.left?.nodeId) upstreams.push(e.left.nodeId);
+      for (const up of upstreams) {
+        if (up === nid) continue;
         const seen2 = new Set(seen);
         seen2.add(nid);
-        for (const c of inferNodeCols(allNodes, tables, e.left.nodeId, seen2)) {
+        for (const c of inferNodeCols(allNodes, tables, up, seen2)) {
           if (!cols.some((x) => x.key === c.key)) cols.push(c);
         }
       }
