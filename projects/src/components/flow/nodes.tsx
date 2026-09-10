@@ -1206,7 +1206,9 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
   const expr = d.expr ?? null;
   // 可引用的节点输出（含标量单值与列结果，如已过天数/开单天数等）
   const allNodes = useNodes();
-  const refOutputs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'scalar' || o.ref.outputKind === 'column');
+  const rawRefs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'scalar' || o.ref.outputKind === 'column');
+  // 同一节点可能同时注册 column/scalar（如计算节点），下拉只需按节点去重，避免出现两个同名项
+  const refOutputs = rawRefs.filter((o, i) => rawRefs.findIndex((x) => x.ref.nodeId === o.ref.nodeId) === i);
   const colsOfNode = (nid: string) => inferNodeCols(allNodes, tables, nid);
   // 计算方式：field=字段聚合（可再与节点运算）；node=两个节点结果直接运算（如 已过天数-开单天数）
   const mode: 'field' | 'node' = expr && expr.leftType === 'node' ? 'node' : 'field';
