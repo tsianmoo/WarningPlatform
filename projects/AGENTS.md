@@ -91,6 +91,7 @@
 - **rank/TOP 列名去重**：排名列与 TOP 档列生成时统一用 `uniq()` 避开 baseCols（上游透传列）与已用列名，冲突时追加 `#2/#3`，避免链式 rank 复用同字段时 TOP 列覆盖（旧实现只对 items 内同名去重，感知不到上游透传列）。
 - **rank 排名项可选字段（pickedCols）**：节点结果模式下应**实时用 `inferNodeCols(refNode)` 的 nodeCols 作主候选，再并入保存的 incomingCols 快照去重**——不能只信 incomingCols 快照（它可能是选 refNode 前的旧值，导致链式 rank 引用后"待排名指标列"下拉为空、看不到上游排名列）。inferNodeCols 对 rank 会递归上游全部列（可达 groupby 各指标）+ 上游排名项的「排名/TOP档」列，因此 rank 可再次对上游排名结果字段（如"折扣排名"）排序。
 - **compute 的 inferNodeCols 必须透传上游列**：compute 无论"字段聚合（source==='node'）"还是"两节点结果运算（expr.left）"，输出都 = 上游主表列 + resultLabel（与 evaluate `columns:[...main.columns,label]` 对齐）。若 inferNodeCols 只返回 resultLabel，串成 rank→compute 链时会让上游全部指标列丢失，导致排名项只能选到"折扣/折扣排名/TOP档"几个字段。修复：compute case 同时递归 `sourceNode` 与 `expr.left.nodeId` 两路上游。
+- **rank 的 inferNodeCols 提取 srcNode 不能用 `s(data.refNode)`**：`refNode` 是对象不是字符串，惰性 `s()`（只接受非空字符串）会返回空串，导致上游列永远无法递归带出，rank 下拉只剩自身 items 的列。必须直接取 `data.refNode.nodeId`。教训：凡 `refNode`/`left`/`right` 这类对象型引用字段，一律取 `x.nodeId`，不要经 `s()` 提取。
 - 节点类型：`base/topn/groupby/filter/diff/lookup/filljoin/condition/compute/elapsed/action/logic/trigger`，类型定义在 `src/lib/types.ts`，节点编辑 UI 在 `src/components/flow/nodes.tsx`。
 - **左关联补全 filljoin**：`universe`（全集=每行都保留的骨架）左关联 `fact`（要补充带回的指标），缺失补 `fillValue`。
   - 全集来源 `universeSource: 'table'|'node'`（node 时用 `universeNodeId` 指向上游节点，如前一补全结果）；`universeField`+`extraKeys` 为复合匹配键；`universeReturnField` 把全集自身非键列（如销量）随行带回。

@@ -713,10 +713,12 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
       const cols: ColOpt[] = [];
       // 基础列 = 数据源列（表或节点）
       if (s(data.source) === 'node') {
-        const srcNode = s(data.refNode)
-          ? String((data.refNode as Record<string, unknown> | undefined)?.nodeId || '')
-          : '';
-        if (srcNode) for (const c of inferNodeCols(allNodes, tables, srcNode)) cols.push(c);
+        const ref = data.refNode as Record<string, unknown> | undefined;
+        const srcNode = ref && typeof ref.nodeId === 'string' && ref.nodeId ? ref.nodeId : '';
+        if (srcNode) {
+          const up = inferNodeCols(allNodes, tables, srcNode);
+          for (const c of up) cols.push(c);
+        }
       } else {
         const tid = s(data.tableId);
         const t = tables.find((x) => x.id === tid);
