@@ -19,9 +19,9 @@ const GROUP_LABEL: Record<string, string> = {
   fixed: '指定范围',
 };
 
-export default function TimeComponent({ value, onChange, compact }: Props) {
+export default function TimeComponent({ value, onChange }: Props) {
   const [open, setOpen] = useState(false);
-  const tw: TimeWindow = value ?? { preset: 'thisWeek' };
+  const tw: TimeWindow = useMemo(() => value ?? { preset: 'thisWeek' }, [value]);
   const resolved = useMemo(() => resolveTimeWindow(tw), [tw]);
 
   const pick = (preset: TimePreset) => {

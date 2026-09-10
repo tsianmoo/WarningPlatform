@@ -1,5 +1,4 @@
 import { pgTable, serial, timestamp, varchar, bigint, jsonb, index, text } from "drizzle-orm/pg-core"
-import { sql } from "drizzle-orm"
 
 // 系统健康检查表（禁止删除/修改）
 export const healthCheck = pgTable("health_check", {

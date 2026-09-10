@@ -35,7 +35,7 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
         return;
       }
       const name = file.name.replace(/\.[^.]+$/, '');
-      const { fields, previewRows, rowCount, rows: fullRows } = buildTableFromRows(rows, name, file.name);
+      const { fields, previewRows, rowCount, rows: fullRows } = buildTableFromRows(rows);
       const table: DataTable = {
         id: uid('tbl'),
         name,

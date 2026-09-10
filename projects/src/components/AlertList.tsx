@@ -137,24 +137,23 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                 {alerts.map((a, idx) => {
                   const lv = LEVEL_META[a.level] ?? LEVEL_META.warn;
                   const st = STATUS_META[a.status];
-                  const nowTs = Date.now();
                   const actions: { label: string; fn: () => void; cls: string }[] = [];
                   if (a.status === 'new') {
                     actions.push({
                       label: '接受',
-                      fn: () => updateAlertStatus(a.id, { status: 'accepted', assignee: a.assignee || '当前用户', updatedAt: nowTs }),
+                      fn: () => updateAlertStatus(a.id, { status: 'accepted', assignee: a.assignee || '当前用户', updatedAt: Date.now() }),
                       cls: 'bg-blue-600 text-white hover:bg-blue-500',
                     });
                   } else if (a.status === 'accepted') {
                     actions.push({
                       label: '开始处理',
-                      fn: () => updateAlertStatus(a.id, { status: 'processing', updatedAt: nowTs }),
+                      fn: () => updateAlertStatus(a.id, { status: 'processing', updatedAt: Date.now() }),
                       cls: 'bg-amber-500 text-white hover:bg-amber-400',
                     });
                   } else if (a.status === 'processing') {
                     actions.push({
                       label: '已处理',
-                      fn: () => updateAlertStatus(a.id, { status: 'done', updatedAt: nowTs }),
+                      fn: () => updateAlertStatus(a.id, { status: 'done', updatedAt: Date.now() }),
                       cls: 'bg-green-600 text-white hover:bg-green-500',
                     });
                   }
@@ -166,7 +165,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                     });
                     actions.push({
                       label: '无法完成',
-                      fn: () => updateAlertStatus(a.id, { status: 'failed', updatedAt: nowTs }),
+                      fn: () => updateAlertStatus(a.id, { status: 'failed', updatedAt: Date.now() }),
                       cls: 'border border-red-200 bg-white text-red-600 hover:bg-red-50',
                     });
                   }

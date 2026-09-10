@@ -77,17 +77,6 @@ export function RuleConfigurator({
   const hasAction = rule.flow.nodes.some((n) => n.kind === 'action');
   // 分步向导：0 流程搭建 / 1 调度与通知 / 2 确认激活
   const [step, setStep] = useState(0);
-  const goStep = (s: number) => {
-    persist('save');
-    setStep(Math.max(0, Math.min(s, STEPS.length - 1)));
-  };
-  const actionCards = rule.flow.nodes
-    .filter((n) => n.kind === 'action')
-    .map((n) => {
-      const ad = n.data as { title?: string; level?: string; notify?: { departments?: string[]; personnel?: string[] } };
-      const L = LEVEL_META[ad.level ?? 'info'] ?? LEVEL_META.info;
-      return { id: n.id, title: ad.title || '预警动作', level: L.label, color: L.bar, notify: ad.notify };
-    });
 
   const set = (patch: Partial<AlertRule>) => {
     setRule((r) => ({ ...r, ...patch }));

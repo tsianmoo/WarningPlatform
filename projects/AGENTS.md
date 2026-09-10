@@ -97,7 +97,9 @@
 - 部署链路（根 `.coze [deploy]`）：`bash projects/scripts/build.sh`（`pnpm next build` + `tsup src/server.ts` → `dist/server.js`）→ `bash projects/scripts/start.sh`（`PORT=5000 node dist/server.js`）。
 - **前后端同进程**：前端调后端一律用相对路径 `/api/...`，不硬编码域名/IP/localhost。
 - 服务端入口 `src/server.ts`：按 `COZE_PROJECT_ENV=PROD` 区分 dev/prod，`HOSTNAME`/`PORT` 默认 localhost/5000。
+- **⚠️ 部署启动必须先 `export COZE_PROJECT_ENV=PROD`**：`start.sh` 已内置；否则 `node dist/server.js` 会误走 dev 模式（`next dev` + `.next/dev` lock，可能与预览进程冲突）。部署验证用临时端口：`DEPLOY_RUN_PORT=5033 bash scripts/start.sh`。
 - web 项目验收用 `test_run`（静态检查 + 服务探活 + 接口冒烟），不用 shell 绕跑。
+- **lint 基准**：本项目已修至 `pnpm lint` 0 error 0 warning（禁 `any`/未用变量、JSX 内不直接 `Date.now()`/`Math.random()`/`"` 等）。改动代码后保持 `pnpm lint` / `pnpm ts-check` / `pnpm lint:style` 全绿，勿回退。
 
 ## 数据库（Supabase）
 

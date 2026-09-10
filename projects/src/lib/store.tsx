@@ -439,6 +439,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
+    // 仅在挂载时加载一次远端数据，后续通过 setState 更新
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 状态变化：本地缓存兜底 + 防抖同步到服务端数据库

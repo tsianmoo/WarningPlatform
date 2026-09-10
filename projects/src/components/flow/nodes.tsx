@@ -490,7 +490,6 @@ function getNodeOutputs(allNodes: ReturnType<typeof useNodes>, selfId: string): 
   for (const n of allNodes) {
     if (n.id === selfId) continue;
     const fn = n as unknown as FlowNode;
-    const data = n.data as Record<string, unknown>;
     const str = (v: unknown): string => (typeof v === 'string' && v ? v : '');
     switch (fn.kind) {
       case 'baseline': {
@@ -1133,61 +1132,65 @@ const ConditionNode = memo(({ id, data }: NodeProps) => {
         </div>
 
         {(() => {
-          try {
-            const leftId = (d as { leftNode?: NodeResultRef | null }).leftNode?.nodeId;
-            const op = d.operator as string;
-            if (!leftId || !['gt', 'gte', 'lt', 'lte', 'between'].includes(op)) return null;
-            const num = (s: string | number | undefined | null): number | null => {
-              const n = typeof s === 'number' ? s : parseFloat(String(s ?? ''));
-              return Number.isFinite(n) ? n : null;
-            };
-            const a = num(d.value);
-            const b = num(d.valueMax);
-            if (a === null) return null;
-            const range = (o: string, x: number, y: number | null) => {
-              switch (o) {
-                case 'gt':
-                case 'gte':
-                  return { lo: x, hi: Number.POSITIVE_INFINITY };
-                case 'lt':
-                case 'lte':
-                  return { lo: Number.NEGATIVE_INFINITY, hi: x };
-                case 'between':
-                  return { lo: Math.min(x, y ?? x), hi: Math.max(x, y ?? x) };
-                default:
-                  return null;
-              }
-            };
-            const selfR = range(op, a, b);
-            if (!selfR) return null;
-            const overlap = (p: { lo: number; hi: number }) => p.lo < selfR.hi && selfR.lo < p.hi;
-            const same = allNodes.filter(
-              (nd) =>
-                nd.id !== id &&
-                nd.type === 'condition' &&
-                ['gt', 'gte', 'lt', 'lte', 'between'].includes((nd.data as { operator?: string }).operator ?? '') &&
-                (nd.data as { leftNode?: NodeResultRef | null }).leftNode?.nodeId === leftId
-            );
-            const clash = same.find((nd) => {
-              const av = num((nd.data as { value?: string | number }).value);
-              if (av === null) return false;
-              const bv = num((nd.data as { valueMax?: string | number }).valueMax);
-              const r = range((nd.data as { operator?: string }).operator ?? '', av, bv);
-              return r !== null && overlap(r);
-            });
-            if (!clash) return null;
-            const label =
-              (clash.data as { resultLabel?: string }).resultLabel ||
-              (clash.data as { label?: string }).label ||
-              '另一条判断';
-            return (
+          const label = (() => {
+            try {
+              const leftId = (d as { leftNode?: NodeResultRef | null }).leftNode?.nodeId;
+              const op = d.operator as string;
+              if (!leftId || !['gt', 'gte', 'lt', 'lte', 'between'].includes(op)) return null;
+              const num = (s: string | number | undefined | null): number | null => {
+                const n = typeof s === 'number' ? s : parseFloat(String(s ?? ''));
+                return Number.isFinite(n) ? n : null;
+              };
+              const a = num(d.value);
+              const b = num(d.valueMax);
+              if (a === null) return null;
+              const range = (o: string, x: number, y: number | null) => {
+                switch (o) {
+                  case 'gt':
+                  case 'gte':
+                    return { lo: x, hi: Number.POSITIVE_INFINITY };
+                  case 'lt':
+                  case 'lte':
+                    return { lo: Number.NEGATIVE_INFINITY, hi: x };
+                  case 'between':
+                    return { lo: Math.min(x, y ?? x), hi: Math.max(x, y ?? x) };
+                  default:
+                    return null;
+                }
+              };
+              const selfR = range(op, a, b);
+              if (!selfR) return null;
+              const overlap = (p: { lo: number; hi: number }) => p.lo < selfR.hi && selfR.lo < p.hi;
+              const same = allNodes.filter(
+                (nd) =>
+                  nd.id !== id &&
+                  nd.type === 'condition' &&
+                  ['gt', 'gte', 'lt', 'lte', 'between'].includes((nd.data as { operator?: string }).operator ?? '') &&
+                  (nd.data as { leftNode?: NodeResultRef | null }).leftNode?.nodeId === leftId
+              );
+              const clash = same.find((nd) => {
+                const av = num((nd.data as { value?: string | number }).value);
+                if (av === null) return false;
+                const bv = num((nd.data as { valueMax?: string | number }).valueMax);
+                const r = range((nd.data as { operator?: string }).operator ?? '', av, bv);
+                return r !== null && overlap(r);
+              });
+              if (!clash) return null;
+              return (
+                (clash.data as { resultLabel?: string }).resultLabel ||
+                (clash.data as { label?: string }).label ||
+                '另一条判断'
+              );
+            } catch {
+              return null;
+            }
+          })();
+          if (!label) return null;
+          return (
               <div className="rounded-md bg-amber-50 px-2 py-1 text-[10px] leading-snug text-amber-600">
                 与「{label}」判断区间重叠，可能重复告警。建议拆分为互斥区间（如 A: ≥15 ；B: 7~14）。
               </div>
             );
-          } catch {
-            return null;
-          }
         })()}
     </NodeShell>
   );
@@ -1389,7 +1392,7 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
                     <select
                       value={expr?.left?.col ?? ''}
                       onChange={(e) => {
-                        const c = colsOfNode(expr?.left?.nodeId!).find((x) => x.key === e.target.value);
+                        const c = colsOfNode(expr?.left?.nodeId || '').find((x) => x.key === e.target.value);
                         update({ expr: { ...(expr as ComputeExpr), left: { ...(expr?.left as NodeResultRef), col: e.target.value || undefined, colLabel: c?.label } } });
                       }}
                       className="min-w-0 flex-1 rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-cyan-400"
@@ -1450,13 +1453,13 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
                     <select
                       value={expr?.ref?.col ?? ''}
                       onChange={(e) => {
-                        const c = colsOfNode(expr?.ref?.nodeId!).find((x) => x.key === e.target.value);
+                        const c = colsOfNode(expr?.ref?.nodeId || '').find((x) => x.key === e.target.value);
                         update({ expr: { ...(expr as ComputeExpr), ref: { ...(expr?.ref as NodeResultRef), col: e.target.value || undefined, colLabel: c?.label } } });
                       }}
                       className="min-w-0 flex-1 rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-cyan-400"
                     >
                       <option value="">（整表）选择列以做同节点两列运算…</option>
-                      {colsOfNode(expr?.ref?.nodeId!).map((c) => (
+                      {colsOfNode(expr?.ref?.nodeId || '').map((c) => (
                         <option key={c.key} value={c.key}>
                           {c.label}
                         </option>
@@ -1765,7 +1768,6 @@ const LookupNode = memo(({ id, data }: NodeProps) => {
   const nodeTargetFields = srcNodeOut
     ? [{ key: srcNodeOut.ref.label, alias: srcNodeOut.ref.label, type: 'string' as const }]
     : [];
-  const target = source === 'node' ? undefined : tableTarget;
   const targetFields = source === 'node' ? nodeTargetFields : tableTargetFields;
   const targetName = source === 'node' ? d.sourceNodeLabel || '上游结果' : tableTarget?.name;
   const hasDate = targetFields.some((f) => f.type === 'date');
@@ -2165,7 +2167,6 @@ const ElapsedNode = memo(({ id, data }: NodeProps) => {
 
 // ---------- 预警动作节点 ----------
 const ActionNode = memo(({ id, data }: NodeProps) => {
-  const fnode = { id, kind: 'action' as const, data, position: { x: 0, y: 0 } } as FlowNode;
   const d = data as unknown as ActionNodeData;
   const update = useNodeUpdater(id);
   const lv = LEVEL_OPTIONS.find((l) => l.value === d.level);
@@ -2925,9 +2926,6 @@ const FilterNode = memo(({ id, data }: NodeProps) => {
   const removeCond = (i: number) => {
     update({ conditions: conds.filter((_, j) => j !== i) });
   };
-  const addCond = () => {
-    update({ conditions: [...conds, { id: `fc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, fieldKey: '', fieldLabel: '', op: 'eq', value: '', values: [] }] });
-  };
 
   // 取某字段的去重候选值：数据表用全量行；节点结果无前端行数据时给空（运行时按上游结果）
   const distinctValues = (fieldKey: string): string[] => {
@@ -3140,7 +3138,7 @@ const FilterNode = memo(({ id, data }: NodeProps) => {
 
         <button
           type="button"
-          onClick={addCond}
+          onClick={() => update({ conditions: [...conds, { id: `fc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, fieldKey: '', fieldLabel: '', op: 'eq', value: '', values: [] }] })}
           className="mt-0.5 rounded-md border border-dashed border-amber-300 py-1 text-[11px] font-medium text-amber-600 hover:bg-amber-50"
         >
           + 添加过滤条件
@@ -3358,7 +3356,7 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
           </select>
           {columnOutputs.length === 0 && (
             <div className="mt-1.5 rounded-md bg-amber-50 px-2 py-1 text-[10px] leading-relaxed text-amber-700">
-              画布上还没有"逐组指标"节点。请先添加「查找·聚合带回」或「分组聚合」，输出每个店仓的成交金额。
+              画布上还没有&quot;逐组指标&quot;节点。请先添加「查找·聚合带回」或「分组聚合」，输出每个店仓的成交金额。
             </div>
           )}
         </>
@@ -3887,7 +3885,7 @@ const RankNode = memo(({ id, data }: NodeProps) => {
           </select>
           {columnOutputs.length === 0 && (
             <div className="mt-1.5 rounded-md bg-amber-50 px-2 py-1 text-[10px] leading-relaxed text-amber-700">
-              画布上还没有"逐行/逐组"节点。请先添加「分组聚合」「计算」等节点，再引用它做排名。
+              画布上还没有&quot;逐行/逐组&quot;节点。请先添加「分组聚合」「计算」等节点，再引用它做排名。
             </div>
           )}
         </>
@@ -3949,7 +3947,7 @@ const RankNode = memo(({ id, data }: NodeProps) => {
       <div className={rowLabel}>② 排名项（可为多个指标各算一次排名）</div>
       {defaultItems.length === 0 && (
         <div className="rounded-md bg-slate-50 px-2 py-1.5 text-[10px] text-gray-500">
-          还没有排名项。点击下方"＋ 添加排名"开始配置。
+          还没有排名项。点击下方&quot;＋ 添加排名&quot;开始配置。
         </div>
       )}
       {defaultItems.map((it, i) => (
@@ -4135,9 +4133,6 @@ const RankNode = memo(({ id, data }: NodeProps) => {
     </NodeShell>
   );
 });
-
-// 展示型节点（不可交互编辑）：点击仍可选中删除
-const RENDER_ONLY_KINDS: FlowNode['kind'][] = ['trigger', 'logic'];
 
 export const nodeTypes = {
   trigger: TriggerNode,

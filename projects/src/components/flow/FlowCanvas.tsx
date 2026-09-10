@@ -6,7 +6,6 @@ import {
   Background,
   Controls,
   MiniMap,
-  addEdge,
   useReactFlow,
   ReactFlowProvider,
   MarkerType,
@@ -69,14 +68,6 @@ function CanvasInner({
       setLocalEdges(edges);
     }
   }, [nodes, edges]);
-
-  // 结构/数据变更 → 立即同步给外部
-  const commit = useCallback(
-    (ns: FlowNode[], es: FlowEdge[]) => {
-      onFlowChange(ns, es);
-    },
-    [onFlowChange]
-  );
 
   const onNodesChange = useCallback(
     (changes: unknown) => {

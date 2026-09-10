@@ -30,11 +30,7 @@ function inferFieldType(samples: string[]): FieldType {
 }
 
 /** 将任意行对象数组解析为字段定义 + 预览行 + 全量行 */
-export function buildTableFromRows(
-  rows: Record<string, unknown>[],
-  name: string,
-  fileName: string
-): {
+export function buildTableFromRows(rows: Record<string, unknown>[]): {
   fields: TableField[];
   previewRows: Record<string, string>[];
   rowCount: number;
@@ -134,5 +130,5 @@ export function buildSampleTable(): ReturnType<typeof buildTableFromRows> {
     { orderId: 'SO-1007', customer: '华东销售二部', amount: 1500, status: '待审核', department: '销售部', recordedAt: '2025-01-11' },
     { orderId: 'SO-1008', customer: '西南风控组', amount: 64200, status: '已发货', department: '风控部', recordedAt: '2025-01-12' },
   ];
-  return buildTableFromRows(rows, '订单数据集', 'orders-sample.xlsx');
+  return buildTableFromRows(rows);
 }

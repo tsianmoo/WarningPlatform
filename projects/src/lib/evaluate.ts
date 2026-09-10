@@ -15,10 +15,8 @@ import type {
   TopNNodeData,
   DiffNodeData,
   DateGranularity,
-  GroupDim,
   FilterCondition,
   FilterNodeData,
-  FilterOp,
   ElapsedNodeData,
   ComputeNodeData,
   ComputeExpr,
@@ -99,7 +97,7 @@ function fmtNum(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
 }
 
-const pad2 = (n: number) => String(n).padStart(2, '0');
+
 
 /** 在行对象里按字段key/别名宽松取列名：先精确，再按唯一前缀/包含匹配 */
 function findKey(row: Record<string, unknown>, key: string): string | undefined {
@@ -139,25 +137,6 @@ function bucketSize(
   const target = keyOf(cur);
   return rows.filter((x) => keyOf(x.r) === target).length;
 }
-/** ISO week number */
-function isoWeek(d: Date): number {
-  const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const day = dt.getUTCDay() || 7;
-  dt.setUTCDate(dt.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
-  return Math.ceil(((Number(dt) - Number(yearStart)) / 86400000 + 1) / 7);
-}
-/** 按指定粒度格式化分组值（日期字段用，如 年/月/周/天） */
-function formatGroupDim(v: unknown, gran?: string): string {
-  if (!gran) return String(v ?? '');
-  const d = toDate(v);
-  if (!d) return String(v ?? '');
-  if (gran === 'year') return String(d.getFullYear());
-  if (gran === 'month') return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
-  if (gran === 'week') return `${d.getFullYear()}-W${pad2(isoWeek(d))}`;
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
 /** 按粒度格式化分组键 */
 function granVal(v: unknown, gran?: DateGranularity): string {
   if (!gran || v === null || v === undefined || v === '') return String(v ?? '');
@@ -383,7 +362,7 @@ function evalRowFormula(
     const cleaned = s.replace(/\s+/g, '');
     if (!/^[0-9+\-*/().%]*$/.test(cleaned)) return NaN;
     const expr = cleaned.replace(/%/g, '/100');
-    // eslint-disable-next-line no-new-func
+     
     const v = new Function(`"use strict";return (${expr});`)();
     return Number.isFinite(v) ? v : NaN;
   } catch {
@@ -467,7 +446,7 @@ function evalRowTokens(tokens: ExprToken[], row: Record<string, unknown>): numbe
     if (!hasField) return NaN;
     const expr = parts.join('');
     if (!/^[0-9+\-*/().\s]*$/.test(expr)) return NaN;
-    // eslint-disable-next-line no-new-func
+     
     const v = new Function(`"use strict";return (${expr});`)();
     return Number.isFinite(v) ? v : NaN;
   } catch {
@@ -545,35 +524,6 @@ function virtualTableFromPreview(out: NodePreview | undefined, name: string): Da
 }
 
 /**
- * 统一数据源解析：每个处理节点的数据来源可以是
- *  - source==='node'：上游某个节点的输出（包装成虚拟表）
- *  - 否则：已上传的数据表
- * 返回 { table, sourceKind, fromNode }，table 可能为 undefined。
- */
-function resolveDataSource(
-  opts: {
-    tables: DataTable[];
-    outputs: OutputMap;
-    incoming: (NodePreview | undefined)[];
-    source?: 'node' | 'table';
-    tableId?: string;
-    refNodeId?: string;
-    refNodeLabel?: string;
-  }
-): { table: DataTable | undefined; fromNode: boolean; sourceName: string } {
-  const { tables, outputs, incoming, source, tableId, refNodeId, refNodeLabel } = opts;
-  if (source === 'node') {
-    // 优先指定节点，其次入边里最近的多列输出
-    const out = pickColumnOutput(outputs, incoming, refNodeId);
-    const name = refNodeLabel || out?.title || '上游结果';
-    const vt = virtualTableFromPreview(out, name);
-    if (vt) return { table: vt, fromNode: true, sourceName: name };
-  }
-  const t = resolveTable(tables, tableId);
-  return { table: t, fromNode: false, sourceName: t?.name ?? '数据表' };
-}
-
-/**
  * 便捷封装：按节点 data 上的 source/sourceNode/tableId 解析数据行集。
  * 各处理节点调用时把 byId（outputs 查找器）与 incoming 传入。
  */
@@ -583,7 +533,6 @@ function resolveRowset(
   byId: (nid?: string) => NodePreview | undefined,
   incoming: (NodePreview | undefined)[],
 ): { t: DataTable; from: string } | undefined {
-  const outputs: OutputMap = {};
   // byId 是 outputs[nid] 包装；这里直接复用 pickColumnOutput 需要 outputs map，
   // 改为：node 来源时从 incoming 或 byId 指定节点取
   if (spec.source === 'node') {
@@ -1221,7 +1170,6 @@ function evalNode(
         return { title: '左关联补全', columns: [], rows: [], shape: 'table', note: '请先选择全集表（如店仓表）。' };
       }
       const uniRows = uniIsNode ? uniNode!.rows : allRows(uni!);
-      const uniCols = uniIsNode ? uniNode!.columns : uni!.fields.map((f) => f.key);
       const uniName = uniIsNode ? uniNode!.note || '补全结果' : uni!.name;
       const defaultField = uniIsNode
         ? uniNode!.columns[0]
@@ -1541,7 +1489,7 @@ function evalNode(
       const checkField = dd.checkField || c.fields.find((f) => f.type === 'string')?.key;
       if (!baseField || !checkField)
         return { title: '反匹配排查', columns: [], rows: [], note: '请选择基准表关键字段与排查表关键字段。' };
-      let baseRows = allRows(u);
+      const baseRows = allRows(u);
       let checkRows = dd.dateField && dd.timeWindow ? allRows(c).filter((r) => inWindow(r[dd.dateField || ''], dd.timeWindow)) : allRows(c);
       // 取“排名取数(销量第一名款色)”节点输出的款色值，用于把排查表限定到该款色
       let fval = dd.filterValue ?? '';

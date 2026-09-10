@@ -56,7 +56,6 @@ function Shell() {
     content = <RuleList onNew={startNew} onEdit={startEdit} onHome={goHome} />;
   }
 
-  const isDashboard = view === 'home';
   const withSidebar =
     view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts' || view === 'new' || view === 'edit';
   const currentView = view;

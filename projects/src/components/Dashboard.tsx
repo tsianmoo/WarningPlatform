@@ -16,7 +16,7 @@ import {
 } from 'recharts';
 import { useStore } from '@/lib/store';
 import { Sparkles, BellOff, CircleCheckBig, Clock3, TrendingUp, CheckCircle2 } from 'lucide-react';
-import type { AlertRule, ExecutionRecord } from '@/lib/types';
+import type { ExecutionRecord } from '@/lib/types';
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
@@ -27,12 +27,6 @@ const completionTime = (e: ExecutionRecord): Date | null => {
   if (e.status !== 'completed') return null;
   if (e.history && e.history.length) return new Date(e.history[e.history.length - 1].at);
   return e.triggeredAt ? new Date(e.triggeredAt) : null;
-};
-
-const LEVEL_COLORS: Record<string, string> = {
-  remind: '#10B981',
-  warn: '#F59E0B',
-  critical: '#EF4444',
 };
 
 export function Dashboard({ onGoTables, onGoRules }: { onGoTables: () => void; onGoRules: () => void }) {
