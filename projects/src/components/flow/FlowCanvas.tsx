@@ -202,7 +202,12 @@ function CanvasInner({
       try {
         const payload = JSON.parse(raw) as DragPayload;
         const kind = payload.kind;
-        const data = createNodeData(kind, payload as { fieldKey?: string; fieldLabel?: string; tableId?: string; tableName?: string });
+        const data = createNodeData(kind, payload as { fieldKey?: string; fieldLabel?: string; tableId?: string; tableName?: string }) as FlowNode['data'] & { resultLabel?: string };
+        // 计算节点：自动生成递增的默认结果名，避免多个计算节点默认同名难以区分
+        if (kind === 'compute') {
+          const computeCount = localNodes.filter((n) => n.kind === 'compute').length;
+          data.resultLabel = data.resultLabel || (computeCount === 0 ? '计算结果' : `计算结果 ${computeCount + 1}`);
+        }
         const position = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
         const nd: FlowNode = { id: uid('node'), kind, data, position };
         const ns = [...localNodes, nd];
