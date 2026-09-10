@@ -171,7 +171,7 @@ export function RuleConfigurator({
   return (
     <div className="flex h-full flex-col">
       {/* 顶栏 */}
-      <div className="flex items-center gap-2 border-b bg-white px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-2 border-b bg-white px-4 py-2.5">
         <button
           onClick={onBack}
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100"
@@ -193,6 +193,36 @@ export function RuleConfigurator({
           style={{ width: `${Math.min(Math.max(rule.description.length + 4, 8), 30)}ch` }}
           placeholder="规则描述：简要说明用途…"
         />
+        <div className="mx-3 flex shrink-0 items-center gap-0.5 border-l border-gray-200 pl-3">
+          {STEPS.map((s, i) => {
+            const done = i < step;
+            const cur = i === step;
+            return (
+              <button
+                key={s.key}
+                onClick={() => {
+                  persist('save');
+                  setStep(Math.max(0, Math.min(i, STEPS.length - 1)));
+                }}
+                title={s.label}
+                className="group flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium"
+              >
+                <span
+                  className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${
+                    done
+                      ? 'bg-blue-600 text-white'
+                      : cur
+                        ? 'bg-white text-blue-600 ring-1 ring-blue-500'
+                        : 'bg-gray-100 text-gray-400'
+                  }`}
+                >
+                  {i + 1}
+                </span>
+                <span className={cur ? 'text-blue-600' : done ? 'text-gray-600' : 'text-gray-400'}>{s.label}</span>
+              </button>
+            );
+          })}
+        </div>
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={() => persist('save')}
@@ -209,37 +239,6 @@ export function RuleConfigurator({
             <Rocket size={15} /> {saving ? '提交中…' : '激活规则'}
           </button>
         </div>
-      </div>
-
-      {/* 步骤条 */}
-      <div className="flex shrink-0 items-center gap-1 border-b bg-white px-5 py-2">
-        {STEPS.map((s, i) => {
-          const done = i < step;
-          const cur = i === step;
-          return (
-            <button
-              key={s.key}
-              onClick={() => {
-                persist('save');
-                setStep(Math.max(0, Math.min(i, STEPS.length - 1)));
-              }}
-              className="group flex items-center gap-2 rounded-lg px-2 py-1 text-xs font-medium"
-            >
-              <span
-                className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${
-                  done
-                    ? 'bg-blue-600 text-white'
-                    : cur
-                      ? 'bg-white text-blue-600 ring-1 ring-blue-500'
-                      : 'bg-gray-100 text-gray-400'
-                }`}
-              >
-                {i + 1}
-              </span>
-              <span className={cur ? 'text-blue-600' : done ? 'text-gray-600' : 'text-gray-400'}>{s.label}</span>
-            </button>
-          );
-        })}
       </div>
 
       {/* 主体：按步骤切换 */}
