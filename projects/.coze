@@ -1,9 +1,14 @@
 [project]
+sub_id = "7c8de81d"
+name = "projects"
 requires = [ "nodejs-24" ]
 project_type = "web"
 template = "nextjs"
 version = "0.1.5"
 appliedPatches = [ ]
+
+[preview]
+preview_enable = "enabled"
 
 [dev]
 build = [ "bash", "./scripts/prepare.sh" ]
@@ -55,3 +60,7 @@ run_win = [
   "./scripts/start.ps1"
 ]
 deps = [ "git" ]
+
+[deploy.profile]
+kind = "service"
+flavor = "web"

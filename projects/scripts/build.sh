@@ -1,7 +1,9 @@
 #!/bin/bash
 set -Eeuo pipefail
 
-COZE_WORKSPACE_PATH="${COZE_WORKSPACE_PATH:-$(pwd)}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+COZE_WORKSPACE_PATH="$PROJECT_DIR"
 
 cd "${COZE_WORKSPACE_PATH}"
 

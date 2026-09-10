@@ -1,0 +1,26 @@
+[project]
+sub_id = "7c8de81d"
+name = "projects"
+requires = ["nodejs-24"]
+project_type = "web"
+version = "0.0.35"
+
+[preview]
+preview_enable = "enabled"
+
+[dev]
+build = ["bash", "projects/scripts/prepare.sh"]
+run = ["bash", "projects/scripts/dev.sh"]
+deps = ["git"]
+
+[deploy]
+build = ["bash", "projects/scripts/build.sh"]
+run = ["bash", "projects/scripts/start.sh"]
+deps = ["git"]
+
+[deploy.profile]
+kind = "service"
+flavor = "web"
+
+[subprojects]
+path = ["projects"]
