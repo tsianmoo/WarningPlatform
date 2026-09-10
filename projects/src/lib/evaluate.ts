@@ -1638,12 +1638,21 @@ function evalNode(
             const anyNum = main.rows.some((r) => Number.isFinite(toNum(r[c])));
             return !anyNum;
           });
-          const resultRows = main.rows.map((r) => {
-            let rowVal = NaN;
+          const explicitCol = mainIsLeft ? expr.left?.col : expr.ref?.col;
+          const rowCol = explicitCol && main.columns.includes(explicitCol) ? explicitCol : undefined;
+          const pickRowVal = (r: Record<string, unknown>): number => {
+            if (rowCol) {
+              const v = toNum(r[rowCol]);
+              if (Number.isFinite(v)) return v;
+            }
             for (const c of outCols) {
               const v = toNum(r[c]);
-              if (Number.isFinite(v)) { rowVal = v; break; }
+              if (Number.isFinite(v)) return v;
             }
+            return NaN;
+          };
+          const resultRows = main.rows.map((r) => {
+            const rowVal = pickRowVal(r);
             const a = mainIsLeft ? rowVal : otherConst;
             const b = mainIsLeft ? otherConst : rowVal;
             const v = arith(expr.op, a, b);
@@ -1653,11 +1662,9 @@ function evalNode(
             return out;
           });
           const firstVal = (() => {
-            for (const c of outCols) {
-              const v = toNum(main.rows[0][c]);
-              if (Number.isFinite(v)) {
-                return arith(expr.op, mainIsLeft ? v : otherConst, mainIsLeft ? otherConst : v);
-              }
+            const v0 = pickRowVal(main.rows[0]);
+            if (Number.isFinite(v0)) {
+              return arith(expr.op, mainIsLeft ? v0 : otherConst, mainIsLeft ? otherConst : v0);
             }
             return NaN;
           })();
