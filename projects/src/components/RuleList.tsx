@@ -1,0 +1,347 @@
+'use client';
+
+import React, { useState } from 'react';
+import { Plus, BellRing, ArrowLeft, Trash2, Users, CalendarClock, Table2, Pencil, PlayCircle, PauseCircle, Copy } from 'lucide-react';
+import type { AlertRule } from '@/lib/types';
+import { useStore, formatDateTime } from '@/lib/store';
+import { toast } from 'sonner';
+
+const RULE_STATUS: Record<AlertRule['status'], { label: string; cls: string }> = {
+  draft: { label: '草稿', cls: 'bg-gray-100 text-gray-600' },
+  active: { label: '进行中', cls: 'bg-green-50 text-green-600' },
+  paused: { label: '已停用', cls: 'bg-amber-50 text-amber-600' },
+  ended: { label: '已结束', cls: 'bg-red-50 text-red-500' },
+};
+
+export function RuleList({
+  onNew,
+  onEdit,
+  onHome,
+}: {
+  onNew: () => void;
+  onEdit: (id: string) => void;
+  onHome?: () => void;
+}) {
+  const { state, removeRule, updateRule, addRule } = useStore();
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const copyRule = (r: AlertRule) => {
+    const copy = JSON.parse(JSON.stringify(r)) as AlertRule;
+    copy.id = 'rule_' + Math.random().toString(36).slice(2, 10) + '_' + Date.now().toString(36);
+    copy.name = `${r.name} 副本`;
+    copy.status = 'draft';
+    copy.executions = [];
+    copy.createdAt = Date.now();
+    copy.updatedAt = Date.now();
+    if (copy.description) copy.description = `${copy.description}（副本）`;
+    addRule(copy);
+    toast.success('已复制为新规则');
+  };
+
+  if (detailId) {
+    const rule = state.rules.find((r) => r.id === detailId);
+    if (rule) {
+      return <RuleDetail rule={rule} onBack={() => setDetailId(null)} onEdit={() => onEdit(rule.id)} />;
+    }
+  }
+
+  return (
+    <div className="flex h-full flex-col overflow-y-auto px-8 pb-10 pt-6">
+      <header className="mb-7 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-1.5 text-xs text-gray-400">
+            <BellRing size={13} strokeWidth={1.8} />
+            <span>工作台</span>
+            <span>/</span>
+            <span className="text-gray-500">预警规则</span>
+          </div>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-gray-900">预警规则</h1>
+          <p className="mt-1.5 text-sm text-gray-500">配置可视化预警流程，跟踪触发与完成情况。</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {onHome && (
+            <button
+              onClick={onHome}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm text-gray-600 transition hover:border-gray-300 hover:text-gray-900"
+            >
+              <ArrowLeft size={15} strokeWidth={2} /> 返回首页
+            </button>
+          )}
+          <button
+            onClick={onNew}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700"
+          >
+            <Plus size={16} /> 新建规则
+          </button>
+        </div>
+      </header>
+
+      {state.rules.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed bg-white py-20 text-center">
+          <BellRing size={44} strokeWidth={1.2} className="text-gray-300" />
+          <div className="text-sm text-gray-500">还没有预警规则</div>
+          <button
+            onClick={onNew}
+            className="rounded-lg bg-blue-50 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-100"
+          >
+            立即创建
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {state.rules.map((r) => {
+            const st = RULE_STATUS[r.status];
+            const tablesUsed = state.tables.filter((t) => r.tableIds?.includes(t.id));
+            const pendingCount = r.executions.filter((e) => e.status === 'pending').length;
+            const isOpen = expanded === r.id;
+            return (
+              <div key={r.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md">
+                <div className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`rounded px-1.5 py-0.5 text-xs ${st.cls}`}>{st.label}</span>
+                        {pendingCount > 0 && r.status === 'active' && (
+                          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-600">
+                            {pendingCount} 项待处理
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-1.5 truncate text-base font-semibold text-gray-800">{r.name}</div>
+                      {r.description && <div className="mt-0.5 line-clamp-2 text-xs text-gray-400">{r.description}</div>}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      {(r.status === 'active' || r.status === 'paused') && (
+                        <button
+                          onClick={() => {
+                            const next = r.status === 'active' ? 'paused' : 'active';
+                            updateRule(r.id, { status: next });
+                            toast.success(next === 'paused' ? '已停用，不再自动生成新预警（已有预警保留）' : '已启用');
+                          }}
+                          className="rounded-md p-1.5 text-gray-400 hover:bg-amber-50 hover:text-amber-500"
+                          title={r.status === 'active' ? '停用（不再生成新预警）' : '启用'}
+                        >
+                          {r.status === 'active' ? <PauseCircle size={15} /> : <PlayCircle size={15} />}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setExpanded(isOpen ? null : r.id)}
+                        className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100"
+                        title="展开详情"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          removeRule(r.id);
+                          toast.success('已删除规则');
+                        }}
+                        className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                        title="删除"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                      <button
+                        onClick={() => copyRule(r)}
+                        className="rounded-md p-1.5 text-gray-400 hover:bg-blue-50 hover:text-blue-500"
+                        title="复制为新规则"
+                      >
+                        <Copy size={15} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 关键信息摘要 */}
+                  <div className="mt-3 space-y-1.5 text-xs text-gray-500">
+                    <div className="flex items-center gap-1.5">
+                      <Table2 size={12} className="text-blue-400" /> {tablesUsed.map((t) => t.name).join('、') || '未绑定数据表'}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <CalendarClock size={12} className="text-blue-400" />
+                      {r.status === 'active'
+                        ? r.executions.find((e) => e.status === 'pending')?.scheduledAt
+                          ? `下次触发 ${formatDateTime(r.executions.find((e) => e.status === 'pending')!.scheduledAt)}`
+                          : '等待调度'
+                        : r.status === 'paused'
+                          ? '已停用，不再生成新预警'
+                          : r.status === 'ended'
+                            ? '已提前结束'
+                            : '草稿未激活'}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Users size={12} className="text-blue-400" />
+                      通知：{r.targets.departments.length} 部门 / {r.targets.personnel.length} 人
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <BellRing size={12} className="text-blue-400" />
+                      节点 {r.flow.nodes.length} 个 · 执行 {r.executions.length} 条
+                    </div>
+                  </div>
+                </div>
+
+                {isOpen && (
+                  <div className="border-t bg-gray-50/60 p-3">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => onEdit(r.id)}
+                        className="flex-1 rounded-lg bg-blue-600 py-1.5 text-sm text-white hover:bg-blue-700"
+                      >
+                        编辑 / 配置
+                      </button>
+                      <button
+                        onClick={() => setDetailId(r.id)}
+                        className="flex-1 rounded-lg border bg-white py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+                      >
+                        查看详情
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 规则详情：摘要 + 调度与通知 */
+function RuleDetail({ rule, onBack, onEdit }: { rule: AlertRule; onBack: () => void; onEdit: () => void }) {
+  const { state, updateRule } = useStore();
+  const tablesUsed = state.tables.filter((t) => rule.tableIds?.includes(t.id));
+  const st = RULE_STATUS[rule.status];
+  const pending = rule.executions.find((e) => e.status === 'pending');
+
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <button onClick={onBack} className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100">
+            <ArrowLeft size={18} />
+          </button>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-semibold text-gray-800">{rule.name}</h1>
+              <span className={`rounded px-1.5 py-0.5 text-xs ${st.cls}`}>{st.label}</span>
+            </div>
+            <p className="text-xs text-gray-400">
+              {tablesUsed.map((t) => t.name).join('、') || '未绑定表'} · 创建于 {formatDateTime(rule.createdAt)} · 更新于 {formatDateTime(rule.updatedAt)}
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          {(rule.status === 'active' || rule.status === 'paused') && (
+            <button
+              onClick={() => {
+                const next = rule.status === 'active' ? 'paused' : 'active';
+                updateRule(rule.id, { status: next });
+                toast.success(next === 'paused' ? '已停用，不再自动生成新预警（已有预警保留）' : '已启用');
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm ${
+                rule.status === 'active'
+                  ? 'border-amber-200 text-amber-600 hover:bg-amber-50'
+                  : 'border-green-200 text-green-600 hover:bg-green-50'
+              }`}
+            >
+              {rule.status === 'active' ? <PauseCircle size={14} /> : <PlayCircle size={14} />}
+              {rule.status === 'active' ? '停用' : '启用'}
+            </button>
+          )}
+          <button
+            onClick={onEdit}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+          >
+            <Pencil size={14} /> 编辑规则
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className="xl:col-span-2">
+          {rule.flow.nodes.length > 0 && (
+            <div className="mt-4 rounded-xl border bg-white">
+              <div className="border-b px-4 py-3 text-sm font-semibold text-gray-800">规则流程（{rule.flow.nodes.length} 节点）</div>
+              <div className="flex flex-wrap gap-2 p-4">
+                {rule.flow.nodes.map((n) => (
+                  <span key={n.id} className="rounded-md border px-2 py-1 text-xs text-gray-600">
+                    {nodeLabel(n)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          {rule.schedule && (
+            <div className="rounded-xl border bg-white p-4 text-sm">
+              <div className="mb-2 text-sm font-semibold text-gray-800">调度</div>
+              <div className="space-y-1 text-xs text-gray-500">
+                <Row k="重复" v={scheduleLabel(rule.schedule.repeatType, rule.schedule)} />
+                <Row k="时刻" v={rule.schedule.timeOfDay} />
+                <Row k="开始" v={rule.schedule.startDate} />
+                <Row k="结束" v={rule.schedule.endDate || '长期'} />
+                <Row k="下次触发" v={pending?.scheduledAt ? formatDateTime(pending.scheduledAt) : (rule.schedule.nextTriggerAt ? formatDateTime(rule.schedule.nextTriggerAt) : '—')} />
+              </div>
+            </div>
+          )}
+          <div className="rounded-xl border bg-white p-4 text-sm">
+            <div className="mb-2 text-sm font-semibold text-gray-800">通知对象</div>
+            <div className="space-y-1 text-xs text-gray-500">
+              <Row k="部门" v={rule.targets.departments.join('、') || '—'} />
+              <Row k="人员" v={rule.targets.personnel.join('、') || '—'} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Row({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="flex justify-between gap-2">
+      <span className="shrink-0 text-gray-400">{k}</span>
+      <span className="text-right text-gray-600">{v}</span>
+    </div>
+  );
+}
+
+function nodeLabel(n: AlertRule['flow']['nodes'][number]): string {
+  const d = n.data as Record<string, unknown>;
+  switch (n.kind) {
+    case 'trigger':
+      return '开始';
+    case 'field':
+      return `字段: ${(d.fieldLabel as string) || (d.fieldKey as string)}`;
+    case 'condition':
+      return `判断: ${(d.fieldLabel as string) || (d.fieldKey as string)} ${(d.operator as string) ?? ''}`;
+    case 'compute':
+      return `计算: ${(d.fn as string).toUpperCase()}`;
+    case 'relation':
+      return `关联: ${(d.targetTable as string) || ''}`;
+    case 'action':
+      return `${(d.level as string) === 'critical' ? '紧急' : (d.level as string) === 'warn' ? '预警' : '提醒'}: ${(d.title as string) || '触发通知'}`;
+    default:
+      return n.kind;
+  }
+}
+
+function scheduleLabel(t: AlertRule['schedule']['repeatType'], s: AlertRule['schedule']): string {
+  switch (t) {
+    case 'once':
+      return '仅一次';
+    case 'daily':
+      return '每日';
+    case 'weekly':
+      return s.weekdays.length ? `每周 ${s.weekdays.map((w) => `周${w === 7 ? '日' : w}`).join('、')}` : '每周';
+    case 'monthly':
+      return s.monthDays.length ? `每月 ${s.monthDays.join('、')} 号` : '每月';
+    case 'custom':
+      return `每 ${s.customInterval} 天`;
+    default:
+      return t;
+  }
+}
