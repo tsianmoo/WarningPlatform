@@ -32,16 +32,16 @@ export default function TimeComponent({ value, onChange }: Props) {
   };
 
   return (
-    <div className="flex items-center gap-2">
-      <div className="relative flex-1">
+    <div className="flex w-full min-w-0 items-center gap-2">
+      <div className="relative min-w-0 flex-1">
         <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50/50 px-2 py-1 text-left text-xs text-emerald-700 transition hover:bg-emerald-50"
       >
         <Clock size={12} strokeWidth={2.2} className="shrink-0 text-emerald-600" />
-        <span className="truncate font-medium">{presetLabel(tw.preset)}</span>
-        <span className="ml-auto shrink-0 truncate text-[10px] text-emerald-500/80">{resolved.hint}</span>
+        <span className="min-w-0 flex-1 truncate font-medium">{presetLabel(tw.preset)}</span>
+        <span className="ml-auto max-w-[45%] shrink truncate text-[10px] text-emerald-500/80">{resolved.hint}</span>
       </button>
 
       {open && (
@@ -161,7 +161,7 @@ export default function TimeComponent({ value, onChange }: Props) {
                 </div>
               )}
             </div>
-            <div className="mt-2 rounded bg-emerald-50/60 px-2 py-1 text-[10px] text-emerald-700">
+            <div className="mt-2 max-w-full break-words rounded bg-emerald-50/60 px-2 py-1 text-[10px] leading-relaxed text-emerald-700">
               {tw.preset === 'custom' ? presetLabel('custom') : presetLabel(tw.preset)}：<b>{resolved.label}</b>{' '}
               {resolved.label === resolved.hint ? '' : `（${resolved.hint}）`}
             </div>

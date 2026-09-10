@@ -2690,10 +2690,12 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
             </select>
 
             <div className={rowLabel}>③ 统计时间窗</div>
-            <TimeComponent
-              value={d.timeWindow ?? { preset: 'specificMonth' }}
-              onChange={(tw) => update({ timeWindow: tw } as Partial<GroupByNodeData>)}
-            />
+            <div className="w-full min-w-0">
+              <TimeComponent
+                value={d.timeWindow ?? { preset: 'specificMonth' }}
+                onChange={(tw) => update({ timeWindow: tw } as Partial<GroupByNodeData>)}
+              />
+            </div>
           </>
         }
       />
@@ -2809,21 +2811,6 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
             {shown.map((mt, idx) => (
               <div key={mt.id || idx} className="flex items-center gap-1">
                 <select
-                  value={mt.fn}
-                  onChange={(e) => {
-                    const next = [...shown];
-                    next[idx] = { ...mt, fn: e.target.value as GroupMetric['fn'], id: mt.id || `gm_${Date.now()}_${idx}` };
-                    setMetrics(next);
-                  }}
-                  className="shrink-0 rounded-md border bg-white px-1.5 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                >
-                  {AGG_FN_OPTIONS.map((a) => (
-                    <option key={a.value} value={a.value}>
-                      {a.label}
-                    </option>
-                  ))}
-                </select>
-                <select
                   value={mt.fieldKey}
                   onChange={(e) => {
                     const f = fields.find((x) => x.key === e.target.value);
@@ -2831,13 +2818,30 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
                     next[idx] = { ...mt, fieldKey: e.target.value, fieldLabel: f?.alias || f?.key || '', id: mt.id || `gm_${Date.now()}_${idx}` };
                     setMetrics(next);
                   }}
-                  className="min-w-0 flex-1 rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className="min-w-[5.5rem] flex-1 rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  title={mt.fieldLabel || mt.fieldKey || '选择指标字段'}
                 >
                   <option value="">选择指标字段…</option>
                   {fields.map((f) => (
                     <option key={f.key} value={f.key}>
                       {f.alias || f.key}
                       {f.type === 'number' ? '' : '（文本）'}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={mt.fn}
+                  onChange={(e) => {
+                    const next = [...shown];
+                    next[idx] = { ...mt, fn: e.target.value as GroupMetric['fn'], id: mt.id || `gm_${Date.now()}_${idx}` };
+                    setMetrics(next);
+                  }}
+                  className="shrink min-w-[4.5rem] max-w-[8.5rem] truncate rounded-md border bg-white px-1.5 py-1 text-[10px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  title={AGG_FN_OPTIONS.find((a) => a.value === mt.fn)?.label || mt.fn}
+                >
+                  {AGG_FN_OPTIONS.map((a) => (
+                    <option key={a.value} value={a.value}>
+                      {a.label}
                     </option>
                   ))}
                 </select>
