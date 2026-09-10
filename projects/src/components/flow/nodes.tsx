@@ -575,9 +575,12 @@ function getNodeOutputs(allNodes: ReturnType<typeof useNodes>, selfId: string): 
 
 type ColOpt = { key: string; label: string };
 // 推断某节点结果的输出列（供过滤/左关联补全选择匹配键等复用）。filter 的列动态继承其上游 source。
-function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, tables: Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, nid: string): ColOpt[] {
+function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, tables: Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, nid: string, visited?: Set<string>): ColOpt[] {
   const fn = allNodes.find((n) => n.id === nid);
   if (!fn) return [];
+  const seen = visited ?? new Set<string>();
+  if (seen.has(nid)) return []; // 防止环：递归带出上游列时若再次回到本节点则截断
+  seen.add(nid);
   const data = fn.data as unknown as Record<string, unknown>;
   const kind = (fn as unknown as FlowNode).kind;
   const s = (v: unknown): string => (typeof v === 'string' && v ? v : '');
@@ -628,7 +631,18 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
     case 'compute': {
       // 计算节点若为节点结果运算，输出主表列 + 结果列；否则仅结果列（key 对齐真实输出列名 resultLabel）
       const cKey = s(data.resultLabel) || s(data.fieldLabel) || (s(data.sourceField) || 'value');
-      return [{ key: cKey, label: s(data.resultLabel) || '结果' }];
+      const e = data.expr as { leftType?: string; left?: { nodeId?: string } } | undefined;
+      const cols: ColOpt[] = [{ key: cKey, label: s(data.resultLabel) || '结果' }];
+      // 两节点结果运算：左值来自上游节点，应带出上游节点的全部输出列，便于在此结果上直接引用二次计算
+      if (e && e.leftType === 'node' && e.left?.nodeId) {
+        if (e.left.nodeId === nid) return cols;
+        const seen2 = new Set(seen);
+        seen2.add(nid);
+        for (const c of inferNodeCols(allNodes, tables, e.left.nodeId, seen2)) {
+          if (!cols.some((x) => x.key === c.key)) cols.push(c);
+        }
+      }
+      return cols;
     }
     case 'elapsed':
       return [{ key: s(data.resultLabel) || 'value', label: s(data.resultLabel) || '结果' }];
