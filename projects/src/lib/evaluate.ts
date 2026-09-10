@@ -894,14 +894,23 @@ function evalNode(
         mode: 'whole' | 'group';
         groupBy: { key: string; label: string }[];
       }[] = [];
-      items.forEach((it, ii) => {
-        let topOut = `TOP档(${it.fieldLabel})`;
-        // 同一字段被多个排名项引用时，TOP 列名去重避免覆盖
-        if (items.slice(0, ii).some((x) => x.fieldLabel === it.fieldLabel)) topOut = `TOP档(${it.fieldLabel})#${ii + 1}`;
-        outCols.push(it.outLabel, topOut);
+      // 生成输出列名时需避让：上游透传列（baseCols）+ 本节点已用列名（usedCols）
+      const usedCols = new Set<string>([...baseCols]);
+      const uniq = (base: string): string => {
+        if (!usedCols.has(base)) return base;
+        let n = 2;
+        while (usedCols.has(`${base}#${n}`)) n += 1;
+        return `${base}#${n}`;
+      };
+      items.forEach((it) => {
+        const outLabel = uniq(it.outLabel);
+        usedCols.add(outLabel);
+        const topOutLabel = uniq(`TOP档(${it.fieldLabel})`);
+        usedCols.add(topOutLabel);
+        outCols.push(outLabel, topOutLabel);
         itemMeta.push({
-          outLabel: it.outLabel,
-          topOutLabel: topOut,
+          outLabel,
+          topOutLabel,
           order: it.order,
           tiers: it.topTiers && it.topTiers.length ? it.topTiers : [{ label: 'TOP', from: 0, to: 100 }],
           tiersOn: it.topTiersEnabled !== false,

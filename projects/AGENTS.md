@@ -87,6 +87,8 @@
 - **计算节点可链式引用前一计算**：compute 用"两节点结果运算"（`expr.leftType='node'`）时，`expr.left.nodeId` 指向被引用节点，evaluate 用 `byId(nodeId)` 取其完整输出，`tokens` 里选该节点结果列（如第一个计算的 resultLabel"连带率"）做二次运算。`collectNodeDataRefs` 已收集 `left.nodeId`，故自动建立拓扑依赖，无需画线。
 - **引用下拉（refOutputs）对同一节点去重**：`getNodeOutputs` 会给 compute 同时注册 `column` 和 `scalar` 两条同名记录（label 都是 resultLabel），若不按 nodeId 去重，下拉/列表里同一计算节点会重复显示（如两个"连带率"），极易误导为"计算组件重复"。
 - **compute 的 inferNodeCols 递归带出上游字段**：`inferNodeCols` 对 compute 在"两节点结果运算"（`expr.leftType='node'`）时，会沿 `expr.left.nodeId` 递归取上游节点的全部输出列 + 追加自身结果列，供"点字段加入"候选；否则仅返回自身 resultLabel 一列。带 visited 集合防环（节点自引用即截断）。改动时注意保持该行为，否则选了数据节点后"点字段"里只有结果列、看不到上游分组的具体字段。
+- **排名（rank）可链式叠加**：rank 节点输出列 = 上游全部列（baseCols 透传）+ 每个排名项「排名」「TOP档」两列。因此第二个 rank 若引用第一个 rank 节点，预览会同时带出第一个 rank 的全部列（含其"折扣排名"）并在其上追加"连带率排名"，实现"在上一排名基础上增加一列排名"。⚠️ 要达到此效果，第二个 rank 的"引用节点输出"必须选**第一个 rank 节点本身**，而不是各自引用 compute（那样拿不到上游排名列）。
+- **rank/TOP 列名去重**：排名列与 TOP 档列生成时统一用 `uniq()` 避开 baseCols（上游透传列）与已用列名，冲突时追加 `#2/#3`，避免链式 rank 复用同字段时 TOP 列覆盖（旧实现只对 items 内同名去重，感知不到上游透传列）。
 - 节点类型：`base/topn/groupby/filter/diff/lookup/filljoin/condition/compute/elapsed/action/logic/trigger`，类型定义在 `src/lib/types.ts`，节点编辑 UI 在 `src/components/flow/nodes.tsx`。
 - **左关联补全 filljoin**：`universe`（全集=每行都保留的骨架）左关联 `fact`（要补充带回的指标），缺失补 `fillValue`。
   - 全集来源 `universeSource: 'table'|'node'`（node 时用 `universeNodeId` 指向上游节点，如前一补全结果）；`universeField`+`extraKeys` 为复合匹配键；`universeReturnField` 把全集自身非键列（如销量）随行带回。
