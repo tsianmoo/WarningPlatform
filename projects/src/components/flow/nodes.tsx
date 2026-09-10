@@ -117,6 +117,8 @@ function useRuleMeta(): RuleMetaValue | null {
 }
 
 /** 通用样式（与各节点保持一致） */
+let uidSeq = 0;
+const nextUid = (prefix: string) => `${prefix}_${(++uidSeq).toString(36)}`;
 const SRC_INPUT_CLS =
   'w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400';
 const SRC_ROW_CLS = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
@@ -3812,11 +3814,16 @@ const RankNode = memo(({ id, data }: NodeProps) => {
   const columnOutputs = nodeOutputs.filter((o) => o.ref.outputKind === 'column');
   const curTable = tables.find((t) => t.id === d.tableId);
   const fields = curTable?.fields ?? [];
-  // 节点结果模式：优先取保存的 incomingCols；若缺失则实时推断引用节点的输出列，保证排名项能选择节点结果字段
+  // 节点结果模式：优先实时推断引用节点的输出列（含链式 rank 透传的全部字段），保证排名项能选到上游节点结果字段
   const nodeCols = d.refNode?.nodeId
     ? inferNodeCols(allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>, tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, d.refNode.nodeId)
     : [];
-  const pickedCols = source === 'node' ? (d.incomingCols && d.incomingCols.length ? d.incomingCols : nodeCols) : fields.map((f) => ({ key: f.key, label: f.alias || f.key }));
+  // incomingCols 仅是历史快照，实时 nodeCols 更可靠；两者并集去重，保证评分项/分组维度能选到上游全部字段
+  const mergedCols = [...nodeCols];
+  for (const c of d.incomingCols ?? []) {
+    if (!mergedCols.some((x) => x.key === c.key)) mergedCols.push(c);
+  }
+  const pickedCols = source === 'node' ? mergedCols : fields.map((f) => ({ key: f.key, label: f.alias || f.key }));
 
   const rowLabel = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
   const inputCls =
@@ -3825,7 +3832,7 @@ const RankNode = memo(({ id, data }: NodeProps) => {
 
   const addItem = () => {
     const item: RankItem = {
-      id: `rank_${Date.now().toString(36)}_${(defaultItems.length + Math.random().toString(36).slice(2, 6))}`,
+      id: nextUid('rank'),
       fieldKey: '',
       fieldLabel: '',
       order: 'desc',
