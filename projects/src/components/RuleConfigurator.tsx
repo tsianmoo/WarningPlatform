@@ -189,8 +189,7 @@ export function RuleConfigurator({
         <input
           value={rule.description}
           onChange={(e) => set({ description: e.target.value })}
-          className="hidden max-w-[26rem] rounded-md border border-transparent bg-gray-50/70 px-2 py-1 text-xs text-gray-500 outline-none focus:border-blue-300 md:block"
-          style={{ width: `${Math.min(Math.max(rule.description.length + 4, 8), 30)}ch` }}
+          className="hidden min-w-0 max-w-[30rem] flex-1 rounded-md border border-transparent bg-gray-50/70 px-2 py-1 text-xs text-gray-500 outline-none focus:border-blue-300 md:block"
           placeholder="规则描述：简要说明用途…"
         />
         <div className="mx-3 flex shrink-0 items-center gap-0.5 border-l border-gray-200 pl-3">
@@ -223,7 +222,7 @@ export function RuleConfigurator({
             );
           })}
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex items-center gap-2">
           <button
             onClick={() => persist('save')}
             disabled={saving}
