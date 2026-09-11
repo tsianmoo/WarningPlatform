@@ -668,11 +668,34 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
         if (!uf) continue;
         pushUniq({ key: uf, label: s(k.universeFieldLabel) || uf });
       }
-      // 3) 全集额外返回列（如把"店铺成交"命名为"数量"）—— 用命名后的列名作为输出 key
-      const retField = s(data.universeReturnField);
-      if (retField) {
-        const retLabel = s(data.universeReturnLabel) || retField;
-        pushUniq({ key: retLabel, label: retLabel });
+      // 3) 全集额外返回列：支持多选(universeReturnField[])，或 universeReturnAll 时返回全集除键列外的所有列
+      const uniIsNode = s(data.universeSource) === 'node';
+      const keySet = new Set(tag.map((t) => t.key));
+      if (data.universeReturnAll) {
+        const uniAll = uniIsNode
+          ? inferNodeCols(allNodes, tables, s(data.universeNodeId))
+          : (() => {
+              const tid = s(data.universeTableId || (data as { universeTable?: unknown }).universeTable);
+              const tbl = tables.find((t) => t.id === tid);
+              if (!tbl) return [];
+              return ((tbl.fields as { key?: string; name?: string; alias?: string }[]) || []).map((f) => {
+                const k = f.key;
+                const lab = f.alias || f.name || f.key;
+                return { key: k, label: lab };
+              }).filter((c) => c.key);
+            })();
+        for (const c of uniAll) {
+          if (!c || !c.key || keySet.has(c.key)) continue;
+          pushUniq({ key: c.key, label: c.label || c.key });
+        }
+      } else {
+        const raw = data.universeReturnField;
+        const arr = (Array.isArray(raw) ? raw : raw ? [raw] : []) as unknown[];
+        for (const r of arr) {
+          const k = s(r);
+          if (!k) continue;
+          pushUniq({ key: k, label: k });
+        }
       }
       // 4) 事实来源带来的列（按事实匹配键过滤，且只带"事实带回指标列"）
       const factSrc = s(data.factSource);
@@ -3521,6 +3544,7 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
       ? inferNodeCols(allNodes, tables, d.universeNodeId)
       : []
     : uniFields.map((f) => ({ key: f.key, label: f.alias || f.key }));
+  const retFieldArr: string[] = Array.isArray(d.universeReturnField) ? d.universeReturnField : d.universeReturnField ? [d.universeReturnField] : [];
 
   const factNodeRef =
     factNodeOptions.find((o) => o.ref.nodeId === d.factNode)?.ref ??
@@ -3586,21 +3610,58 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
 
       <div className="mb-1 mt-2 flex items-center gap-1">
         <span className="shrink-0 text-[11px] text-gray-400">全集返回列(可选)</span>
-        <select
-          value={d.universeReturnField || ''}
-          onChange={(e) => {
-            const f = uniSrcCols.find((x) => x.key === e.target.value);
-            update({ universeReturnField: e.target.value || undefined, universeReturnLabel: f?.label || e.target.value || undefined });
-          }}
-          className={inputCls}
-        >
-          <option value="">（无，仅返回键列）</option>
-          {uniSrcCols.filter((f) => f.key !== d.universeField).map((f) => (
-            <option key={f.key} value={f.key}>
-              {f.label}
-            </option>
-          ))}
-        </select>
+        <label className="ml-auto flex shrink-0 cursor-pointer items-center gap-1 text-[11px] text-gray-500">
+          <input
+            type="checkbox"
+            checked={!!d.universeReturnAll}
+            onChange={(e) => update({ universeReturnAll: e.target.checked, universeReturnField: e.target.checked ? uniSrcCols.filter((f) => f.key !== d.universeField).map((f) => f.key) : (Array.isArray(d.universeReturnField) ? d.universeReturnField : d.universeReturnField ? [d.universeReturnField] : []) })}
+            className="h-3 w-3 accent-cyan-500"
+          />
+          返回所有列
+        </label>
+      </div>
+      <div className="mt-1 rounded-md border border-gray-200 bg-white p-1.5">
+        {uniSrcCols.filter((f) => f.key !== d.universeField).length === 0 ? (
+          <div className="text-[10px] text-gray-400">（无可用列，仅返回键列）</div>
+        ) : (
+          <>
+            <label className="mb-0.5 flex cursor-pointer items-center gap-1 text-[11px] text-gray-600">
+              <input
+                type="checkbox"
+                checked={!d.universeReturnAll && retFieldArr.length > 0 && retFieldArr.length === uniSrcCols.filter((f) => f.key !== d.universeField).length}
+                onChange={(e) =>
+                  update({
+                    universeReturnAll: false,
+                    universeReturnField: e.target.checked ? uniSrcCols.filter((f) => f.key !== d.universeField).map((f) => f.key) : [],
+                  })
+                }
+                className="h-3 w-3 accent-cyan-500"
+              />
+              全选
+            </label>
+            {uniSrcCols
+              .filter((f) => f.key !== d.universeField)
+              .map((f) => {
+                const checked = d.universeReturnAll || retFieldArr.includes(f.key);
+                return (
+                  <label key={f.key} className="flex cursor-pointer items-center gap-1 py-0.5 text-[11px] text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        const next = e.target.checked ? Array.from(new Set([...retFieldArr, f.key])) : retFieldArr.filter((k) => k !== f.key);
+                        update({ universeReturnAll: false, universeReturnField: next });
+                      }}
+                      className="h-3 w-3 accent-cyan-500"
+                    />
+                    <span className="truncate" title={f.label}>
+                      {f.label}
+                    </span>
+                  </label>
+                );
+              })}
+          </>
+        )}
       </div>
 
       <div className="mt-2">
