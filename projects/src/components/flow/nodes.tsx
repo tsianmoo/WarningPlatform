@@ -1239,14 +1239,27 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
   const exprLeftNode = refOutputs.find((o) => o.ref.nodeId === expr?.left?.nodeId)?.ref ?? expr?.left ?? undefined;
   // 点选式表达式：token 序列 + 常量输入框
   const [constVal, setConstVal] = useState('');
+  const [xNodeId, setXNodeId] = useState('');
+  const [xJoin, setXJoin] = useState('');
   const exprTokens: ExprToken[] = Array.isArray(expr?.tokens) ? (expr!.tokens as ExprToken[]) : [];
   const exprSrcCols = colsOfNode(expr?.left?.nodeId ?? '');
+  const mainKeySet = new Set(exprSrcCols.map((c) => c.key));
+  // 跨节点关联引用：除主轴外的可引用节点，用于在组合公式里拼接其它节点结果字段（需指定关联字段按行对齐）
+  const mainNodeId = expr?.left?.nodeId ?? '';
+  const crossNodeRefs = refOutputs.filter((o) => o.ref.nodeId !== mainNodeId);
+  const crossCols = xNodeId ? colsOfNode(xNodeId) : [];
   const setTokens = (tk: ExprToken[]) => update({ expr: { ...(expr as ComputeExpr), tokens: tk, exprText: '' } });
   const addToken = (t: ExprToken) => setTokens([...exprTokens, t]);
   const popToken = () => setTokens(exprTokens.slice(0, -1));
   const tokenText = (t: ExprToken): string => {
     switch (t.kind) {
-      case 'field': return t.label || t.col;
+      case 'field': {
+        if (t.at && (t.join ?? '') !== '') {
+          const src = refOutputs.find((r) => r.ref.nodeId === t.at)?.ref.label;
+          return `${src ? src + '·' : ''}${t.label || t.col}${t.join ? ' ⚯' + t.join : ''}`;
+        }
+        return t.label || t.col;
+      }
       case 'op': return t.op === 'add' ? '＋' : t.op === 'sub' ? '－' : t.op === 'mul' ? '×' : '÷';
       case 'paren': return t.paren;
       case 'num': return t.value;
@@ -1368,6 +1381,57 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
                   ) : (
                     <div className="mt-1 text-[10px] text-gray-400">← 请先在下方「左侧」选择一个节点结果（如：店仓销售与库存），这里会出现可点选的字段</div>
                   )}
+                  {/* 跨节点关联字段：公式里可引用其它节点结果，需指定关联字段用于按行对齐 */}
+                  {crossNodeRefs.length > 0 ? (
+                    <div className="mt-1.5 rounded border border-violet-200 bg-violet-50/60 p-1.5">
+                      <div className="text-[10px] font-medium text-violet-700">跨节点引用（可选）：</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        <select
+                          value={xNodeId}
+                          onChange={(e) => { setXNodeId(e.target.value); setXJoin(''); }}
+                          className="h-6 max-w-[150px] rounded border border-violet-300 bg-white px-1 text-[10px] text-gray-700 focus:outline-none"
+                        >
+                          <option value="">选择节点…</option>
+                          {crossNodeRefs.map((o) => (
+                            <option key={o.ref.nodeId} value={o.ref.nodeId}>{o.ref.label}</option>
+                          ))}
+                        </select>
+                        {xNodeId && (
+                          <>
+                            <span className="text-[10px] text-violet-500">关联字段:</span>
+                            <select
+                              value={xJoin}
+                              onChange={(e) => setXJoin(e.target.value)}
+                              className="h-6 max-w-[120px] rounded border border-violet-300 bg-white px-1 text-[10px] text-gray-700 focus:outline-none"
+                            >
+                              <option value="">选择…</option>
+                              {crossCols
+                                .filter((c) => mainKeySet.has(c.key))
+                                .map((c) => (
+                                  <option key={c.key} value={c.key}>{c.label}</option>
+                                ))}
+                            </select>
+                            <span className="text-[10px] text-gray-400">（与主轴共有列对齐）</span>
+                          </>
+                        )}
+                      </div>
+                      {xNodeId && xJoin && crossCols.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {crossCols.map((c) => (
+                            <button
+                              key={c.key}
+                              type="button"
+                              onClick={() => addToken({ kind: 'field', col: c.key, label: c.label, at: xNodeId, join: xJoin })}
+                              className="rounded border border-violet-300 bg-white px-1.5 py-0.5 text-[10px] text-violet-700 hover:bg-violet-100"
+                              title={`来自「${crossNodeRefs.find((o) => o.ref.nodeId === xNodeId)?.ref.label ?? ''}」，按「${xJoin}」关联`}
+                            >
+                              {c.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
                   {/* 运算符 / 括号 / 常量 */}
                   <div className="mt-1.5 flex flex-wrap items-center gap-1">
                     {([

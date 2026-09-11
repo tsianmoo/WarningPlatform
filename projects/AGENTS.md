@@ -93,6 +93,8 @@
 - **compute 的 inferNodeCols 必须透传上游列**：compute 无论"字段聚合（source==='node'）"还是"两节点结果运算（expr.left）"，输出都 = 上游主表列 + resultLabel（与 evaluate `columns:[...main.columns,label]` 对齐）。若 inferNodeCols 只返回 resultLabel，串成 rank→compute 链时会让上游全部指标列丢失，导致排名项只能选到"折扣/折扣排名/TOP档"几个字段。修复：compute case 同时递归 `sourceNode` 与 `expr.left.nodeId` 两路上游。
 - **rank 的 inferNodeCols 提取 srcNode 不能用 `s(data.refNode)`**：`refNode` 是对象不是字符串，惰性 `s()`（只接受非空字符串）会返回空串，导致上游列永远无法递归带出，rank 下拉只剩自身 items 的列。必须直接取 `data.refNode.nodeId`。教训：凡 `refNode`/`left`/`right` 这类对象型引用字段，一律取 `x.nodeId`，不要经 `s()` 提取。
 - 节点类型：`base/topn/groupby/filter/diff/lookup/filljoin/condition/compute/elapsed/action/logic/trigger`，类型定义在 `src/lib/types.ts`，节点编辑 UI 在 `src/components/flow/nodes.tsx`。
+- **compute 组合表达式支持多节点字段（跨节点 join）**：tokens 里 field 可带 `at`(来源节点 id)+`join`(关联字段)。用的是 `ExprToken.field` 早已预留的 `at?/join?`。evaluate 的 compute tokens 分支（evaluate.ts `case 'compute'` 内部）在求值前对每个 `kind==='field' && tk.at && tk.join` 的字段，按 `at` 节点表、以 `join` 字段为 key 建立索引（`storeByJoin`），把主表行与关联节点行按 `join` 值对齐，取该字段值注入主表行副本再交给 `evalRowTokens`；主轴字段（`at` 为空或 = 主表 nodeId）保持原逻辑（从主表行取）。用户诉求形如"左列(节点A) ÷ (左列(A) + 右列(B))"，两个节点同是"店仓"级别时指定"店仓"为关联字段即可逐行对齐。
+  - UI（nodes.tsx ComputeNode）：在"点字段加入"区下方新增"跨节点字段"面板——选一个非主轴节点(`crossNodeRefs`)、在该节点字段中选 `join` 关联字段(`crossCols`/`mainKeySet` 排除主轴同名列)，点字段时 `setTokens([...tk,{kind:'field',col,label,at:crossNodeId,join:xJoin}])`。
 - **左关联补全 filljoin**：`universe`（全集=每行都保留的骨架）左关联 `fact`（要补充带回的指标），缺失补 `fillValue`。
   - 全集来源 `universeSource: 'table'|'node'`（node 时用 `universeNodeId` 指向上游节点，如前一补全结果）；`universeField`+`extraKeys` 为复合匹配键；`universeReturnField` 把全集自身非键列（如销量）随行带回。
   - 事实来源 `factSource: 'table'|'node'`（node 时用 `factNode`）；`factKeyField`+`extraKeys.factField` 为事实侧匹配键；`factReturnField` 指定只带回某一列指标（如「库存」），不填则带回所有非键列。

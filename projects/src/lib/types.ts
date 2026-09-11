@@ -202,7 +202,7 @@ export type ArithmeticOp = 'add' | 'sub' | 'mul' | 'div';
  * - 'num'：常量数字
  */
 export type ExprToken =
-  | { kind: 'field'; col: string; label?: string }
+  | { kind: 'field'; col: string; label?: string; at?: string; join?: string }
   | { kind: 'op'; op: ArithmeticOp }
   | { kind: 'paren'; paren: '(' | ')' }
   | { kind: 'num'; value: string };
