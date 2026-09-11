@@ -1568,40 +1568,9 @@ function evalNode(
           // 结构化（点选式）表达式：token 序列优先，逐行安全求值
           const tokens = Array.isArray(expr.tokens) ? (expr.tokens as ExprToken[]) : [];
           if (tokens.some((t) => t.kind === 'field')) {
-            // 跨节点字段引用：为每个（来源节点 + 关联字段）预建 关联值→行 索引，供逐行 join
-            const fieldAt = (t: ExprToken): string => (t.kind === 'field' ? String(t.at || '') : '');
-            const mainKey = mainIsLeft ? (expr.left?.nodeId as string) : (expr.ref?.nodeId as string);
-            const joinIndexes = new Map<string, Map<string, Record<string, unknown>>>();
-            for (const tk of tokens) {
-              if (tk.kind !== 'field') continue;
-              const src = fieldAt(tk);
-              if (!src || src === mainKey || !tk.join) continue;
-              const key = `${src}::${tk.join}`;
-              if (joinIndexes.has(key)) continue;
-              const srcOut = byId(src);
-              if (!srcOut || !isTable(srcOut)) continue;
-              const idx = new Map<string, Record<string, unknown>>();
-              for (const row of (srcOut.rows as Record<string, unknown>[])) {
-                const jv = row?.[tk.join as string];
-                if (jv != null) idx.set(String(jv), row);
-              }
-              joinIndexes.set(key, idx);
-            }
             const resultRows = main.rows.map((r) => {
-              const row = { ...r } as Record<string, unknown>;
-              for (const tk of tokens) {
-                if (tk.kind !== 'field') continue;
-                const src = fieldAt(tk);
-                if (!src || src === mainKey || !tk.join || !tk.col) continue;
-                const idx = joinIndexes.get(`${src}::${tk.join}`);
-                if (!idx) continue;
-                const jv = r?.[tk.join as string];
-                if (jv == null) continue;
-                const hit = idx.get(String(jv));
-                if (hit) row[tk.col] = hit[tk.col];
-              }
-              const v = evalRowTokens(tokens, row as Record<string, string | number>);
-              const out: Record<string, string | number> = { ...(row as Record<string, string | number>) };
+              const v = evalRowTokens(tokens, r);
+              const out: Record<string, string | number> = { ...r };
               out[label] = Number.isFinite(v) ? fmtNum(v) : '—';
               return out;
             });
@@ -1840,8 +1809,6 @@ function collectNodeDataRefs(node: FlowNode): string[] {
   push((d.left as { nodeId?: unknown } | null | undefined)?.nodeId);
   push((d.right as { nodeId?: unknown } | null | undefined)?.nodeId);
   push((d.ref as { nodeId?: unknown } | null | undefined)?.nodeId);
-  const expr = d.expr as { tokens?: Array<{ at?: unknown }> } | undefined;
-  if (expr?.tokens) for (const tk of expr.tokens) push(tk.at);
   return refs.filter(Boolean);
 }
 
