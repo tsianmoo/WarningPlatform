@@ -1193,25 +1193,9 @@ function evalNode(
       }, []);
       const uniKeyCols = [universeField, ...extraKeys.map((k) => k.universeField)];
       const uniLabels = [fd.universeFieldLabel || universeField, ...extraKeys.map((k) => k.universeFieldLabel || k.universeField)];
-      // 可选：全集额外返回的非键列（如库存）。支持单列/多列/全部；多列时不再单独取 universeReturnLabel
-      const rawRet = fd.universeReturnField;
-      const retFields = fd.universeReturnAll
-        ? (rawRet === undefined && Array.isArray(rawRet) ? [] : null)
-        : Array.isArray(rawRet)
-          ? rawRet.filter((f) => f && !uniKeyCols.includes(f))
-          : rawRet && !uniKeyCols.includes(rawRet)
-            ? [rawRet]
-            : [];
-      let retPairs: Array<{ field: string; label: string }> = [];
-      if (fd.universeReturnAll) {
-        // 返回全集除键列外的所有列（表用 fields，节点用 columns）
-        const uniAll: string[] = uniIsNode
-          ? (uniNode?.columns ?? []).map((c) => String(c))
-          : (uni?.fields ?? []).map((f) => String((f as { alias?: string; key?: string }).alias ?? (f as { key?: string }).key));
-        retPairs = uniAll.filter((c) => !uniKeyCols.includes(c) && !uniLabels.includes(c)).map((c) => ({ field: c, label: c }));
-      } else {
-        retPairs = (retFields || []).map((f) => ({ field: f, label: fd.universeReturnLabel || f }));
-      }
+      // 可选：全集额外返回的非键列（如库存）
+      const retField = fd.universeReturnField && !uniKeyCols.includes(fd.universeReturnField) ? fd.universeReturnField : undefined;
+      const retLabel = fd.universeReturnLabel || retField || undefined;
       // 全集组合（多键去重）
       const comboSeen = new Set<string>();
       const uniCombos: Array<{ key: string; row: Record<string, string | number> }> = [];
@@ -1227,10 +1211,10 @@ function evalNode(
           else if (typeof v === 'number' || typeof v === 'string') row[lab] = v;
           else row[lab] = String(v);
         });
-        retPairs.forEach(({ field, label }) => {
-          const rv = r[field];
-          row[label] = rv == null ? '' : typeof rv === 'number' ? rv : String(rv);
-        });
+        if (retField && retLabel) {
+          const rv = r[retField];
+          row[retLabel] = rv == null ? '' : typeof rv === 'number' ? rv : String(rv);
+        }
         uniCombos.push({ key, row });
       }
       const fillVal = fd.fillValue ?? '0';
@@ -1279,10 +1263,10 @@ function evalNode(
       });
       return {
         title: '左关联补全',
-        columns: [...uniLabels, ...retPairs.map((r) => r.label), ...factCols],
+        columns: [...uniLabels, ...(retLabel ? [retLabel] : []), ...factCols],
         rows: cap(rows),
         shape: 'table',
-        scalar: { kind: 'column', col: factCols[factCols.length - 1] || retPairs[retPairs.length - 1]?.label || uniLabels[uniLabels.length - 1] },
+        scalar: { kind: 'column', col: factCols[factCols.length - 1] },
         note: `以「${uniName}」的 ${uniCombos.length} 个「${uniLabels.join('+')}」组合为全集，左关联 ${factName}，缺失补「${fillVal}」（共 ${rows.length} 行）。`,
       };
     }
