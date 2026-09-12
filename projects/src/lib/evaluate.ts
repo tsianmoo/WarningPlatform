@@ -47,6 +47,21 @@ function normalizeEdge(raw: AnyEdgeLike, idx: number): FlowEdge {
   return { id: raw.id ?? `e-${idx}`, source: raw.source, target: raw.target };
 }
 
+/** 将任意值转为毫秒时间戳（Date / 字符串 / 数字） */
+function tsNum(v: unknown): number {
+  if (v == null) return Number.NaN;
+  if (v instanceof Date) return v.getTime();
+  const d = new Date(v as string | number);
+  return Number.isNaN(d.getTime()) ? Number.NaN : d.getTime();
+}
+
+/** 判断行内日期值是否落在对比窗口（含截止日整天）内 */
+function inRangeCmp(v: unknown, c?: { start: Date; end: Date }): boolean {
+  if (!c) return false;
+  const n = tsNum(v);
+  return Number.isFinite(n) && n >= c.start.getTime() && n <= c.end.getTime() + 86399999;
+}
+
 /** 单个节点的预览结果 */
 export interface NodePreview {
   /** 结果标题 */
@@ -214,13 +229,17 @@ function toDate(v: unknown): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function inWindow(v: unknown, tw?: TimeWindow): boolean {
-  if (!tw || !tw.preset) return true;
+function inRange(v: unknown, start: Date, end: Date): boolean {
   const d = toDate(v);
   if (!d) return false;
-  const { start, end } = resolveTimeWindow(tw);
   const t = d.getTime();
   return t >= start.getTime() && t <= end.getTime() + 86399999;
+}
+
+function inWindow(v: unknown, tw?: TimeWindow): boolean {
+  if (!tw || !tw.preset) return true;
+  const { start, end } = resolveTimeWindow(tw);
+  return inRange(v, start, end);
 }
 
 function agg(fn: string, nums: number[]): number {
@@ -271,6 +290,26 @@ function aggActiveDays(rows: Record<string, unknown>[], dateKey: string, amountK
     }
   }
   return days.size;
+}
+
+function buildGroups(
+  rows: Record<string, unknown>[],
+  dims: { key: string; gran?: import('../lib/types').DateGranularity }[],
+  metrics: { key: string }[],
+): Map<string, { nums: number[][]; keys: string[]; recs: Record<string, unknown>[] }> {
+  const groups = new Map<string, { nums: number[][]; keys: string[]; recs: Record<string, unknown>[] }>();
+  for (const r of rows) {
+    const keys = dims.map((x) => granVal(r[x.key], x.gran));
+    if (!keys.join('').trim()) continue;
+    const k = keys.join('␟');
+    if (!groups.has(k)) groups.set(k, { nums: metrics.map(() => []), keys, recs: [] });
+    const g = groups.get(k)!;
+    metrics.forEach((mt, mi) => {
+      g.nums[mi].push(toNum(r[mt.key]));
+    });
+    g.recs.push(r);
+  }
+  return groups;
 }
 
 function tableById(tables: DataTable[], id?: string): DataTable | undefined {
@@ -991,25 +1030,35 @@ function evalNode(
       // 时间窗过滤
       const srcRows = allRows(t);
       const rows0 = gd.dateField && gd.timeWindow ? srcRows.filter((r) => inWindow(r[gd.dateField || ''], gd.timeWindow)) : srcRows;
-      const groups = new Map<string, { nums: number[][]; keys: string[]; recs: Record<string, unknown>[] }>();
-      // 每个指标对应一列数值数组（sum/avg/max/min 用；count/countDistinct/activeDays 走 recs）
-      for (const r of rows0) {
-        const keys = dims.map((x) => granVal(r[x.key], x.gran));
-        if (!keys.join('').trim()) continue;
-        const k = keys.join('␟');
-        if (!groups.has(k)) groups.set(k, { nums: metrics.map(() => []), keys, recs: [] });
-        const g = groups.get(k)!;
-        metrics.forEach((mt, mi) => { g.nums[mi].push(toNum(r[mt.key])); });
-        g.recs.push(r);
+      const groups = buildGroups(rows0, dims, metrics);
+      // —— 对比期（同期/环期）聚合 ——
+      let cmpGroups: Map<string, { nums: number[][]; keys: string[]; recs: Record<string, unknown>[] }> | null = null;
+      let cmpMode: 'yoY' | 'ring' | null = null;
+      let cmpLabel = '';
+      if (gd.timeWindow && gd.dateField) {
+        const twr = resolveTimeWindow(gd.timeWindow, new Date());
+        if (twr.compare) {
+          cmpMode = (gd.timeWindow && (gd.timeWindow as { compare?: { mode?: 'yoY' | 'ring' } }).compare?.mode) || 'ring';
+          cmpLabel = twr.compare.label;
+          const cmpRows = srcRows.filter((r) => inRange(r[gd.dateField || ''], twr.compare!.start, twr.compare!.end));
+          cmpGroups = buildGroups(cmpRows, dims, metrics);
+        }
       }
       const fnLabel = (fn: string) =>
         fn === 'activeDays' ? '开单天数' : fn === 'countDistinct' ? '去重计数' : fn === 'sum' ? '求和' : fn === 'avg' ? '平均' : fn === 'max' ? '最大' : fn === 'min' ? '最小' : fn === 'count' ? '计数' : fn;
       const mLabels = metrics.map((mt) => mt.outLabel || `${fnLabel(mt.fn)}(${mt.label || mt.key})`);
       const dimLabels = dims.map((x) => groupLabel(x.label, x.gran));
       const dateKey = gd.dateField || t.fields.find((f) => f.type === 'date')?.key || '';
+      const cmpValByKey = new Map<string, number[]>();
+      if (cmpGroups && cmpMode) {
+        for (const [k, cg] of cmpGroups) {
+          cmpValByKey.set(k, metrics.map((mt, mi) => (mt.fn === 'count' ? cg.recs.length : agg(mt.fn, cg.nums[mi]))));
+        }
+      }
       const out = [...groups.values()].map((g) => {
         const row: Record<string, string | number> = {};
         dimLabels.forEach((lab, i) => (row[lab] = g.keys[i] ?? ''));
+        const cvals = cmpValByKey.get(g.keys.join('␟'));
         metrics.forEach((mt, mi) => {
           let val: number;
           const fn = mt.fn;
@@ -1023,17 +1072,31 @@ function evalNode(
             val = agg(fn, g.nums[mi]);
           }
           row[mLabels[mi]] = fmtNum(val);
+          if (cmpMode && cmpGroups) {
+            const cv = cvals ? cvals[mi] : NaN;
+            row[`${mLabels[mi]} · ${cmpLabel}`] = Number.isFinite(cv) ? fmtNum(cv) : '—';
+            if (Number.isFinite(val) && Number.isFinite(cv)) {
+              const rate = val !== 0 ? ((val - cv) / cv) * 100 : cv !== 0 ? -100 : 0;
+              row[`${mLabels[mi]} · 增长率%`] = fmtNum(rate);
+            } else {
+              row[`${mLabels[mi]} · 增长率%`] = '—';
+            }
+          }
         });
         return row;
       });
       // 兜底：若 groups 为空（无行），仍构造一次以便展示类型
-      const emptyRow: Record<string, string> = Object.fromEntries([...dims.map((x) => [groupLabel(x.label, x.gran), ''] as const), ...mLabels.map((m) => [m, ''] as const)]);
+      const emptyRow: Record<string, string> = Object.fromEntries([
+        ...dims.map((x) => [groupLabel(x.label, x.gran), ''] as const),
+        ...mLabels.map((m) => [m, ''] as const),
+        ...(cmpMode && cmpGroups ? mLabels.flatMap((m) => [[`${m} · ${cmpLabel}`, ''] as const, [`${m} · 增长率%`, ''] as const]) : []),
+      ]);
       const finalOut = out.length ? out : [emptyRow];
       const idx = metrics.findIndex((m) => m.key === metricField);
       const defaultMLabel = idx >= 0 ? mLabels[idx] : (gd.resultLabel || `${fnLabel(gd.metricFn || 'sum')}(${gd.metricFieldLabel || metricField})`);
       return {
         title: '分组聚合',
-        columns: [...dimLabels, ...mLabels],
+        columns: [...dimLabels, ...mLabels, ...(cmpMode && cmpGroups ? mLabels.flatMap((m) => [`${m} · ${cmpLabel}`, `${m} · 增长率%`]) : [])],
         rows: cap(finalOut),
         shape: 'table',
         scalar:
