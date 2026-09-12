@@ -27,6 +27,7 @@ import { resolveTimeWindow, resolveElapsedDays } from './time';
 import type { TimeWindow } from './types';
 import { TAG_COLORS } from './parser';
 import { OPERATOR_OPTIONS } from './types';
+import type { ActionNodeData } from './types';
 
 /** ReactFlow 节点（type 字段）与内部 FlowNode（kind 字段）都可能传入，统一归一化为内部节点 */
 type AnyNodeLike = { id: string; type?: string; kind?: NodeKind; data?: Record<string, unknown>; position?: { x: number; y: number } };
@@ -1665,9 +1666,12 @@ function evalNode(
     }
 
     case 'action': {
-      const src = incoming.find((o) => o && o.columns.length > 0 && o.rows.length > 0);
-      if (!src) {
-        return { title: '预警动作', columns: [], rows: [], note: '规则终点：命中后触发通知/动作。等待上游命中结果…', unsupported: true };
+      const dA = d as unknown as ActionNodeData;
+      const src =
+        pickColumnOutput(outputs, incoming, dA.sourceNode?.nodeId) ||
+        incoming.find((o) => o && o.columns.length > 0 && o.rows.length > 0);
+      if (!src || !src.rows.length) {
+        return { title: '预警动作', columns: [], rows: [], note: '规则终点：命中后触发通知/动作。请在动作配置中选择命中数据来源节点…', unsupported: true };
       }
       return {
         title: '预警动作',

@@ -636,6 +636,8 @@ export interface ActionNodeData {
   content?: string;
   /** 本动作独立的通知对象（部门/人员），不随其它动作联动 */
   notify?: { departments: string[]; personnel: string[] };
+  /** 命中数据来源（上游节点）：预览与触发时从此节点取命中的行/列 */
+  sourceNode?: NodeResultRef;
 }
 
 /** 时间窗口节点数据 */

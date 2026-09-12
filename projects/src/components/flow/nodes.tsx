@@ -2419,6 +2419,26 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
             )}
           </div>
         )}
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <span className="text-xs text-gray-400">数据来源</span>
+          <select
+            value={d.sourceNode?.nodeId ?? ''}
+            onChange={(e) => {
+              const nid = e.target.value;
+              const opt = nodeOptions.find((o) => o.id === nid);
+              update({ sourceNode: nid && opt ? { nodeId: nid, nodeKind: opt.kind, label: opt.label || '', outputKind: 'column' } : undefined });
+            }}
+            className="flex-1 rounded-md border bg-white px-2 py-1 text-xs text-gray-700"
+          >
+            <option value="">（选一个上游节点作为命中数据来源）</option>
+            {nodeOptions.map((o) => (
+              <option key={o.id} value={o.id}>
+                {nodeKindCn(o.kind)}
+                {o.label ? `（${o.label}）` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="mt-1 text-[10px] text-gray-400">
           规则终点：输入位置插入 {`{字段名}`}，触发时替换为命中行的实际值
         </div>
