@@ -2274,14 +2274,25 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
   const typeMeta = ACTION_TYPES.find((t) => t.value === type);
   // 通知对象独立保存
   const notify = d.notify ?? { departments: [] as string[], personnel: [] as string[] };
-  // 可插入字段：搜集本规则内所有节点的输出列（不限于直接输入边），供拼接预警消息
-  const availFields: ColOpt[] = [];
+  // 可插入字段：按节点分组搜集本规则内所有节点的输出列（不限于直接输入边），供拼接预警消息
+  const nodeOptions: { id: string; label: string; kind: FlowNode['kind'] }[] = [];
+  const fieldsByNode: Record<string, ColOpt[]> = {};
   for (const n of allNodes) {
     if (n.id === id) continue;
-    for (const c of inferNodeCols(allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>, tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, n.id)) {
-      if (!availFields.some((x) => x.key === c.key)) availFields.push(c);
-    }
+    const fn = n as unknown as FlowNode;
+    const cols = inferNodeCols(allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>, tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, n.id);
+    if (!cols.length) continue;
+    const label =
+      (fn.data && typeof fn.data === 'object') ?
+        ((fn.data as Record<string, unknown>).resultLabel as string) ||
+        ((fn.data as Record<string, unknown>).resultName as string) ||
+        '' : '';
+    nodeOptions.push({ id: n.id, label, kind: fn.kind });
+    fieldsByNode[n.id] = cols;
   }
+  const [pickNode, setPickNode] = useState(nodeOptions[0]?.id ?? '');
+  const selNodeId = nodeOptions.some((o) => o.id === pickNode) ? pickNode : (nodeOptions[0]?.id ?? '');
+  const availFields = selNodeId ? (fieldsByNode[selNodeId] ?? []) : [];
   const insertField = (k: string) => {
     const tok = `{${k}}`;
     if ((d.content ?? '').includes(tok)) return;
@@ -2373,19 +2384,39 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
             className="w-full resize-none rounded-md border px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
           />
         </div>
-        {availFields.length > 0 && (
-          <div className="mt-1 flex flex-wrap items-center gap-1 pl-2">
-            <span className="text-[10px] text-gray-400">插入字段：</span>
-            {availFields.map((f) => (
-              <button
-                key={f.key}
-                type="button"
-                onClick={() => insertField(f.key)}
-                className="rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-700 hover:bg-amber-200"
-              >
-                {f.label ?? f.key}
-              </button>
-            ))}
+        {nodeOptions.length > 0 && (
+          <div className="mt-1 rounded-md bg-amber-50/60 p-1.5">
+            <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-amber-700">
+              插入字段
+            </div>
+            <select
+              value={selNodeId}
+              onChange={(e) => setPickNode(e.target.value)}
+              className="w-full rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
+            >
+              <option value="">选择节点…</option>
+              {nodeOptions.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {nodeKindCn(o.kind)}
+                  {o.label ? `（${o.label}）` : ''}
+                </option>
+              ))}
+            </select>
+            {availFields.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {availFields.map((f) => (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => insertField(f.key)}
+                    title={`点击插入 {${f.label ?? f.key}}`}
+                    className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700 hover:bg-amber-200"
+                  >
+                    {f.label ?? f.key}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
         <div className="mt-1 text-[10px] text-gray-400">
