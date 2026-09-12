@@ -77,6 +77,7 @@
 
 - 模板默认预装核心组件库 `shadcn/ui`，位于`src/components/ui/`目录下
 - Next.js 项目**必须默认**采用 shadcn/ui 组件、风格和规范，**除非用户指定用其他的组件和规范。**
+- **预警列表（AlertList.tsx）视觉约束**：用户要求"简约高级感、杜绝 AI 味道"——禁用泛蓝渐变（去 `blue-500/blue-600` 主色）、禁用粉彩徽标堆砌（级别/状态改用 **tonal 浅底或中性 dot+文字色**）、禁用发虚重阴影与 `rounded-2xl` 大圆角（改 `rounded-xl` + `border-gray-200` + `shadow-lg`）。表头与内容均 `whitespace-nowrap`（标题栏文本、重要程度、状态、触发时间、操作列不换行）；重要程度列用「dot + label」而非大色块；主操作按钮统一 `bg-gray-800`（中性深色）而非彩色实心；序号用 `tabular-nums` 细灰。容器为白底 `rounded-xl border` 卡片而非在灰底上裸表。
 
 ## 规则引擎节点（预警规则画布）
 

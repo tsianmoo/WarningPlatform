@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useState } from 'react';
-import { ArrowLeft, Bell, BellRing, Eye, Plus, Send, X } from 'lucide-react';
+import { ArrowLeft, Bell, Eye, Plus, Send, X } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import type { AlertStatus, AlertTask } from '@/lib/types';
 import { PERSONNEL } from '@/lib/types';
@@ -85,23 +85,20 @@ export function AlertList({ onBack }: { onBack: () => void }) {
   return (
     <div className="flex h-screen flex-col bg-[#F7F8FA]">
       {/* 顶栏 */}
-      <div className="flex items-center gap-3 border-b bg-white px-5 py-3">
-        <button onClick={onBack} className="rounded-md p-1 hover:bg-gray-100" title="返回">
-          <ArrowLeft size={17} className="text-gray-600" />
+      <div className="flex items-center gap-3 border-b border-gray-200/80 bg-white px-6 py-3.5">
+        <button onClick={onBack} className="rounded-md p-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700" title="返回">
+          <ArrowLeft size={17} />
         </button>
-        <div className="flex items-center gap-2">
-          <BellRing size={16} className="text-blue-600" />
-          <h1 className="text-sm font-semibold text-gray-800">预警列表</h1>
-          {pending > 0 && (
-            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
-              {pending} 条待处理
-            </span>
-          )}
-        </div>
+        <h1 className="text-sm font-semibold text-gray-800">预警列表</h1>
+        {pending > 0 && (
+          <span className="text-xs font-medium text-gray-400">
+            {pending} 条待处理
+          </span>
+        )}
         <div className="ml-auto">
           <button
             onClick={() => setCreating(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500"
+            className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50"
           >
             <Plus size={14} /> 生成预警
           </button>
@@ -117,20 +114,20 @@ export function AlertList({ onBack }: { onBack: () => void }) {
             <p className="text-xs">主动规则触发后会生成预警，也可点击右上角「生成预警」。</p>
           </div>
         ) : (
-          <div className="w-full">
+          <div className="overflow-hidden rounded-xl border border-gray-200/80 bg-white">
             <table className="w-full border-collapse text-xs">
               <thead>
-                <tr className="border-b bg-white text-left text-gray-500">
-                  <th className="w-12 px-3 py-2 font-medium">序号</th>
-                  <th className="min-w-40 px-3 py-2 font-medium">标题</th>
-                  <th className="min-w-52 px-3 py-2 font-medium">判断方式</th>
-                  <th className="w-20 px-3 py-2 font-medium">预警级别</th>
-                  <th className="w-28 px-3 py-2 font-medium">适用部门</th>
-                  <th className="w-28 px-3 py-2 font-medium">适用人员</th>
-                  <th className="w-40 px-3 py-2 font-medium">触发时间</th>
-                  <th className="w-28 px-3 py-2 font-medium">已过时间</th>
-                  <th className="w-24 px-3 py-2 font-medium">状态</th>
-                  <th className="min-w-72 px-3 py-2 font-medium">操作</th>
+                <tr className="border-b border-gray-200/80 bg-gray-50/60 text-left text-xs font-medium text-gray-500">
+                  <th className="whitespace-nowrap px-4 py-2.5 font-medium">序号</th>
+                  <th className="min-w-44 whitespace-nowrap px-4 py-2.5 font-medium">标题</th>
+                  <th className="min-w-56 whitespace-nowrap px-4 py-2.5 font-medium">判断方式</th>
+                  <th className="whitespace-nowrap px-4 py-2.5 font-medium">重要程度</th>
+                  <th className="whitespace-nowrap px-4 py-2.5 font-medium">适用部门</th>
+                  <th className="whitespace-nowrap px-4 py-2.5 font-medium">适用人员</th>
+                  <th className="whitespace-nowrap px-4 py-2.5 font-medium">触发时间</th>
+                  <th className="whitespace-nowrap px-4 py-2.5 font-medium">已过时间</th>
+                  <th className="whitespace-nowrap px-4 py-2.5 font-medium">状态</th>
+                  <th className="whitespace-nowrap px-4 py-2.5 font-medium">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -142,19 +139,19 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                     actions.push({
                       label: '接受',
                       fn: () => updateAlertStatus(a.id, { status: 'accepted', assignee: a.assignee || '当前用户', updatedAt: Date.now() }),
-                      cls: 'bg-blue-600 text-white hover:bg-blue-500',
+                      cls: 'bg-gray-800 text-white hover:bg-gray-700',
                     });
                   } else if (a.status === 'accepted') {
                     actions.push({
                       label: '开始处理',
                       fn: () => updateAlertStatus(a.id, { status: 'processing', updatedAt: Date.now() }),
-                      cls: 'bg-amber-500 text-white hover:bg-amber-400',
+                      cls: 'bg-gray-800 text-white hover:bg-gray-700',
                     });
                   } else if (a.status === 'processing') {
                     actions.push({
                       label: '已处理',
                       fn: () => updateAlertStatus(a.id, { status: 'done', updatedAt: Date.now() }),
-                      cls: 'bg-green-600 text-white hover:bg-green-500',
+                      cls: 'bg-gray-800 text-white hover:bg-gray-700',
                     });
                   }
                   if (a.status === 'new' || a.status === 'accepted' || a.status === 'processing') {
@@ -166,66 +163,64 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                     actions.push({
                       label: '无法完成',
                       fn: () => updateAlertStatus(a.id, { status: 'failed', updatedAt: Date.now() }),
-                      cls: 'border border-red-200 bg-white text-red-600 hover:bg-red-50',
+                      cls: 'border border-gray-200 bg-white text-gray-400 hover:bg-gray-50',
                     });
                   }
                   const pv = a.preview;
                   return (
                     <Fragment key={a.id}>
-                      <tr className="border-b border-gray-100 align-top hover:bg-gray-50/60">
-                      <td className="px-3 py-2.5 text-gray-400">{String(idx + 1).padStart(2, '0')}</td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${lv.dot}`} />
-                          <span className="font-medium text-gray-800">{a.ruleName || a.title}</span>
-                        </div>
+                      <tr className="border-b border-gray-100 align-top transition-colors last:border-0 hover:bg-gray-50/50">
+                      <td className="whitespace-nowrap px-4 py-3 text-xs tabular-nums text-gray-300">{String(idx + 1).padStart(2, '0')}</td>
+                      <td className="px-4 py-3">
+                        <span className="block whitespace-nowrap text-[13px] font-medium text-gray-800">{a.ruleName || a.title}</span>
                         {a.content ? (
-                          <div className="mt-1 max-w-[260px] truncate text-[11px] text-gray-400" title={a.content}>
+                          <div className="mt-0.5 max-w-[260px] truncate text-[11px] text-gray-400" title={a.content}>
                             {a.content}
                           </div>
                         ) : null}
                       </td>
-                      <td className="px-3 py-2.5">
-                        <span className="block max-w-[300px] text-gray-600">
+                      <td className="px-4 py-3">
+                        <span className="block truncate whitespace-nowrap text-[13px] text-gray-600">
                           {a.conditionDesc || a.reason || a.content || '—'}
                         </span>
                         {pv ? (
                           <div className="mt-0.5 text-[11px] text-gray-400">命中 {pv.rows.length} 行数据</div>
                         ) : null}
                       </td>
-                      <td className="px-3 py-2.5">
-                        <span className={`inline-flex rounded px-1.5 py-0.5 text-[11px] font-medium ${lv.bg} ${lv.text}`}>
-                          {lv.label}
+                      <td className="whitespace-nowrap px-4 py-3">
+                        <span className={`inline-flex items-center gap-1.5 text-[13px] font-medium ${lv.text}`}>
+                          <i className={`h-1.5 w-1.5 shrink-0 rounded-full ${lv.dot}`} />
+                          {lv.label}（{a.level ?? 'warn'}级）
                         </span>
                       </td>
-                      <td className="px-3 py-2.5 text-gray-600">{a.dept || '—'}</td>
-                      <td className="px-3 py-2.5 text-gray-600">
+                      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-gray-600">{a.dept || '—'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-gray-600">
                         {a.handoffTo ? (
-                          <span>{a.handoffTo}<span className="ml-1 text-[10px] text-blue-500">（转交）</span></span>
+                          <span>{a.handoffTo}<span className="ml-1 text-[11px] text-gray-400">（转交）</span></span>
                         ) : a.assignee ? (
                           a.assignee
                         ) : (
-                          <span className="text-gray-400">待分配</span>
+                          <span className="text-gray-300">待分配</span>
                         )}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-gray-500 tabular-nums">
+                      <td className="whitespace-nowrap px-4 py-3 text-xs tabular-nums text-gray-500">
                         {new Date(a.createdAt).toLocaleString('zh-CN')}
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-500">
                         <ElapsedCell createdAt={a.createdAt} />
                       </td>
-                      <td className="px-3 py-2.5">
-                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] ${st.bg} ${st.text}`}>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${st.bg} ${st.text}`}>
                           {st.label}
                         </span>
                       </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex flex-wrap gap-1.5">
+                      <td className="whitespace-nowrap px-4 py-3">
+                        <div className="flex items-center gap-1.5 whitespace-nowrap">
                           {actions.map((x) => (
                             <button
                               key={x.label}
                               onClick={x.fn}
-                              className={`rounded-md px-2.5 py-1 text-[11px] font-medium ${x.cls}`}
+                              className={`whitespace-nowrap rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${x.cls}`}
                             >
                               {x.label}
                             </button>
@@ -233,7 +228,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                           {pv ? (
                             <button
                               onClick={() => setOpenId(openId === a.id ? null : a.id)}
-                              className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50"
+                              className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-gray-300 bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-50"
                             >
                               <Eye size={12} /> 查看判断数据
                             </button>
@@ -278,19 +273,19 @@ export function AlertList({ onBack }: { onBack: () => void }) {
 
       {/* 生成弹窗 */}
       {creating && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setCreating(false)}>
-          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/20 p-4 backdrop-blur-sm" onClick={() => setCreating(false)}>
+          <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-5 shadow-lg" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-800">生成预警</h3>
-              <button onClick={() => setCreating(false)} className="rounded p-1 hover:bg-gray-100">
-                <X size={15} className="text-gray-400" />
+              <button onClick={() => setCreating(false)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                <X size={15} />
               </button>
             </div>
             <label className="mb-1 block text-xs text-gray-500">关联规则</label>
             <select
               value={ruleId}
               onChange={(e) => setRuleId(e.target.value)}
-              className="mb-3 w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-blue-400"
+              className="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-gray-400"
             >
               {rules.map((r) => (
                 <option key={r.id} value={r.id}>
@@ -304,8 +299,8 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                 <button
                   key={lv}
                   onClick={() => setLevel(lv)}
-                  className={`rounded-lg border px-3 py-1 text-xs ${
-                    level === lv ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                  className={`rounded-md border px-3 py-1 text-xs transition-colors ${
+                    level === lv ? 'border-gray-800 bg-gray-800 text-white' : 'border-gray-300 text-gray-500 hover:bg-gray-50'
                   }`}
                 >
                   {LEVEL_META[lv as keyof typeof LEVEL_META]?.label ?? lv}
@@ -316,29 +311,29 @@ export function AlertList({ onBack }: { onBack: () => void }) {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="预警标题（默认取规则名）"
-              className="mb-2 w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-blue-400"
+              className="mb-2 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-gray-400"
             />
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder="预警内容 / 说明"
               rows={3}
-              className="mb-2 w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:border-blue-400"
+              className="mb-2 w-full resize-none rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-gray-400"
             />
             <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="为什么预警（触发原因，可填如上月未开单天数达到阈值等）"
               rows={2}
-              className="mb-4 w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:border-blue-400"
+              className="mb-4 w-full resize-none rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-gray-400"
             />
             <div className="flex justify-end gap-2">
-              <button onClick={() => setCreating(false)} className="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50">
+              <button onClick={() => setCreating(false)} className="rounded-md px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100">
                 取消
               </button>
               <button
                 onClick={createAlert}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
+                className="inline-flex items-center gap-1.5 rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-gray-700"
               >
                 <Send size={14} /> 生成
               </button>
@@ -349,15 +344,15 @@ export function AlertList({ onBack }: { onBack: () => void }) {
 
       {/* 转交弹窗 */}
       {handoffId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setHandoffId(null)}>
-          <div className="w-full max-w-xs rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/20 p-4 backdrop-blur-sm" onClick={() => setHandoffId(null)}>
+          <div className="w-full max-w-xs rounded-xl border border-gray-200 bg-white p-5 shadow-lg" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-800">转交给其他人</h3>
-              <button onClick={() => setHandoffId(null)} className="rounded p-1 hover:bg-gray-100">
-                <X size={15} className="text-gray-400" />
+              <button onClick={() => setHandoffId(null)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                <X size={15} />
               </button>
             </div>
-            <div className="max-h-64 space-y-1 overflow-auto">
+            <div className="max-h-64 space-y-0.5 overflow-auto">
               {PEOPLE.map((p) => (
                 <button
                   key={p.name}
@@ -371,7 +366,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                     });
                     setHandoffId(null);
                   }}
-                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  className="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
                 >
                   <span>{p.name}</span>
                   <span className="text-xs text-gray-400">{p.dept}</span>
