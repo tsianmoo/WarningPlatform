@@ -117,6 +117,18 @@ function fmtNum(n: number): string {
 
 
 
+/** 计算某时间窗迄今已过去的天数（含今天，拉齐到自然日）。now 未到 start 返回0；已过 end 则取窗口内已过去天数 */
+function calcElapsedDays(twr: { start: Date; end: Date } | undefined, now = new Date()): number {
+  if (!twr) return 0;
+  const day = 86400000;
+  const startDay = new Date(twr.start.getFullYear(), twr.start.getMonth(), twr.start.getDate()).getTime();
+  const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const endDay = new Date(twr.end.getFullYear(), twr.end.getMonth(), twr.end.getDate()).getTime();
+  if (nowDay < startDay) return 0;
+  if (nowDay > endDay) return (endDay - startDay) / day + 1;
+  return (nowDay - startDay) / day + 1;
+}
+
 /** 在行对象里按字段key/别名宽松取列名：先精确，再按唯一前缀/包含匹配 */
 function findKey(row: Record<string, unknown>, key: string): string | undefined {
   if (key in row) return key;
@@ -652,7 +664,14 @@ function evalNode(
       const scopeLabel =
         scope === 'week' ? '本周' : scope === 'month' ? '本月' : scope === 'quarter' ? '本季' : scope === 'year' ? '本年' : '时间区间';
       const label = ed.resultLabel || `${scopeLabel}已过天数`;
+      const day0 = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate());
       const fmtD = (x: Date) => `${x.getFullYear()}/${String(x.getMonth() + 1).padStart(2, '0')}/${String(x.getDate()).padStart(2, '0')}`;
+      const calcElapsedDays = (s: Date, e: Date) => {
+        const now = day0(new Date());
+        if (now < day0(s)) return 0;
+        const ref = now > day0(e) ? day0(e) : now;
+        return Math.round((ref.getTime() - day0(s).getTime()) / 86400000) + 1;
+      };
       const asOfDesc = includeToday ? '含今天' : '不含今天（统计到昨天）';
       return {
         title: '已过天数',
@@ -1095,6 +1114,7 @@ function evalNode(
         dateCols.push(
           { key: '开始日期', label: '开始日期', value: fmtD(twrAll.start) },
           { key: '结束日期', label: '结束日期', value: fmtD(twrAll.end) },
+          { key: '已过天数', label: '已过天数', value: String(calcElapsedDays(twrAll)) },
         );
       }
       const cmpValByKey = new Map<string, number[]>();

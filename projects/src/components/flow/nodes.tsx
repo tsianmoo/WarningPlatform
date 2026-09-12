@@ -608,7 +608,7 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
       // 时间窗起止列（与 evaluate groupby 输出对齐：dateField+timeWindow 且非 all 时前置两列）
       const gtw = data.timeWindow as { preset?: string } | undefined;
       if (s(data.dateField) && gtw && gtw.preset !== 'all') {
-        cols.unshift({ key: '开始日期', label: '开始日期' }, { key: '结束日期', label: '结束日期' });
+        cols.unshift({ key: '开始日期', label: '开始日期' }, { key: '结束日期', label: '结束日期' }, { key: '已过天数', label: '已过天数' });
       }
       // 指标列：多指标 metrics 优先；否则单指标 resultLabel / metricFieldLabel
       const fnTxt = (fn: unknown) =>
