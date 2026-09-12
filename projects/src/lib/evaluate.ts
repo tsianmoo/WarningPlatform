@@ -1277,11 +1277,11 @@ function evalNode(
       }
       const uniRows = uniIsNode ? uniNode!.rows : allRows(uni!);
       const uniName = uniIsNode ? uniNode!.note || '补全结果' : uni!.name;
-      const defaultField = uniIsNode
-        ? uniNode!.columns[0]
-        : (() => uni!.fields.find((f) => f.type === 'string')?.key ?? uni!.fields[0]?.key)();
-      const universeField = fd.universeField || defaultField;
-      if (!universeField) return { title: '左关联补全', columns: [], rows: [], shape: 'table', note: '请选择全集键字段。' };
+      // 不在未显式选择全集键时自动兜底首列：要求用户明确手动指定匹配键
+      const universeField = fd.universeField || '';
+      if (!universeField) {
+        return { title: '左关联补全', columns: [], rows: [], shape: 'table', note: '请先选择全集主匹配键字段（如：店仓名称），并选择事实主匹配键。' };
+      }
       const _rawExtra = (Array.isArray(fd.extraKeys) ? fd.extraKeys : []).filter((k) => k?.universeField && k?.factField);
       // 主键与追加键按“全集键名”去重，避免同一键被多次输出/组合
       const extraKeys = _rawExtra.reduce<Array<{ universeField: string; universeFieldLabel?: string; factField: string; factFieldLabel?: string }>>((acc, k) => {
@@ -1328,8 +1328,14 @@ function evalNode(
       // 事实侧仅带回的指标列（如「库存」）：指定后 factCols 只保留该列
       const retCol = fd.factReturnField || '';
       if (factNode) {
-        // 节点结果：匹配键 = 指定键 + 追加键；其余列=要带回并补全的指标列（如库存、成交）
-        const pk = fd.factKeyField && factNode.columns.includes(fd.factKeyField) ? fd.factKeyField : factNode.columns[0];
+        // 节点结果：手动指定匹配键；缺失时提示，不自动兜底首列
+        if (!fd.factKeyField) {
+          return { title: '左关联补全', columns: [], rows: [], shape: 'table', note: '请选择事实主匹配键字段（与全集主匹配键对应）。' };
+        }
+        const pk = factNode.columns.includes(fd.factKeyField) ? fd.factKeyField : '';
+        if (!pk) {
+          return { title: '左关联补全', columns: [], rows: [], shape: 'table', note: `事实节点中未找到匹配键字段「${fd.factKeyField}」。` };
+        }
         const fKeys = [pk, ...extraKeys.map((k) => k.factField)];
         factCols = factNode.columns.filter((c) => !fKeys.includes(c));
         if (retCol && factNode.columns.includes(retCol)) factCols = [retCol];
