@@ -709,12 +709,9 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
       const src = s(data.source);
       const srcNode = s(data.sourceNode);
       if (src === 'node' && srcNode) return inferNodeCols(allNodes, tables, srcNode);
-      if (src === 'table') {
-        const tid = s(data.tableId);
-        const t = tables.find((x) => x.id === tid);
-        return t ? t.fields.map((f) => ({ key: f.key, label: f.alias || f.key })) : [];
-      }
-      return [];
+      const tid = s(data.tableId);
+      const t = tables.find((x) => x.id === tid);
+      return t ? t.fields.map((f) => ({ key: f.key, label: f.alias || f.key })) : [];
     }
     case 'rank': {
       const cols: ColOpt[] = [];
