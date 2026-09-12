@@ -251,10 +251,6 @@ function CanvasInner({
       className="h-full w-full"
       onDrop={onDrop}
       onDragOver={onDragOver}
-      onPointerDownCapture={(e) => {
-        const t = e.target as HTMLElement;
-        if (t.closest('input, textarea, select, [contenteditable="true"]')) e.stopPropagation();
-      }}
     >
       {selectedEdge && (
         <div

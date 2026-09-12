@@ -285,7 +285,7 @@ function NodeShell({ fnode, children }: { fnode: FlowNode; children: React.React
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      <div className="px-3 py-2">{children}</div>
+      <div className="nodrag px-3 py-2">{children}</div>
       <Handle type="target" position={Position.Left} style={{ background: color.dot, width: 10, height: 10 }} />
       {hasSource && (
         <Handle type="source" position={Position.Right} style={{ background: color.dot, width: 10, height: 10 }} />
@@ -2388,7 +2388,7 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      <div className="px-3 py-2">
+      <div className="nodrag px-3 py-2">
         {/* 类型：提醒 / 预警 */}
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-gray-400">类型</span>
