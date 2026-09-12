@@ -2291,16 +2291,29 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
   // 通知对象独立保存
   const notify = d.notify ?? { departments: [] as string[], personnel: [] as string[] };
   // 可插入字段：优先用 evaluateFlow 的真实输出列（=预览数据字段，保证完整），失败时回退 inferNodeCols 推断
+  // 只依赖"其它节点的配置数据 + edges 结构"，用内容签名缓存：action 自身 content/title 输入不触发重算，
+  // 避免每次敲键都全量 evaluate 导致输入卡顿
   const edges = useEdges();
+  const fieldsCache = useRef<{ signature: string; value: Record<string, unknown> | undefined }>({ signature: '', value: undefined });
+  const fieldsSignature =
+    JSON.stringify(
+      allNodes
+        .filter((n) => (n as unknown as FlowNode).id !== id)
+        .map((n) => ((n as unknown as FlowNode).data ?? {}))
+    ) + '|' + JSON.stringify(edges.map((e) => [e.source, e.target]));
   const evalOuts = useMemo<Record<string, unknown> | undefined>(() => {
+    if (fieldsSignature === fieldsCache.current.signature) return fieldsCache.current.value;
+    let value: Record<string, unknown> | undefined;
     try {
       const flowNodes = allNodes as unknown as FlowNode[];
       const flowEdges = edges as unknown as FlowEdge[];
-      return evaluateFlow(flowNodes, flowEdges, tables);
+      value = evaluateFlow(flowNodes, flowEdges, tables);
     } catch {
-      return undefined;
+      value = undefined;
     }
-  }, [allNodes, edges, tables]);
+    fieldsCache.current = { signature: fieldsSignature, value };
+    return value;
+  }, [fieldsSignature]);
   const nodeOptions: { id: string; label: string; kind: FlowNode['kind'] }[] = [];
   const fieldsByNode: Record<string, ColOpt[]> = {};
   for (const n of allNodes) {
