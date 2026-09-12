@@ -604,6 +604,11 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
             })
             .filter((x) => x.key)
         : [];
+      // 时间窗起止列（与 evaluate groupby 输出对齐：dateField+timeWindow 且非 all 时前置两列）
+      const gtw = data.timeWindow as { preset?: string } | undefined;
+      if (s(data.dateField) && gtw && gtw.preset !== 'all') {
+        cols.unshift({ key: '开始日期', label: '开始日期' }, { key: '结束日期', label: '结束日期' });
+      }
       // 指标列：多指标 metrics 优先；否则单指标 resultLabel / metricFieldLabel
       const fnTxt = (fn: unknown) =>
         fn === 'activeDays' ? '开单天数'
@@ -712,6 +717,16 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
       const tid = s(data.tableId);
       const t = tables.find((x) => x.id === tid);
       return t ? t.fields.map((f) => ({ key: f.key, label: f.alias || f.key })) : [];
+    }
+    case 'condition': {
+      // 判断节点输出列 = 左值来源节点的列（透传上游 rowset），供下游（如预警动作）选字段
+      const cn = data.leftNode as { nodeId?: string } | undefined;
+      const ln = data.leftType === 'node' || data.leftSource === 'node' ? cn?.nodeId : '';
+      if (ln) {
+        const up = inferNodeCols(allNodes, tables, ln);
+        if (up.length) return up;
+      }
+      return [];
     }
     case 'rank': {
       const cols: ColOpt[] = [];
