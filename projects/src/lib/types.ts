@@ -121,11 +121,17 @@ export type TimePreset =
   | 'recent14'
   | 'recent30'
   | 'thisWeek'
+  | 'weekToDate' // 本周至今（周一到今天）
   | 'lastWeek'
   | 'twoWeeksAgo'
   | 'thisMonth'
+  | 'monthToDate' // 本月至今（1号到今天）
   | 'lastMonth'
   | 'twoMonthsAgo'
+  | 'thisQuarter'
+  | 'quarterToDate' // 本季至今（季初到今天）
+  | 'thisYear'
+  | 'yearToDate' // 本年至今（年初到今天）
   | 'specificMonth' // 指定月份（如：2025-08）
   | 'custom'
   | 'all'; // 不限日期（不限定统计时间窗）
@@ -137,6 +143,23 @@ export interface TimeWindow {
   custom?: { value: number; unit: TimeUnit };
   /** 指定月份（YYYY-MM，preset=specificMonth 时使用） */
   month?: string;
+  /** 对比配置（同期 / 环期），启用后在页面上并排展示本期与对比期两列 */
+  compare?: {
+    enabled?: boolean;
+    /** 对比模式：yoY=同期(去年同段) ring=环期(上移时间段) */
+    mode?: 'yoY' | 'ring';
+    /** 环期上移的单位数（默认 1） */
+    shift?: number;
+  };
+}
+
+/** 已解析的对比窗口（同期 / 环期） */
+export interface ResolvedCompare {
+  enabled: boolean;
+  mode: 'yoY' | 'ring';
+  start: Date;
+  end: Date;
+  label: string;
 }
 
 /** 条件节点数据 */

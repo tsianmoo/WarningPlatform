@@ -1,9 +1,9 @@
-import type { TimePreset, TimeUnit, TimeWindow } from '@/lib/types';
+import type { ResolvedCompare, TimePreset, TimeUnit, TimeWindow } from '@/lib/types';
 
 export const TIME_PRESETS: {
   value: TimePreset;
   label: string;
-  group: 'point' | 'recent' | 'week' | 'month' | 'fixed';
+  group: 'point' | 'recent' | 'week' | 'month' | 'quarter' | 'year' | 'fixed';
 }[] = [
   { value: 'all', label: '不限日期', group: 'fixed' },
   { value: 'today', label: '今天', group: 'point' },
@@ -14,11 +14,17 @@ export const TIME_PRESETS: {
   { value: 'recent14', label: '近14天', group: 'recent' },
   { value: 'recent30', label: '近30天', group: 'recent' },
   { value: 'thisWeek', label: '本周', group: 'week' },
+  { value: 'weekToDate', label: '本周至今', group: 'week' },
   { value: 'lastWeek', label: '上周', group: 'week' },
   { value: 'twoWeeksAgo', label: '上上周', group: 'week' },
   { value: 'thisMonth', label: '本月', group: 'month' },
+  { value: 'monthToDate', label: '本月至今', group: 'month' },
   { value: 'lastMonth', label: '上月', group: 'month' },
   { value: 'twoMonthsAgo', label: '上上月', group: 'month' },
+  { value: 'thisQuarter', label: '本季', group: 'quarter' },
+  { value: 'quarterToDate', label: '本季至今', group: 'quarter' },
+  { value: 'thisYear', label: '本年', group: 'year' },
+  { value: 'yearToDate', label: '本年至今', group: 'year' },
   { value: 'specificMonth', label: '指定月份', group: 'fixed' },
 ];
 
@@ -35,15 +41,27 @@ const getMonday = (d: Date) => {
   const day = s.getDay() || 7; // 周日=0→7
   return addDays(s, 1 - day);
 };
+const startOfQuarter = (d: Date) => new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3, 1);
 
 const fmt = (d: Date) =>
   `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+
+export interface CompareWindow {
+  /** 对比周期名（如：上月 / 去年同期 / 环比上月） */
+  label: string;
+  /** 对比区间起 */
+  start: Date;
+  /** 对比区间止 */
+  end: Date;
+}
 
 export interface ResolvedTimeWindow {
   start: Date;
   end: Date;
   label: string;
   hint: string;
+  /** 同期/环期对比区间（可选） */
+  compare?: CompareWindow;
 }
 
 /** 解析时间窗口为具体起止日期与展示文本 */
@@ -109,11 +127,46 @@ export function resolveTimeWindow(tw: TimeWindow, now = new Date()): ResolvedTim
       label = '上上周';
       break;
     }
+    case 'weekToDate': {
+      start = getMonday(now);
+      end = startOfDay(now);
+      label = '本周至今';
+      break;
+    }
+    case 'thisQuarter': {
+      start = startOfQuarter(now);
+      end = new Date(start.getFullYear(), start.getMonth() + 3, 0);
+      label = '本季';
+      break;
+    }
+    case 'quarterToDate': {
+      start = startOfQuarter(now);
+      end = startOfDay(now);
+      label = '本季至今';
+      break;
+    }
+    case 'thisYear':
+      start = new Date(now.getFullYear(), 0, 1);
+      end = new Date(now.getFullYear(), 11, 31);
+      label = '本年';
+      break;
+    case 'yearToDate': {
+      start = new Date(now.getFullYear(), 0, 1);
+      end = startOfDay(now);
+      label = '本年至今';
+      break;
+    }
     case 'thisMonth':
       start = new Date(now.getFullYear(), now.getMonth(), 1);
       end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       label = '本月';
       break;
+    case 'monthToDate': {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      end = startOfDay(now);
+      label = '本月至今';
+      break;
+    }
     case 'lastMonth':
       start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       end = new Date(now.getFullYear(), now.getMonth(), 0);
@@ -155,7 +208,60 @@ export function resolveTimeWindow(tw: TimeWindow, now = new Date()): ResolvedTim
     ? fmt(start)
     : `${fmt(start)} ~ ${fmt(end)}（${Math.round((end.getTime() - start.getTime()) / 86400000) + 1} 天）`;
 
-  return { start, end, label, hint };
+  let compare: ResolvedCompare | undefined;
+  if (tw.compare?.enabled) {
+    compare = computeCompareWindow(tw, preset, start, end, now);
+  }
+
+  return { start, end, label, hint, compare };
+}
+
+type Gran = 'day' | 'week' | 'month' | 'quarter' | 'year';
+
+function granularityOf(preset: TimePreset, tw: TimeWindow): Gran {
+  if (/week|Week/.test(preset)) return 'week';
+  if (/Quarter|quarter/.test(preset)) return 'quarter';
+  if (/Year|year/.test(preset)) return 'year';
+  if (/Month|month/.test(preset)) return 'month';
+  // recent / specificMonth / previousNMonth 等按天数平移
+  const u = tw.custom?.unit;
+  if (u === 'week') return 'week';
+  if (u === 'month' || /month|Month/.test(preset)) return 'month';
+  return 'day';
+}
+
+function shiftGran(d: Date, gran: Gran, n: number): Date {
+  if (gran === 'week') return addDays(d, n * 7);
+  if (gran === 'month') return new Date(d.getFullYear(), d.getMonth() + n, d.getDate());
+  if (gran === 'quarter') return new Date(d.getFullYear(), d.getMonth() + n * 3, d.getDate());
+  if (gran === 'year') return new Date(d.getFullYear() + n, d.getMonth(), Math.min(d.getDate(), new Date(d.getFullYear() + n, d.getMonth() + 1, 0).getDate()));
+  return addDays(d, n);
+}
+
+export function computeCompareWindow(
+  tw: TimeWindow,
+  preset: TimePreset,
+  start: Date,
+  end: Date,
+  _now: Date = new Date()
+): ResolvedCompare {
+  void _now;
+  const mode = tw.compare?.mode ?? 'ring';
+  const n = Math.max(1, Math.floor(tw.compare?.shift ?? 1));
+  let cs = start;
+  let ce = end;
+  let label: string;
+  if (mode === 'yoY') {
+    cs = new Date(start.getFullYear() - n, start.getMonth(), Math.min(start.getDate(), 28));
+    ce = new Date(end.getFullYear() - n, end.getMonth(), Math.min(end.getDate(), 28));
+    label = `${n}年前同期`;
+  } else {
+    const gran = granularityOf(preset, tw);
+    cs = shiftGran(start, gran, -n);
+    ce = shiftGran(end, gran, -n);
+    label = `上移 ${n} 周期`;
+  }
+  return { enabled: true, mode, start: cs, end: ce, label };
 }
 
 export function presetLabel(preset: TimePreset): string {

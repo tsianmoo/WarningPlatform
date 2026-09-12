@@ -16,13 +16,21 @@ const GROUP_LABEL: Record<string, string> = {
   recent: '近 N 天',
   week: '周',
   month: '月',
+  quarter: '季度',
+  year: '年度',
   fixed: '指定范围',
 };
+
+const COMPARE_OPTIONS: { value: 'yoY' | 'ring'; label: string; hint: string }[] = [
+  { value: 'yoY', label: '同期', hint: '去年同段' },
+  { value: 'ring', label: '环期', hint: '上一时段' },
+];
 
 export default function TimeComponent({ value, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const tw: TimeWindow = useMemo(() => value ?? { preset: 'thisWeek' }, [value]);
   const resolved = useMemo(() => resolveTimeWindow(tw), [tw]);
+  const cmpTw = tw.compare;
 
   const pick = (preset: TimePreset) => {
     onChange({ ...tw, preset });
@@ -71,27 +79,29 @@ export default function TimeComponent({ value, onChange }: Props) {
                 </div>
               </div>
             ))}
-            <div className="mb-2">
-              <div className="mb-1 px-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">
-                周 / 月
+            {(['week', 'month', 'quarter', 'year'] as const).map((g) => (
+              <div key={g} className="mb-2">
+                <div className="mb-1 px-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                  {GROUP_LABEL[g]}
+                </div>
+                <div className="grid grid-cols-3 gap-1">
+                  {TIME_PRESETS.filter((p) => p.group === g).map((p) => (
+                    <button
+                      key={p.value}
+                      type="button"
+                      onClick={() => pick(p.value)}
+                      className={`rounded-md border px-1 py-1 text-[11px] transition ${
+                        tw.preset === p.value
+                          ? 'border-emerald-500 bg-emerald-500 text-white'
+                          : 'border-slate-200 text-slate-600 hover:border-emerald-300 hover:bg-emerald-50'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="grid grid-cols-3 gap-1">
-                {TIME_PRESETS.filter((p) => p.group === 'week' || p.group === 'month').map((p) => (
-                  <button
-                    key={p.value}
-                    type="button"
-                    onClick={() => pick(p.value)}
-                    className={`rounded-md border px-1 py-1 text-[11px] transition ${
-                      tw.preset === p.value
-                        ? 'border-emerald-500 bg-emerald-500 text-white'
-                        : 'border-slate-200 text-slate-600 hover:border-emerald-300 hover:bg-emerald-50'
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            ))}
             {/* 自定义 */}
             <div className={tw.preset === 'custom' ? '' : 'mt-2'}>
               <div className="mb-1 flex items-center justify-between px-1">
@@ -158,6 +168,42 @@ export default function TimeComponent({ value, onChange }: Props) {
                     className="h-7 rounded-md border border-slate-200 px-1.5 text-[11px] text-slate-700 outline-none focus:border-emerald-400"
                   />
                   <span className="text-[10px] text-slate-400">如选择 2025-08 即“8月份”</span>
+                </div>
+              )}
+            </div>
+            {/* 对比：同期 / 环期 */}
+            <div className="mt-2 border-t border-slate-100 pt-2">
+              <label className="flex cursor-pointer select-none items-center gap-1.5 px-1 text-[11px] font-medium text-slate-600">
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5 accent-emerald-600"
+                  checked={!!tw.compare}
+                  onChange={(e) =>
+                    onChange({ ...tw, compare: e.target.checked ? { enabled: true, mode: 'ring' } : undefined })
+                  }
+                />
+                对比上一时段（同期/环期）
+              </label>
+              {cmpTw && (
+                <div className="mt-1.5 flex items-center gap-1.5 px-2">
+                  {COMPARE_OPTIONS.map((o) => (
+                    <button
+                      key={o.value}
+                      type="button"
+                      onClick={() => onChange({ ...tw, compare: { ...cmpTw, mode: o.value } })}
+                      className={`inline-flex min-w-[3.5rem] flex-col items-center rounded-md border px-2 py-1 text-[11px] transition ${
+                        cmpTw.mode === o.value
+                          ? 'border-emerald-500 bg-emerald-500 text-white'
+                          : 'border-slate-200 text-slate-600 hover:border-emerald-300 hover:bg-emerald-50'
+                      }`}
+                    >
+                      <span>{o.label}</span>
+                      <span className={`text-[9px] ${cmpTw.mode === o.value ? 'text-emerald-100' : 'text-slate-400'}`}>
+                        {o.hint}
+                      </span>
+                    </button>
+                  ))}
+                  <span className="ml-1 text-[10px] text-slate-400">对比窗口：本期 → 上一时段</span>
                 </div>
               )}
             </div>
