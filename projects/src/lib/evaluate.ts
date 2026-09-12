@@ -1705,6 +1705,22 @@ function evalNode(
       if (!src || !src.rows.length) {
         return { title: '预警动作', columns: [], rows: [], note: '规则终点：命中后触发通知/动作。请在动作配置中选择命中数据来源节点…', unsupported: true };
       }
+      // 全局标量（空维度聚合 result、condition 比较结果等）并入每一命中行，
+      // 使 {字段} 模板能引用"无需关联店仓"的全局统计值（如平均未开单天数）。
+      const globalRow: Record<string, string | number> = {};
+      for (const nid of Object.keys(outputs)) {
+        const o = outputs[nid];
+        if (!o) continue;
+        if (o.scalar?.label) globalRow[o.scalar.label] = o.scalar.value ?? '';
+        // 空维度聚合：单行表，各指标列即全局值，全部并入（逐行列同名优先，不覆盖）
+        if (o.shape === 'table' && o.rows.length === 1) {
+          for (const k of Object.keys(o.rows[0])) {
+            if (!(k in globalRow)) globalRow[k] = o.rows[0][k];
+          }
+        }
+      }
+      const hasGlobal = Object.keys(globalRow).length > 0;
+      const renderRows = hasGlobal ? src.rows.map((r) => ({ ...globalRow, ...r })) : src.rows;
       const renderMsg = (row: Record<string, string | number>): string => {
         const tpl = dA.content?.trim();
         if (!tpl) return '';
@@ -1714,16 +1730,19 @@ function evalNode(
         });
       };
       const title0 = (dA.title?.trim()) || '预警通知';
-      const alertMessages = src.rows.slice(0, 50).map((row) => ({
+      const alertMessages = renderRows.slice(0, 50).map((row) => ({
         title: title0,
         content: renderMsg(row),
       }));
+      const allCols = hasGlobal
+        ? [...src.columns, ...Object.keys(globalRow).filter((k) => !src.columns.includes(k))]
+        : src.columns;
       return {
         title: '预警动作',
-        columns: src.columns,
-        rows: src.rows,
+        columns: allCols,
+        rows: cap(renderRows),
         shape: 'table',
-        allCols: src.columns,
+        allCols,
         note: `命中 ${src.rows.length} 行，将触发通知/动作。`,
         alertMessages,
       };
