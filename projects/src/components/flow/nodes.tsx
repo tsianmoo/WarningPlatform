@@ -51,6 +51,7 @@ import {
 import { useStore } from '@/lib/store';
 import TimeComponent from './TimeComponent';
 import { useNodePreview } from './NodePreview';
+import { evaluateFlow } from '@/lib/evaluate';
 
 type AnyData =
   | FieldNodeData
@@ -2289,13 +2290,32 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
   const typeMeta = ACTION_TYPES.find((t) => t.value === type);
   // 通知对象独立保存
   const notify = d.notify ?? { departments: [] as string[], personnel: [] as string[] };
-  // 可插入字段：按节点分组搜集本规则内所有节点的输出列（不限于直接输入边），供拼接预警消息
+  // 可插入字段：优先用 evaluateFlow 的真实输出列（=预览数据字段，保证完整），失败时回退 inferNodeCols 推断
+  const edges = useEdges();
+  const evalOuts = useMemo<Record<string, unknown> | undefined>(() => {
+    try {
+      const flowNodes = allNodes as unknown as FlowNode[];
+      const flowEdges = edges as unknown as FlowEdge[];
+      return evaluateFlow(flowNodes, flowEdges, tables);
+    } catch {
+      return undefined;
+    }
+  }, [allNodes, edges, tables]);
   const nodeOptions: { id: string; label: string; kind: FlowNode['kind'] }[] = [];
   const fieldsByNode: Record<string, ColOpt[]> = {};
   for (const n of allNodes) {
     if (n.id === id) continue;
     const fn = n as unknown as FlowNode;
-    const cols = inferNodeCols(allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>, tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, n.id);
+    const ev = evalOuts?.[n.id] as { columns?: Array<{ key: string; label?: string } | string> } | undefined;
+    let cols: ColOpt[];
+    if (ev && Array.isArray(ev.columns) && ev.columns.length) {
+      cols = (ev.columns as unknown as Array<{ key?: string; label?: string } | string>).map((c) => {
+        if (typeof c === 'string') return { key: c, label: c };
+        return { key: c.key || c.label || '', label: c.label || c.key || '' };
+      }).filter((c) => !!c.key);
+    } else {
+      cols = inferNodeCols(allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>, tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, n.id);
+    }
     if (!cols.length) continue;
     const label =
       (fn.data && typeof fn.data === 'object') ?
