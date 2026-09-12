@@ -514,6 +514,13 @@ function getNodeOutputs(allNodes: ReturnType<typeof useNodes>, selfId: string): 
         out.push({
           ref: { nodeId: n.id, nodeKind: 'groupby', outputKind: 'column', label: g.resultLabel || g.metricFieldLabel || '分组聚合结果' },
         });
+        const noDims = !(Array.isArray(g.dims) && g.dims.length);
+        if (noDims) {
+          const scalarLabel = (Array.isArray(g.metrics) && g.metrics[0]?.resultLabel) || g.resultLabel || g.metricFieldLabel || '聚合结果';
+          out.push({
+            ref: { nodeId: n.id, nodeKind: 'groupby', outputKind: 'scalar', label: scalarLabel },
+          });
+        }
         break;
       }
       case 'lookup': {
