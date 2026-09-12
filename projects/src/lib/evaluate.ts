@@ -314,8 +314,8 @@ function buildGroups(
 ): Map<string, { nums: number[][]; keys: string[]; recs: Record<string, unknown>[] }> {
   const groups = new Map<string, { nums: number[][]; keys: string[]; recs: Record<string, unknown>[] }>();
   for (const r of rows) {
-    const keys = dims.map((x) => granVal(r[x.key], x.gran));
-    if (!keys.join('').trim()) continue;
+    const keys = dims.length ? dims.map((x) => granVal(r[x.key], x.gran)) : [''];
+    if (dims.length && !keys.join('').trim()) continue;
     const k = keys.join('␟');
     if (!groups.has(k)) groups.set(k, { nums: metrics.map(() => []), keys, recs: [] });
     const g = groups.get(k)!;
@@ -1082,7 +1082,17 @@ function evalNode(
             : []
       ).map((m) => ({ key: m.fieldKey as string, label: m.fieldLabel || m.fieldKey || '', fn: (m.fn || 'sum') as string, outLabel: m.resultLabel || '' }));
       if (!metrics.length) metrics.push({ key: metricField ?? '', label: metricField ?? '', fn: 'sum', outLabel: '' });
-      if (dims.length && !dims.some((x) => !x.key) && metrics.length) {
+      // 无分组维度且用户没有显式配置指标时：自动对所有数值列聚合，输出“所有列的聚合计算结果”
+      const noDims = !dims.length;
+      const userSetMetric = Array.isArray(gd.metrics) && gd.metrics.some((m) => m.fieldKey);
+      if (noDims && !userSetMetric && t && t.fields) {
+        const numFields = t.fields.filter((f) => f.type === 'number' && f.key);
+        if (numFields.length) {
+          metrics.length = 0;
+          numFields.forEach((f) => metrics.push({ key: f.key || '', label: f.key || '', fn: 'sum', outLabel: `${f.key || ''}·求和` }));
+        }
+      }
+      if (metrics.length && metrics.every((mt) => !!mt.key) && (!dims.length || dims.every((x) => !!x.key))) {
       // 时间窗过滤
       const srcRows = allRows(t);
       const rows0 = gd.dateField && gd.timeWindow ? srcRows.filter((r) => inWindow(r[gd.dateField || ''], gd.timeWindow)) : srcRows;

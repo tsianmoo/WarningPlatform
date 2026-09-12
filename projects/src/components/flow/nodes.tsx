@@ -3071,6 +3071,12 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
         + 添加分组维度
       </button>
 
+      {(d.dims || []).length === 0 && (
+        <div className="mb-2 rounded-md border border-dashed border-amber-300 bg-amber-50 px-2 py-1.5 text-[10px] leading-relaxed text-amber-700">
+          未填写分组维度：将对整张表做<span className="font-semibold">全局聚合</span>，自动对所有数值字段计算聚合结果（如各数值字段求和）。
+          <span className="block text-amber-600/80">如需按字段分组后再聚合，请在上方添加分组维度。</span>
+        </div>
+      )}
       <div className={rowLabel}>⑤ 聚合指标（可添加多个，支持对文本字段做 计数 / 去重计数）</div>
       {(() => {
         // 多指标：优先 d.metrics；否则回退到单指标 metricField/metricFn（兼容旧规则）
