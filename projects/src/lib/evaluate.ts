@@ -677,6 +677,40 @@ function evalNode(
         return { title: '基础数据', columns: [], rows: [], shape: 'table', note: '请选择数据表或上一步节点结果，并选择维度列。' };
       }
       const t = rs.t;
+      const srcIsNode = (d as Record<string, unknown>).source === 'node';
+      // 勾选列（多列，仅数据表模式）优先；否则回退单列 fieldKey
+      const selCols = !srcIsNode && bd.columns && bd.columns.length ? bd.columns.filter((c) => c && c.key) : [];
+      const single = selCols.length === 1;
+      const distinct = !!bd.distinct && single;
+      if (selCols.length) {
+        const labels = selCols.map((c) => c.label || c.key);
+        if (distinct) {
+          const vals = distinctValues(allRows(t), selCols[0].key);
+          const col = labels[0];
+          return {
+            title: '基础数据',
+            columns: [col],
+            rows: cap(vals).map((v) => ({ [col]: v })),
+            shape: 'table',
+            note: `来自「${rs.from}」的「${col}」，共 ${vals.length} 个去重值（预览最多显示 ${PREVIEW_LIMIT} 行）。`,
+            scalar: { kind: 'column', col },
+            allCols: t.fields.map((f) => f.key),
+          };
+        }
+        const rows = cap(allRows(t)).map((r) => {
+          const o: Record<string, string | number> = {};
+          selCols.forEach((c, i) => { o[labels[i]] = r[c.key] as string | number; });
+          return o;
+        });
+        return {
+          title: '基础数据',
+          columns: labels,
+          rows,
+          shape: 'table',
+          note: `来自「${rs.from}」的 ${labels.join('、')}，共 ${rows.length} 行（预览最多显示 ${PREVIEW_LIMIT} 行）。`,
+          allCols: t.fields.map((f) => f.key),
+        };
+      }
       const fieldKey = bd.fieldKey || t.fields.find((f) => f.type === 'string')?.key || t.fields[0]?.key;
       if (!fieldKey) {
         return { title: '基础数据', columns: [], rows: [], shape: 'table', note: '未找到可用的维度列。' };

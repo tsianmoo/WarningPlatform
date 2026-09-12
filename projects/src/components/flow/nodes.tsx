@@ -555,7 +555,9 @@ function getNodeOutputs(allNodes: ReturnType<typeof useNodes>, selfId: string): 
       }
       case 'base': {
         const bn = n.data as unknown as BaseNodeData;
-        out.push({ ref: { nodeId: n.id, nodeKind: 'base', outputKind: 'column', label: bn.resultLabel || bn.fieldLabel || '基础数据' } });
+        const cols = Array.isArray(bn.columns) && bn.columns.length ? bn.columns : [];
+        const label = cols.length ? cols.map((c) => c.label || c.key).join('、') : (bn.resultLabel || bn.fieldLabel || '基础数据');
+        out.push({ ref: { nodeId: n.id, nodeKind: 'base', outputKind: 'column', label } });
         break;
       }
       case 'diff': {
@@ -628,8 +630,13 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
       }
       return cols;
     }
-    case 'base':
+    case 'base': {
+      const cols = Array.isArray(data.columns) && data.columns.length
+        ? (data.columns as { key: string; label: string }[]).map((c) => ({ key: c.label || c.key, label: c.label || c.key }))
+        : [];
+      if (cols.length) return cols;
       return [{ key: s(data.fieldKey) || 'key', label: s(data.fieldLabel) || s(data.resultLabel) || '值' }];
+    }
     case 'compute': {
       // 计算节点结果列 = 上游主表透传列 + 自身结果列（与 evaluate 输出 columns: [...main.columns, label] 对齐）
       const cKey = s(data.resultLabel) || s(data.fieldLabel) || (s(data.sourceField) || 'value');
@@ -1739,25 +1746,55 @@ const BaseNode = memo(({ id, data }: NodeProps) => {
         />
         {source === 'table' && (
           <div>
-            <div className={rowLabel}>取用维度列（取该列全部去重值）</div>
-            <select
-              value={d.fieldKey}
-              onChange={(e) => {
-                const f = fields.find((x) => x.key === e.target.value);
-                update({
-                  fieldKey: e.target.value,
-                  fieldLabel: f?.alias ?? f?.key ?? '',
-                } as Partial<BaseNodeData>);
-              }}
-              className={SRC_INPUT_CLS}
-            >
-              <option value="">选择维度列，如：店仓…</option>
-              {fields.map((f) => (
-                <option key={f.key} value={f.key}>
-                  {f.alias || f.key}
-                </option>
-              ))}
-            </select>
+            <div className={rowLabel}>取用列（勾选要输出的列）</div>
+            <div className="max-h-36 space-y-0.5 overflow-y-auto rounded-md border border-slate-200 bg-slate-50/50 p-1.5">
+              {fields.map((f) => {
+                const sel = Array.isArray(d.columns) ? d.columns : [];
+                const inList = sel.some((c) => c.key === f.key);
+                return (
+                  <label
+                    key={f.key}
+                    className="flex cursor-pointer select-none items-center gap-1.5 rounded px-1 py-0.5 text-[11px] text-slate-700 hover:bg-slate-100"
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5 accent-orange-500"
+                      checked={inList}
+                      onChange={(e) => {
+                        const next = e.target.checked
+                          ? [...sel, { key: f.key, label: f.alias || f.key }]
+                          : sel.filter((c) => c.key !== f.key);
+                        update({
+                          columns: next,
+                          distinct: next.length !== 1 ? (d.distinct ? false : undefined) : d.distinct,
+                          fieldKey: next.length === 1 ? next[0].key : d.fieldKey,
+                          fieldLabel: next.length === 1 ? next[0].label : d.fieldLabel,
+                        } as Partial<BaseNodeData>);
+                      }}
+                    />
+                    <span className="truncate">{f.alias || f.key}</span>
+                  </label>
+                );
+              })}
+            </div>
+            {(() => {
+              const sel = Array.isArray(d.columns) ? d.columns : [];
+              const single = sel.length === 1;
+              const oldSingle = !Array.isArray(d.columns) && !!d.fieldKey;
+              return (single || oldSingle) ? (
+                <label className="mt-1 flex cursor-pointer select-none items-center gap-1.5 text-[11px] text-slate-600">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 accent-orange-500"
+                    checked={!!d.distinct}
+                    onChange={(e) => update({ distinct: e.target.checked } as Partial<BaseNodeData>)}
+                  />
+                  去重（仅当勾选单列时可用）
+                </label>
+              ) : (
+                <div className="mt-1 text-[10px] text-slate-400">勾选多列时不支持去重。</div>
+              );
+            })()}
           </div>
         )}
         <input

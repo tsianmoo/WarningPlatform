@@ -337,6 +337,10 @@ export interface BaseNodeData extends Partial<FieldRef> {
   fieldLabel: string;
   /** 结果命名（如：全部店仓） */
   resultLabel: string;
+  /** 勾选的输出列（支持多列）。为空时回退到 fieldKey 单列。 */
+  columns?: { key: string; label: string }[];
+  /** 是否去重（仅当勾选单列时有效；多列时强制不去重） */
+  distinct?: boolean;
 }
 
 /** 关联节点数据 */
