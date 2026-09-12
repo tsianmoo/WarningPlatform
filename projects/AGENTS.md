@@ -106,6 +106,7 @@
   - **匹配键必须显式手动选择，不做自动兜底**：evaluate 要求 `universeField`（全集主匹配键）与 `factKeyField`（事实主匹配键）都显式存在，否则返回提示"请先选择全集主匹配键字段/请选择事实主匹配键"，**不再自动取全集首列兜底**。⚠️ 全集侧字段来自它的源（如"直联营店仓"filter 的结果列）可选项，而事实侧字段来自事实节点列——两侧字段名可能不同（如全集是`店仓名称`、事实是`店铺名称`），用户需各自分别选择后再匹配，选错/漏选会导致匹配不上、指标列全变填充值。改动时勿恢复自动兜底。
   - 关联诊断：`evaluate.ts` 可用 esbuild 打包后 node 运行，脚本 fetch `/api/state` 取真实数据复现（见 /tmp/diag 系列脚本思路）。
 - 诊断脚本可用 `npx esbuild /tmp/x.ts --bundle --platform=node --format=esm --outfile=/tmp/x.mjs` 打包后 `node /tmp/x.mjs` 运行。
+- **预警列表字段为空 / 预警无法关联规则**：预警由入驻前端 `buildAlertsForRule`（store.tsx）在「激活规则/手动触发」时生成，会带全字段（ruleId/ruleName/title/conditionDesc/dept/assignee/preview）。若库里出现 `rule_id` 为空、字段全空的碎片预警，说明它不是该路径生成，直接清理。数据库无正确预警时，可用 esbuild 打包的 Node 脚本复用 `evaluateFlow`（读 `alert_rules`/`data_tables` 的 `data` 列 → 对 active 规则求值 → 按 `buildAlertsForRule` 同款逻辑构造 AlertTask → 清空 `alert_tasks` 后 `insert`），`preview` 存 `{columns, rows}`（rows 取前 200），content 用 `{field}` 按首行替换真实列值。注意库同步是前端 `/api/state` 全量覆盖，写库后前端刷新即看到。
 
 ## 运行与预览
 
