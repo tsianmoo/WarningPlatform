@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { X, Table2, AlertCircle } from 'lucide-react';
+import { X, Table2, AlertCircle, BellRing } from 'lucide-react';
 import type { DataTable, FlowEdge, FlowNode } from '@/lib/types';
 import { evaluateFlow, type NodePreview } from '@/lib/evaluate';
 
@@ -165,6 +165,27 @@ function PreviewModal({ state, onClose }: { state: PreviewState; onClose: () => 
                 >
                   {r.unsupported && <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
                   <span>{r.note}</span>
+                </div>
+              )}
+
+              {r.alertMessages && r.alertMessages.length > 0 && (
+                <div className="mb-3 rounded-lg border border-indigo-200 bg-indigo-50/60 px-3 py-2.5">
+                  <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-indigo-700">
+                    <BellRing className="h-3.5 w-3.5" />
+                    通知消息预览（已用命中数据填充字段）
+                  </div>
+                  <div className="max-h-[32vh] space-y-1.5 overflow-auto pr-1">
+                    {r.alertMessages.map((m, i) => (
+                      <div key={i} className="rounded-md border border-indigo-100 bg-white px-2.5 py-1.5">
+                        <div className="text-[11px] font-semibold text-indigo-600">{m.title || '预警通知'} #{i + 1}</div>
+                        {m.content ? (
+                          <div className="whitespace-pre-wrap text-[12px] leading-relaxed text-gray-700">{m.content}</div>
+                        ) : (
+                          <div className="text-[12px] italic text-gray-400">未配置通知消息内容</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 

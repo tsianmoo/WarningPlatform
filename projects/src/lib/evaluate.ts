@@ -83,6 +83,8 @@ export interface NodePreview {
   allCols?: string[];
   /** 结果形态：scalar=单值（其 rows 只是"统计项/数值"展示），table=逐行明细表 */
   shape?: 'scalar' | 'table';
+  /** 预警动作：将通知消息模板对每个命中行渲染后的实际消息（用于预览通知内容） */
+  alertMessages?: { title: string; content: string }[];
 }
 
 type OutputMap = Record<string, NodePreview>;
@@ -1673,6 +1675,19 @@ function evalNode(
       if (!src || !src.rows.length) {
         return { title: '预警动作', columns: [], rows: [], note: '规则终点：命中后触发通知/动作。请在动作配置中选择命中数据来源节点…', unsupported: true };
       }
+      const renderMsg = (row: Record<string, string | number>): string => {
+        const tpl = dA.content?.trim();
+        if (!tpl) return '';
+        return tpl.replace(/\{([^}]+)\}/g, (_, f: string) => {
+          const v = String(row[f] ?? '');
+          return v === 'undefined' ? '' : v;
+        });
+      };
+      const title0 = (dA.title?.trim()) || '预警通知';
+      const alertMessages = src.rows.slice(0, 50).map((row) => ({
+        title: title0,
+        content: renderMsg(row),
+      }));
       return {
         title: '预警动作',
         columns: src.columns,
@@ -1680,6 +1695,7 @@ function evalNode(
         shape: 'table',
         allCols: src.columns,
         note: `命中 ${src.rows.length} 行，将触发通知/动作。`,
+        alertMessages,
       };
     }
 
