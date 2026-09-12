@@ -1747,7 +1747,7 @@ const BaseNode = memo(({ id, data }: NodeProps) => {
         {source === 'table' && (
           <div>
             <div className={rowLabel}>取用列（勾选要输出的列）</div>
-            <div className="max-h-36 space-y-0.5 overflow-y-auto rounded-md border border-slate-200 bg-slate-50/50 p-1.5">
+            <div className="field-list-scroll max-h-36 space-y-0.5 overflow-y-auto rounded-md border border-slate-200 bg-slate-50/50 p-1.5">
               {fields.map((f) => {
                 const sel = Array.isArray(d.columns) ? d.columns : [];
                 const inList = sel.some((c) => c.key === f.key);
@@ -3253,7 +3253,7 @@ function FilterMultiSelect({ values, selected, placeholder, onChange }: { values
             placeholder="搜索…"
             className="mb-1 w-full rounded-md border px-2 py-1 text-[11px] outline-none focus:ring-1 focus:ring-amber-400"
           />
-          <div className="max-h-56 overflow-y-auto pr-1">
+          <div className="field-list-scroll max-h-56 overflow-y-auto pr-1">
             {reflist.length === 0 && <div className="px-1 py-1 text-[10px] text-gray-400">无匹配值</div>}
             {reflist.map((v) => {
               const on = selected.includes(v);
@@ -3304,7 +3304,7 @@ function ComboSelect({ value, options, placeholder, onChange }: { value: string;
             placeholder={total ? `搜索 ${total} 个值…` : '搜索…'}
             className="mb-1 w-full rounded-md border px-2 py-1 text-[11px] outline-none focus:ring-1 focus:ring-amber-400"
           />
-          <div className="max-h-56 overflow-y-auto pr-1">
+          <div className="field-list-scroll max-h-56 overflow-y-auto pr-1">
             <button
               type="button"
               onClick={() => {

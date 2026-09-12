@@ -414,7 +414,7 @@ function NewRuleGate({
             暂无数据表，请先到「数据表管理」上传，再回来新建规则。
           </div>
         ) : (
-          <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-lg border p-2">
+          <div className="field-list-scroll max-h-56 space-y-1.5 overflow-y-auto rounded-lg border p-2">
             {tables.map((t) => {
               const on = selected.includes(t.id);
               return (
