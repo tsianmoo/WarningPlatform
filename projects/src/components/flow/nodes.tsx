@@ -2265,19 +2265,20 @@ const ACTION_PRIORITIES = [
 const ActionNode = memo(({ id, data }: NodeProps) => {
   const d = data as unknown as ActionNodeData;
   const update = useNodeUpdater(id);
-  const edges = useEdges();
   const allNodes = useNodes();
   const tables = useRuleTables();
+  const { deleteElements, getNodes, getEdges } = useReactFlow();
+  const preview = useNodePreview();
   const type = d.type ?? (d.level === 'critical' || d.level === 'warn' ? 'alert' : 'remind');
   const prio = d.priority ?? 'ImportantNotUrgent';
   const typeMeta = ACTION_TYPES.find((t) => t.value === type);
   // 通知对象独立保存
   const notify = d.notify ?? { departments: [] as string[], personnel: [] as string[] };
-  // 上游可插入字段（本节点输入边来源节点的输出列）
-  const incomingSrcs = edges.filter((e) => e.target === id).map((e) => e.source);
+  // 可插入字段：搜集本规则内所有节点的输出列（不限于直接输入边），供拼接预警消息
   const availFields: ColOpt[] = [];
-  for (const s of incomingSrcs) {
-    for (const c of inferNodeCols(allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>, tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, s)) {
+  for (const n of allNodes) {
+    if (n.id === id) continue;
+    for (const c of inferNodeCols(allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>, tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, n.id)) {
       if (!availFields.some((x) => x.key === c.key)) availFields.push(c);
     }
   }
@@ -2288,11 +2289,34 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
   };
   return (
     <div className="w-[300px] overflow-hidden rounded-xl border border-amber-500/50 bg-white shadow-sm">
-      <div className="flex items-center gap-1.5 bg-amber-50 px-3 py-1.5">
+      <div className="group/head flex items-center gap-1.5 bg-amber-50 px-3 py-1.5">
         <span className="flex h-5 w-5 items-center justify-center rounded-md bg-amber-500 text-white">
           <Bell size={13} strokeWidth={2.5} />
         </span>
-        <span className="text-xs font-semibold text-amber-700">预警动作</span>
+        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-amber-700">预警动作</span>
+        <button
+          type="button"
+          title="预览触发的店铺预警数据"
+          onClick={(e) => {
+            e.stopPropagation();
+            const fnode = allNodes.find((n) => (n as unknown as FlowNode).id === id) as unknown as FlowNode;
+            if (fnode) preview.open(fnode, getNodes() as unknown as FlowNode[], getEdges() as unknown as FlowEdge[], tables);
+          }}
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-gray-500/70 transition hover:bg-white/80 hover:text-blue-600"
+        >
+          <Eye className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          title="删除该组件"
+          onClick={(e) => {
+            e.stopPropagation();
+            deleteElements({ nodes: [{ id }] });
+          }}
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-gray-400 opacity-0 transition hover:bg-white/70 hover:text-rose-500 group-hover/head:opacity-100"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
       </div>
       <div className="px-3 py-2">
         {/* 类型：提醒 / 预警 */}
