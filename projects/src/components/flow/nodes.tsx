@@ -556,7 +556,7 @@ function getNodeOutputs(allNodes: ReturnType<typeof useNodes>, selfId: string): 
       case 'base': {
         const bn = n.data as unknown as BaseNodeData;
         const cols = Array.isArray(bn.columns) && bn.columns.length ? bn.columns : [];
-        const label = cols.length ? cols.map((c) => c.label || c.key).join('、') : (bn.resultLabel || bn.fieldLabel || '基础数据');
+        const label = bn.resultLabel || (cols.length ? cols.map((c) => c.label || c.key).join('、') : (bn.fieldLabel || '基础数据'));
         out.push({ ref: { nodeId: n.id, nodeKind: 'base', outputKind: 'column', label } });
         break;
       }
