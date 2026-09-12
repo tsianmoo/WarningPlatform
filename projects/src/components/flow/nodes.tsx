@@ -1,6 +1,6 @@
 'use client';
 
-import React, { memo, useEffect, useState, useMemo, createContext, useContext } from 'react';
+import React, { memo, useEffect, useState, useMemo, useRef, createContext, useContext } from 'react';
 import { Handle, Position, useReactFlow, useEdges, useNodes, type NodeProps } from '@xyflow/react';
 import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp } from 'lucide-react';
 import {
@@ -2307,11 +2307,22 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
   }
   const [pickNode, setPickNode] = useState(nodeOptions[0]?.id ?? '');
   const selNodeId = nodeOptions.some((o) => o.id === pickNode) ? pickNode : (nodeOptions[0]?.id ?? '');
+  const contentRef = useRef<HTMLTextAreaElement | null>(null);
+  const [cursorPos, setCursorPos] = useState<number | null>(null);
   const availFields = selNodeId ? (fieldsByNode[selNodeId] ?? []) : [];
   const insertField = (k: string) => {
     const tok = `{${k}}`;
-    if ((d.content ?? '').includes(tok)) return;
-    update({ content: `${d.content ?? ''}${(d.content ? ' ' : '')}${tok}` });
+    const cur = (d.content ?? '');
+    const pos = typeof cursorPos === 'number' && cursorPos >= 0 ? Math.min(cursorPos, cur.length) : cur.length;
+    update({ content: `${cur.slice(0, pos)}${tok}${cur.slice(pos)}` });
+    setCursorPos(pos + tok.length);
+    requestAnimationFrame(() => {
+      const el = contentRef.current;
+      if (el) {
+        el.focus();
+        try { el.setSelectionRange(pos + tok.length, pos + tok.length); } catch { /* ignore */ }
+      }
+    });
   };
   return (
     <div className="w-[300px] overflow-hidden rounded-xl border border-amber-500/50 bg-white shadow-sm">
@@ -2392,8 +2403,14 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
         />
         <div className="mt-1.5 flex items-start gap-1.5">
           <textarea
+            ref={contentRef}
             value={d.content ?? ''}
-            onChange={(e) => update({ content: e.target.value })}
+            onChange={(e) => {
+              setCursorPos(e.target.selectionStart);
+              update({ content: e.target.value });
+            }}
+            onClick={(e) => setCursorPos(e.currentTarget.selectionStart)}
+            onKeyUp={(e) => setCursorPos((e.currentTarget as HTMLTextAreaElement).selectionStart)}
             placeholder="预警消息，支持插入字段，如：本周已过去 {已过天数} 天，{店铺名称} 店仓超过3天未开单了，请务必分析原因"
             rows={3}
             className="w-full resize-none rounded-md border px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
@@ -2434,26 +2451,6 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
             )}
           </div>
         )}
-        <div className="mt-1.5 flex items-center gap-1.5">
-          <span className="text-xs text-gray-400">数据来源</span>
-          <select
-            value={d.sourceNode?.nodeId ?? ''}
-            onChange={(e) => {
-              const nid = e.target.value;
-              const opt = nodeOptions.find((o) => o.id === nid);
-              update({ sourceNode: nid && opt ? { nodeId: nid, nodeKind: opt.kind, label: opt.label || '', outputKind: 'column' } : undefined });
-            }}
-            className="flex-1 rounded-md border bg-white px-2 py-1 text-xs text-gray-700"
-          >
-            <option value="">（选一个上游节点作为命中数据来源）</option>
-            {nodeOptions.map((o) => (
-              <option key={o.id} value={o.id}>
-                {nodeKindCn(o.kind)}
-                {o.label ? `（${o.label}）` : ''}
-              </option>
-            ))}
-          </select>
-        </div>
         <div className="mt-1 text-[10px] text-gray-400">
           规则终点：输入位置插入 {`{字段名}`}，触发时替换为命中行的实际值
         </div>
