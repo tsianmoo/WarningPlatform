@@ -1989,6 +1989,9 @@ function collectNodeDataRefs(node: FlowNode): string[] {
   push((d.left as { nodeId?: unknown } | null | undefined)?.nodeId);
   push((d.right as { nodeId?: unknown } | null | undefined)?.nodeId);
   push((d.ref as { nodeId?: unknown } | null | undefined)?.nodeId);
+  const ex = (d.expr as { left?: { nodeId?: unknown }; ref?: { nodeId?: unknown } } | null | undefined);
+  push(ex?.left?.nodeId);
+  push(ex?.ref?.nodeId);
   return refs.filter(Boolean);
 }
 
@@ -2017,7 +2020,9 @@ export function evaluateFlow(nodes: FlowNode[], edges: FlowEdge[], tables: DataT
       break;
     }
     for (const n of ready) {
+      
       outputs[n.id] = safeEval(n, normNodes, normEdges, tables, outputs);
+      
       remaining.splice(remaining.indexOf(n), 1);
     }
   }
