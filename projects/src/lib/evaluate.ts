@@ -1065,12 +1065,14 @@ function evalNode(
       const srcRows = allRows(t);
       const rows0 = gd.dateField && gd.timeWindow ? srcRows.filter((r) => inWindow(r[gd.dateField || ''], gd.timeWindow)) : srcRows;
       const groups = buildGroups(rows0, dims, metrics);
+      // 时间窗起止（预览展示列：开始日期 / 结束日期）
+      const twrAll = gd.dateField && gd.timeWindow && gd.timeWindow.preset !== 'all' ? resolveTimeWindow(gd.timeWindow, new Date()) : undefined;
       // —— 对比期（同期/环期）聚合 ——
       let cmpGroups: Map<string, { nums: number[][]; keys: string[]; recs: Record<string, unknown>[] }> | null = null;
       let cmpMode: 'yoY' | 'ring' | null = null;
       let cmpLabel = '';
       if (gd.timeWindow && gd.dateField) {
-        const twr = resolveTimeWindow(gd.timeWindow, new Date());
+        const twr = twrAll ?? resolveTimeWindow(gd.timeWindow, new Date());
         if (twr.compare) {
           cmpMode = (gd.timeWindow && (gd.timeWindow as { compare?: { mode?: 'yoY' | 'ring' } }).compare?.mode) || 'ring';
           cmpLabel = twr.compare.label;
@@ -1083,6 +1085,15 @@ function evalNode(
       const mLabels = metrics.map((mt) => mt.outLabel || `${fnLabel(mt.fn)}(${mt.label || mt.key})`);
       const dimLabels = dims.map((x) => groupLabel(x.label, x.gran));
       const dateKey = gd.dateField || t.fields.find((f) => f.type === 'date')?.key || '';
+      // 时间窗起止日期列：解析出的统计窗口范围（如 2026/09/01 ~ 2026/09/30），置于结果首列
+      const fmtD = (x: Date) => `${x.getFullYear()}/${String(x.getMonth() + 1).padStart(2, '0')}/${String(x.getDate()).padStart(2, '0')}`;
+      const dateCols: { key: string; label: string; value: string }[] = [];
+      if (twrAll) {
+        dateCols.push(
+          { key: '开始日期', label: '开始日期', value: fmtD(twrAll.start) },
+          { key: '结束日期', label: '结束日期', value: fmtD(twrAll.end) },
+        );
+      }
       const cmpValByKey = new Map<string, number[]>();
       if (cmpGroups && cmpMode) {
         for (const [k, cg] of cmpGroups) {
@@ -1091,6 +1102,7 @@ function evalNode(
       }
       const out = [...groups.values()].map((g) => {
         const row: Record<string, string | number> = {};
+        dateCols.forEach((dc) => (row[dc.key] = dc.value));
         dimLabels.forEach((lab, i) => (row[lab] = g.keys[i] ?? ''));
         const cvals = cmpValByKey.get(g.keys.join('␟'));
         metrics.forEach((mt, mi) => {
@@ -1121,6 +1133,7 @@ function evalNode(
       });
       // 兜底：若 groups 为空（无行），仍构造一次以便展示类型
       const emptyRow: Record<string, string> = Object.fromEntries([
+        ...dateCols.map((dc) => [dc.key, dc.value] as const),
         ...dims.map((x) => [groupLabel(x.label, x.gran), ''] as const),
         ...mLabels.map((m) => [m, ''] as const),
         ...(cmpMode && cmpGroups ? mLabels.flatMap((m) => [[`${m} · ${cmpLabel}`, ''] as const, [`${m} · 增长率%`, ''] as const]) : []),
@@ -1130,7 +1143,7 @@ function evalNode(
       const defaultMLabel = idx >= 0 ? mLabels[idx] : (gd.resultLabel || `${fnLabel(gd.metricFn || 'sum')}(${gd.metricFieldLabel || metricField})`);
       return {
         title: '分组聚合',
-        columns: [...dimLabels, ...mLabels, ...(cmpMode && cmpGroups ? mLabels.flatMap((m) => [`${m} · ${cmpLabel}`, `${m} · 增长率%`]) : [])],
+        columns: [...dateCols.map((dc) => dc.label), ...dimLabels, ...mLabels, ...(cmpMode && cmpGroups ? mLabels.flatMap((m) => [`${m} · ${cmpLabel}`, `${m} · 增长率%`]) : [])],
         rows: cap(finalOut),
         shape: 'table',
         scalar:
