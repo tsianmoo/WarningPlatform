@@ -120,6 +120,8 @@
 - web 项目验收用 `test_run`（静态检查 + 服务探活 + 接口冒烟），不用 shell 绕跑。
 - **⚠️ React Flow 节点内输入/选择控件（input/textarea/select）在拖动选择文本时会触发节点移动**：已通过 FlowCanvas 容器 `onPointerDownCapture` + 目标是 input/textarea/select 时 `stopPropagation` 统一解决，改动节点表单项时勿回退。
 - **画布连线样式**：边固定用 `type: 'bezier'`（贝塞尔曲线，`defaultEdgeOptions` 与 `toRfEdges` 同步）。用曲线而非 `smoothstep`——平滑过渡可避免直角折线带来的"尾部先向右折、再直角跳回左侧 target handle"的观感（用户报连线时尾端跳动）。连线层级用 `globals.css` 的 `.react-flow__edges{z-index:3}` / `.react-flow__nodes{z-index:2}` 让连线盖在重叠节点之上（bezier 边 svg 自身 pointer-events 透传，不挡节点拖拽/点击；Controls/MiniMap 仍默认 5 层在上）。改边类型/z-index 时这两处要保持一致。
+- **判断方式文案 `buildConditionDesc`**（store.tsx）：预警"判断方式"列读它。判断节点把条件存 **`conditions[]` 数组**（`conditions[i].op/col/colKind/refNode/{label,nodeId}`，旧顶层 `valueSource/value/refNode` 已弃用），所以 `buildConditionDesc` **必须遍历 `conditions[]`** 拼接"如果 {col} {op 中文} {右值}"。右值优先级：`c.refNode?.label`（选了"平均未开单天数"等节点）＞ `field` 取值字段 label ＞ `between` 的 min~max ＞ 普通值。若仍按旧顶层字段拼，会得到"如果 未开单天数 大于 "（右值空）。
+- **预警列表脏数据排查**：预警存在 Supabase `alert_tasks`，/api/state 的 GET 全量回读、POST 全量覆盖（`syncAlerts`）。若列表标题/判断方式/适用部门全空，几乎都是库里存了**残缺记录**（`ruleId/title/content/dept/assignee` 均空、`ruleId` 为 `''`）：这类记录 `ruleId=''`，激活时的去重（`find(x.ruleId===a.ruleId)`）永远匹配不到、既不刷新也不删除，从而残留占位。但注意 `exec_sql` 的 develop Postgres 与 Supabase `/api/state` 是**两库**，`exec_sql` 查 `alert_tasks` 为空不代表前端没数据；要以 `/api/state` JSON 为准。清理方式：用根规则+数据调 `buildAlertsForRule` 生成全字段预警，POST /api/state 覆盖入库。
 - **lint 基准**：本项目已修至 `pnpm lint` 0 error 0 warning（禁 `any`/未用变量、JSX 内不直接 `Date.now()`/`Math.random()`/`"` 等）。改动代码后保持 `pnpm lint` / `pnpm ts-check` / `pnpm lint:style` 全绿，勿回退。
 
 ## 数据库（Supabase）

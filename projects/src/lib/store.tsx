@@ -13,26 +13,45 @@ import { uid, OPERATOR_OPTIONS } from './types';
 import { buildSampleTable, ensureFieldsComplete } from './parser';
 import { evaluateFlow } from './evaluate';
 import type { NodePreview } from './evaluate';
-import type { ActionNodeData, ConditionNodeData, FlowNode } from './types';
+import type { ActionNodeData, ConditionItem, ConditionNodeData, FlowNode } from './types';
 
-/** 拼接“为什么预警”的判断规则描述，如：如果店仓未开单天数在 3~5 天，提醒 */
+/** 拼接“为什么预警”的判断规则描述，如：如果未开单天数大于平均未开单天数，提醒 */
 function buildConditionDesc(nodes: FlowNode[]): string {
-  const opLabel = (op: ConditionNodeData['operator']) => OPERATOR_OPTIONS.find((o) => o.value === op)?.label ?? String(op);
+  const opLabel = (op: string | undefined) => OPERATOR_OPTIONS.find((o) => o.value === op)?.label ?? String(op ?? '');
   const parts: string[] = [];
   for (const nd of nodes) {
     if (nd.kind !== 'condition') continue;
     const cd = (nd.data ?? {}) as Partial<ConditionNodeData>;
-    const left = cd.leftNode?.label || cd.fieldLabel || '该值';
-    const op = opLabel(cd.operator ?? 'gt');
-    let right = cd.value ?? '';
-    if (cd.operator === 'between') {
-      right = `${cd.value} 到 ${cd.valueMax}`;
-    } else if (cd.valueSource === 'node') {
-      right = cd.refNode?.label || right;
-    } else if (cd.valueSource === 'field') {
-      right = (cd.refValue as { fieldLabel?: string } | undefined)?.fieldLabel || right;
+    const rightOf = (c: ConditionItem, op?: string): string => {
+      if (op === 'empty' || op === 'notEmpty') return op === 'empty' ? '为空' : '不为空';
+      if (c.refNode?.label) return c.refNode.label;
+      if (c.rightSource === 'node' && c.refNode?.label) return c.refNode.label;
+      const vals = (c.values ?? []).filter((v: string) => v !== '');
+      return vals.length ? vals.join('、') : (c.values?.includes('') ? '空' : '');
+    };
+    // 多条件组优先（判断节点的实际存储在 conditions 数组，右值可能是值集合或引用节点标量）
+    if (cd.conditions && cd.conditions.length) {
+      const join = cd.conditionJoin === 'or' ? ' 或 ' : ' 且 ';
+      const inner = cd.conditions.map((c) => {
+        const left = c.colLabel || c.col || '该值';
+        const op = opLabel(c.op);
+        const right = rightOf(c, c.op);
+        return `如果 ${left} ${op} ${right}`;
+      });
+      parts.push(inner.join(join));
+    } else {
+      const left = cd.leftNode?.label || cd.fieldLabel || '该值';
+      const op = opLabel(cd.operator);
+      let right = cd.value ?? '';
+      if (cd.operator === 'between') {
+        right = `${cd.value} 到 ${cd.valueMax}`;
+      } else if (cd.valueSource === 'node') {
+        right = cd.refNode?.label || right;
+      } else if (cd.valueSource === 'field') {
+        right = (cd.refValue as { fieldLabel?: string } | undefined)?.fieldLabel || right;
+      }
+      parts.push(`如果 ${left} ${op} ${right}`);
     }
-    parts.push(`如果 ${left} ${op} ${right}`);
   }
   return parts.join(' 且 ') || '';
 }
