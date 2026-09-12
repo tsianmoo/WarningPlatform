@@ -1261,50 +1261,65 @@ function evalNode(
 
     case 'baseline': {
       const bd = d as unknown as BaselineNodeData;
-      let values: number[] = [];
+      const dims = (Array.isArray(bd.dims) ? bd.dims : []).filter((x) => x && x.key);
+      let rowset: Array<Record<string, unknown>> = [];
+      let valueKey = '';
       let basis = '';
       if ((bd.source ?? 'node') === 'node') {
         const src = pickColumnOutput(outputs, incoming, bd.refNode?.nodeId);
         if (!src) return { title: '基准统计', columns: [], rows: [], note: '请先添加「查找·聚合带回 / 分组聚合」节点并连到本节点。' };
-        const col = bd.refNode?.label || src.columns[src.columns.length - 1];
-        values = src.rows.map((r) => toNum(r[col])).filter((n) => Number.isFinite(n));
-        basis = `节点结果「${col}」的 ${values.length} 个分组值`;
+        valueKey = bd.refNode?.label || src.columns[src.columns.length - 1];
+        rowset = src.rows;
+        basis = `节点结果「${valueKey}」的 ${rowset.length} 个分组值`;
       } else {
         const t = resolveTable(tables, bd.tableId);
-        const valueField = bd.valueField || t?.fields.find((f) => f.type === 'number')?.key;
-        if (!t || !valueField) return { title: '基准统计', columns: [], rows: [], note: '请选择数据表与待统计数值字段。' };
-        values = allRows(t).map((r) => toNum(r[valueField])).filter((n) => Number.isFinite(n));
-        basis = `「${t.name}·${bd.valueFieldLabel || valueField}」的 ${values.length} 条记录`;
+        valueKey = bd.valueField || t?.fields.find((f) => f.type === 'number')?.key || '';
+        if (!t || !valueKey) return { title: '基准统计', columns: [], rows: [], note: '请选择数据表与待统计数值字段。' };
+        rowset = allRows(t);
+        basis = `「${t.name}·${bd.valueFieldLabel || valueKey}」的 ${rowset.length} 条记录`;
       }
       const fn = bd.baselineFn || 'avg';
-      let statValues = values;
-      let tailDesc = '';
-      if (fn === 'topAvg' || fn === 'bottomAvg') {
-        const pct = typeof bd.percent === 'number' && bd.percent > 0 && bd.percent <= 100 ? bd.percent : 20;
-        const sorted = [...values].sort((a, b) => b - a); // 降序
-        // 取 ceil，保证小样本（如 5 个店铺取 20%）至少取 1 个，且不超过总数
-        const take = Math.max(1, Math.min(sorted.length, Math.ceil(sorted.length * pct / 100)));
-        statValues = (fn === 'topAvg' ? sorted.slice(0, take) : sorted.slice(sorted.length - take)).filter(
-          (n) => Number.isFinite(n),
-        );
-        tailDesc = `${fn === 'topAvg' ? '前' : '后'} ${pct}%（${take}/${sorted.length} 个店）`;
-      }
-      const val = fn === 'topAvg' || fn === 'bottomAvg' ? agg('avg', statValues) : agg(fn, values);
+      const pct = () => (typeof bd.percent === 'number' && bd.percent > 0 && bd.percent <= 100 ? bd.percent : 20);
+      const stat = (vals: number[]): number => {
+        if (fn !== 'topAvg' && fn !== 'bottomAvg') return agg(fn, vals);
+        const sorted = [...vals].sort((a, b) => b - a);
+        const take = Math.max(1, Math.min(sorted.length, Math.ceil((sorted.length * pct()) / 100)));
+        const sv = (fn === 'topAvg' ? sorted.slice(0, take) : sorted.slice(sorted.length - take)).filter((n) => Number.isFinite(n));
+        return agg('avg', sv);
+      };
+      const tailDesc = (vals: number[]) => `${fn === 'topAvg' ? '前' : '后'} ${pct()}%（取 ${vals.length / 1} 个中的前若干）`;
       const fnText: Record<string, string> = {
         avg: '所有分组的平均值',
         median: '中位数',
         max: '最高值',
         min: '最低值',
-        topAvg: tailDesc,
-        bottomAvg: tailDesc,
       };
       const label = bd.resultLabel || '基准值';
+      if (dims.length) {
+        const groups = new Map<string, { dimRow: Record<string, string>; vals: number[] }>();
+        for (const r of rowset) {
+          const dimRow: Record<string, string> = {};
+          for (const dim of dims) dimRow[dim.label] = String(r[dim.key] ?? '');
+          const gk = dims.map((dim) => String(r[dim.key] ?? '')).join('\u0001');
+          const v = toNum(r[valueKey]);
+          if (!Number.isFinite(v)) continue;
+          const g = groups.get(gk);
+          if (g) g.vals.push(v);
+          else groups.set(gk, { dimRow, vals: [v] });
+        }
+        const columns = [...dims.map((dim) => dim.label), label];
+        const rows = [...groups.values()].map((g) => ({ ...g.dimRow, [label]: fmtNum(stat(g.vals)) }));
+        const fnDesc = fn === 'topAvg' || fn === 'bottomAvg' ? `按指标降序排序取${fn === 'topAvg' ? '前' : '后'} ${pct()}% 再求平均` : `求「${fnText[fn]}」`;
+        return { title: '基准统计', columns, rows, shape: 'table', note: `按「${dims.map((dm) => dm.label).join('、')}」分组，对${basis}${fnDesc}，每组得到基准值「${label}」。` };
+      }
+      const values = rowset.map((r) => toNum(r[valueKey])).filter((n) => Number.isFinite(n));
+      const single = stat(values);
       return {
         title: '基准统计',
         columns: ['基准项', '数值'],
-        rows: [{ 基准项: label, 数值: fmtNum(val) }],
-        scalar: { label, value: fmtNum(val) },
-        note: `对${basis}${fn === 'topAvg' || fn === 'bottomAvg' ? `按指标降序排序，取${tailDesc}再求平均` : `求「${fnText[fn] || fn}」`}，得到基准值。`,
+        rows: [{ 基准项: label, 数值: fmtNum(single) }],
+        scalar: { label, value: fmtNum(single) },
+        note: `对${basis}${fn === 'topAvg' || fn === 'bottomAvg' ? `按指标降序排序，取${tailDesc(values)}再求平均` : `求「${fnText[fn] || fn}」`}，得到基准值。`,
       };
     }
 

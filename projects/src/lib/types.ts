@@ -566,6 +566,8 @@ export interface BaselineNodeData {
   /** 待统计的数值字段（source=table 时，如：成交金额/成交额结果列） */
   valueField: string;
   valueFieldLabel: string;
+  /** 分组维度（可多个字段，空=对全部取值求一个基准；非空=按维度分组后各求基准） */
+  dims?: { key: string; label: string }[];
   /**
    * 统计方式：
    * avg=所有分组平均；median=中位数；max=最高；min=最低；

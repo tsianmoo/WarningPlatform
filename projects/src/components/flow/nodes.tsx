@@ -237,7 +237,12 @@ function nodeKindCn(kind: FlowNode['kind']) {
 }
 
 function nodeTitle(fnode: FlowNode) {
-  return nodeKindCn(fnode.kind);
+  const base = nodeKindCn(fnode.kind);
+  if (fnode.kind === 'baseline' || fnode.kind === 'groupby') {
+    const rl = (fnode.data as { resultLabel?: string } | undefined)?.resultLabel;
+    if (rl && rl.trim()) return `${base}（${rl.trim()}）`;
+  }
+  return base;
 }
 
 function NodeShell({ fnode, children }: { fnode: FlowNode; children: React.ReactNode }) {
@@ -3611,6 +3616,14 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
   const isTailAvg = d.baselineFn === 'topAvg' || d.baselineFn === 'bottomAvg';
   const percent = typeof d.percent === 'number' && d.percent > 0 ? d.percent : 20;
   const pickedLabel = source === 'node' ? d.refNode?.label : d.valueFieldLabel;
+  const dims = Array.isArray(d.dims) ? d.dims : [];
+  const setDims = (next: BaselineNodeData['dims']) => update({ dims: next } as Partial<BaselineNodeData>);
+  const dimsOptions: Array<{ key: string; label: string }> =
+    source === 'node'
+      ? d.refNode?.nodeId
+        ? inferNodeCols(allNodes, tables, d.refNode.nodeId).map((c) => ({ key: c.key, label: c.label }))
+        : []
+      : fields.map((f) => ({ key: f.key, label: f.alias || f.key }));
 
   return (
     <NodeShell fnode={fnode}>
@@ -3705,7 +3718,56 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
         </>
       )}
 
-      <div className={rowLabel}>{source === 'node' ? '②' : '③'} 统计方式（基准值口径）</div>
+      <div className={rowLabel}>{source === 'node' ? '②' : '③'} 分组维度（可多字段，空=对全部取值求一个基准）</div>
+      {dimsOptions.length === 0 ? (
+        <div className="rounded-md bg-gray-50 px-2 py-1 text-[10px] leading-relaxed text-gray-400">
+          {source === 'node'
+            ? '先在上方选择节点结果，再从该节点输出中的列里选分组维度。'
+            : '先在上方选择数据表，再从表字段里选分组维度。'}
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {dims.map((dim, i) => (
+            <div key={i} className="flex items-center gap-1">
+              <select
+                value={dim.key}
+                onChange={(e) => {
+                  const o = dimsOptions.find((x) => x.key === e.target.value);
+                  if (o) {
+                    const next = [...dims];
+                    next[i] = { key: o.key, label: o.label };
+                    setDims(next);
+                  }
+                }}
+                className={inputCls}
+              >
+                <option value="">选择维度字段…</option>
+                {dimsOptions.map((o) => (
+                  <option key={o.key} value={o.key}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setDims(dims.filter((_, j) => j !== i))}
+                className="shrink-0 rounded-md px-1.5 py-1 text-[11px] leading-none text-gray-300 transition hover:bg-red-50 hover:text-red-500"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => setDims([...dims, { key: '', label: '' }])}
+            className="text-[11px] text-violet-600 transition hover:text-violet-700"
+          >
+            + 添加维度字段
+          </button>
+        </div>
+      )}
+
+      <div className={rowLabel}>{source === 'node' ? '③' : '④'} 统计方式（基准值口径）</div>
       <select
         value={d.baselineFn}
         onChange={(e) => {
@@ -4629,6 +4691,7 @@ export function createNodeData(
         tableName: '',
         valueField: '',
         valueFieldLabel: '',
+        dims: [],
         baselineFn: 'avg',
         resultLabel: '',
       };
