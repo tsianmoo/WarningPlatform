@@ -247,7 +247,15 @@ function CanvasInner({
   const rfEdges = useMemo(() => toRfEdges(localEdges), [localEdges]);
 
   return (
-    <div className="h-full w-full" onDrop={onDrop} onDragOver={onDragOver}>
+    <div
+      className="h-full w-full"
+      onDrop={onDrop}
+      onDragOver={onDragOver}
+      onPointerDownCapture={(e) => {
+        const t = e.target as HTMLElement;
+        if (t.closest('input, textarea, select, [contenteditable="true"]')) e.stopPropagation();
+      }}
+    >
       {selectedEdge && (
         <div
           className="absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 shadow-lg"
