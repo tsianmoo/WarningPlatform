@@ -1017,7 +1017,7 @@ const ConditionNode = memo(({ id, data }: NodeProps) => {
             </p>
           )}
           {(d.conditions && d.conditions.length ? d.conditions : []).map((c, i) => {
-            const isNoValue = c.op === 'empty' || c.op === 'notEmpty' || c.op === 'gt' || c.op === 'gte' || c.op === 'lt' || c.op === 'lte';
+            const isNoValue = c.op === 'empty' || c.op === 'notEmpty' || c.op === 'eq' || c.op === 'gt' || c.op === 'gte' || c.op === 'lt' || c.op === 'lte';
             return (
               <div key={i} className="space-y-1 rounded-md border border-gray-200 p-1.5">
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -1051,7 +1051,7 @@ const ConditionNode = memo(({ id, data }: NodeProps) => {
                     <option value="empty">为空</option>
                     <option value="notEmpty">不为空</option>
                   </select>
-                  {(c.op === 'gt' || c.op === 'gte' || c.op === 'lt' || c.op === 'lte') && (
+                  {(c.op === 'eq' || c.op === 'gt' || c.op === 'gte' || c.op === 'lt' || c.op === 'lte') && (
                     <div className="flex shrink-0 items-center gap-1">
                       <span
                         onClick={() => setCond(i, { refNode: undefined, values: [] })}
