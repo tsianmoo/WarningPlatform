@@ -83,10 +83,32 @@ export function buildAlertsForRule(
     const notify = a.data.notify;
     const actionTitle = a.data.title?.trim() || rule.name;
     const hit = a.id ? evalMap?.[a.id] : undefined;
-    const preview = hit && hit.rows && hit.rows.length
-      ? { columns: hit.columns, rows: hit.rows.slice(0, 200) }
+    const rawTpl = a.data.content?.trim() || '';
+    // 店仓列：优先取含“店/仓”的列，否则首个字符串列
+    const storeCol = hit && hit.columns
+      ? (hit.columns.find((c) => /店|仓/.test(c)) ?? hit.columns[0])
       : undefined;
-    // 类型/重要等级 → 兼容 level；字段模板替换
+    const hitRows = hit && hit.rows && hit.rows.length ? hit.rows.slice(0, 200) : [];
+    const renderMsg = (row: Record<string, unknown>, fallback: string): string => {
+      if (!rawTpl) return fallback;
+      return rawTpl.replace(/\{([^}]+)\}/g, (_m, f: string) => {
+        const st = String(row[f] ?? '');
+        return st === 'undefined' || st === '' ? '' : st;
+      }).trim();
+    };
+    const storeMessages = hitRows.length
+      ? hitRows.map((row) => {
+          const r = row as Record<string, unknown>;
+          return {
+            store: storeCol ? String(r[storeCol] ?? '') : '',
+            message: renderMsg(r, `${rule.name} 命中预警，请及时处理`),
+          };
+        })
+      : undefined;
+    const preview = hit && hitRows.length
+      ? { columns: hit.columns, rows: hitRows, ...(storeMessages ? { storeMessages } : {}) }
+      : undefined;
+    // 类型/重要等级 → 兼容 level；字段模板替换（列表预览取第一行）
     const type = a.data.type;
     const priority = a.data.priority;
     const lv =
@@ -94,12 +116,8 @@ export function buildAlertsForRule(
       : type === 'alert' ? (priority === 'Important&Urgent' || priority === 'Urgent' ? 'critical' : 'warn')
       : (a.data.level ?? ('warn' as const));
     let content = a.data.content?.trim();
-    if (content && hit && hit.rows && hit.rows.length && hit.columns) {
-      const row = hit.rows[0] as Record<string, unknown>;
-      content = content.replace(/\{([^}]+)\}/g, (_, f: string) => {
-        const st = String(row[f] ?? '');
-        return st === 'undefined' || st === '' ? '' : st;
-      });
+    if (content && hit && hitRows.length && hit.columns) {
+      content = renderMsg(hitRows[0] as Record<string, unknown>, content);
     }
     return {
       ruleId: rule.id,
@@ -111,6 +129,7 @@ export function buildAlertsForRule(
       reason: rule.description || `${rule.name} 命中「${actionTitle}」预警动作，达到触发条件`,
       conditionDesc: conditionDesc || undefined,
       preview,
+      createdBy: '系统',
       dept: notify?.departments?.[0] ?? targets?.departments?.[0] ?? '',
       assignee: notify?.personnel?.[0] ?? targets?.personnel?.[0] ?? '',
       status: 'new' as const,

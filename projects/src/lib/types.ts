@@ -892,7 +892,16 @@ export interface AlertTask {
   /** 判断规则描述（如：如果店仓未开单天数在 3~5 天，提醒） */
   conditionDesc?: string;
   /** 命中预览数据（判断命中的记录，用于点击展开查看） */
-  preview?: { columns: string[]; rows: Record<string, string | number>[] };
+  preview?: {
+    columns: string[];
+    rows: Record<string, string | number>[];
+    /** 创建人（随 preview JSON 持久化，避免额外库列） */
+    createdBy?: string;
+    /** 每个店铺/店仓的预警消息（逐行渲染 action 消息模板） */
+    storeMessages?: { store: string; message: string }[];
+  };
+  /** 创建人（展示用，持久化于 preview.createdBy） */
+  createdBy?: string;
   dept: string;
   assignee: string;
   status: AlertStatus;
