@@ -18,6 +18,8 @@ const LEVEL_META: Record<string, { label: string; bar: string }> = {
 type ActionNodeDataLike = {
   title?: string;
   level?: string;
+  type?: string;
+  priority?: string;
   notify?: { departments?: string[]; personnel?: string[] };
 };
 
@@ -289,7 +291,11 @@ export function RuleConfigurator({
                 .filter((n) => n.kind === 'action')
                 .map((n) => {
                   const ad = n.data as ActionNodeDataLike;
-                  const lv = LEVEL_META[ad.level ?? 'warn'] ?? LEVEL_META.warn;
+                  const lv = (ad.type === 'alert'
+                    ? ad.priority === 'Important&Urgent' || ad.priority === 'Urgent'
+                      ? LEVEL_META.critical ?? LEVEL_META.warn
+                      : LEVEL_META.warn
+                    : LEVEL_META[ad.level ?? 'warn'] ?? LEVEL_META.warn) ?? LEVEL_META.warn;
                   return (
                     <div key={n.id} className="mb-2 rounded-lg border bg-gray-50 px-3 py-2 text-sm">
                       <div className="flex items-center justify-between">

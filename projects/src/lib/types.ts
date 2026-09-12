@@ -625,9 +625,14 @@ export interface FillJoinNodeData {
 
 /** 预警动作节点数据 */
 export interface ActionNodeData {
-  level: 'remind' | 'warn' | 'critical'; // 提醒 / 预警 / 紧急
+  /** 类型：提醒 / 预警（新结构，替代 level） */
+  type?: 'remind' | 'alert';
+  /** 重要等级（仅 type=alert 时选择）：重要且紧急 / 重要不紧急 / 紧急但不重要 / 一般 */
+  priority?: 'Important&Urgent' | 'Important' | 'Urgent' | 'Info';
+  /** 旧级别字段，存量兼容（remind/warn/critical），新数据不再使用 */
+  level?: 'remind' | 'warn' | 'critical';
   title: string;
-  /** 提醒文案（预警描述），如：当月已经3到5天没有开单了，请务必重视 */
+  /** 提醒文案（预警描述），支持 {字段名} 模板占位，触发时替换为命中行实际值 */
   content?: string;
   /** 本动作独立的通知对象（部门/人员），不随其它动作联动 */
   notify?: { departments: string[]; personnel: string[] };
@@ -842,7 +847,21 @@ export const KIND_COLOR: Record<
   rank: { bg: '#EFF6FF', border: '#2563EB', text: '#1D4ED8', dot: '#2563EB' },
 };
 
-/** 预警级别 */
+/** 预警类型（级别→类型：提醒/预警） */
+export const ACTION_TYPE_OPTIONS: { value: ActionNodeData['type']; label: string; color: string }[] = [
+  { value: 'remind', label: '提醒', color: '#0EA5E9' },
+  { value: 'alert', label: '预警', color: '#F59E0B' },
+];
+
+/** 重要等级（仅类型=预警时选择） */
+export const PRIORITY_OPTIONS: { value: ActionNodeData['priority']; label: string; color: string }[] = [
+  { value: 'Important&Urgent', label: '重要且紧急', color: '#EF4444' },
+  { value: 'Important', label: '重要不紧急', color: '#F59E0B' },
+  { value: 'Urgent', label: '紧急但不重要', color: '#FB923C' },
+  { value: 'Info', label: '一般', color: '#94A3B8' },
+];
+
+/** 预警级别（存量兼容，映射自 type/priority） */
 export const LEVEL_OPTIONS: { value: ActionNodeData['level']; label: string; color: string }[] = [
   { value: 'remind', label: '提醒', color: '#0EA5E9' },
   { value: 'warn', label: '预警', color: '#F59E0B' },
@@ -862,6 +881,8 @@ export interface AlertTask {
   ruleId: string;
   ruleName: string;
   level: ActionNodeData['level'];
+  /** 重要等级（仅预警类型），如 重要且紧急/重要不紧急/紧急/一般 */
+  priority?: string;
   title: string;
   content: string;
   /** 为什么预警：本次触发的具体原因说明 */

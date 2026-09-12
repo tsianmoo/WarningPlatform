@@ -2251,14 +2251,43 @@ const ElapsedNode = memo(({ id, data }: NodeProps) => {
 });
 
 // ---------- 预警动作节点 ----------
+const ACTION_TYPES = [
+  { value: 'remind', label: '提醒' },
+  { value: 'alert', label: '预警' },
+] as const;
+const ACTION_PRIORITIES = [
+  { value: 'Important&Urgent', label: '重要且紧急' },
+  { value: 'Important', label: '重要不紧急' },
+  { value: 'Urgent', label: '紧急但不重要' },
+  { value: 'Info', label: '一般' },
+] as const;
+
 const ActionNode = memo(({ id, data }: NodeProps) => {
   const d = data as unknown as ActionNodeData;
   const update = useNodeUpdater(id);
-  const lv = LEVEL_OPTIONS.find((l) => l.value === d.level);
-  // 每个预警动作节点的通知对象独立保存，互不影响
+  const edges = useEdges();
+  const allNodes = useNodes();
+  const tables = useRuleTables();
+  const type = d.type ?? (d.level === 'critical' || d.level === 'warn' ? 'alert' : 'remind');
+  const prio = d.priority ?? 'ImportantNotUrgent';
+  const typeMeta = ACTION_TYPES.find((t) => t.value === type);
+  // 通知对象独立保存
   const notify = d.notify ?? { departments: [] as string[], personnel: [] as string[] };
+  // 上游可插入字段（本节点输入边来源节点的输出列）
+  const incomingSrcs = edges.filter((e) => e.target === id).map((e) => e.source);
+  const availFields: ColOpt[] = [];
+  for (const s of incomingSrcs) {
+    for (const c of inferNodeCols(allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>, tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, s)) {
+      if (!availFields.some((x) => x.key === c.key)) availFields.push(c);
+    }
+  }
+  const insertField = (k: string) => {
+    const tok = `{${k}}`;
+    if ((d.content ?? '').includes(tok)) return;
+    update({ content: `${d.content ?? ''}${(d.content ? ' ' : '')}${tok}` });
+  };
   return (
-    <div className="w-[280px] overflow-hidden rounded-xl border border-amber-500/50 bg-white shadow-sm">
+    <div className="w-[300px] overflow-hidden rounded-xl border border-amber-500/50 bg-white shadow-sm">
       <div className="flex items-center gap-1.5 bg-amber-50 px-3 py-1.5">
         <span className="flex h-5 w-5 items-center justify-center rounded-md bg-amber-500 text-white">
           <Bell size={13} strokeWidth={2.5} />
@@ -2266,37 +2295,78 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
         <span className="text-xs font-semibold text-amber-700">预警动作</span>
       </div>
       <div className="px-3 py-2">
+        {/* 类型：提醒 / 预警 */}
         <div className="flex items-center gap-1.5">
-          <span className="text-xs text-gray-400">级别</span>
-          <select
-            value={d.level}
-            onChange={(e) => update({ level: e.target.value as ActionNodeData['level'] })}
-            className="flex-1 rounded-md border bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
-          >
-            {LEVEL_OPTIONS.map((l) => (
-              <option key={l.value} value={l.value}>
-                {l.label}
-              </option>
+          <span className="text-xs text-gray-400">类型</span>
+          <div className="flex flex-1 overflow-hidden rounded-md border">
+            {ACTION_TYPES.map((t) => (
+              <button
+                key={t.value}
+                type="button"
+                onClick={() => update({ type: t.value, priority: t.value === 'remind' ? undefined : d.priority })}
+                className={`flex-1 py-1 text-xs transition ${type === t.value ? 'bg-amber-500 text-white' : 'bg-white text-gray-500 hover:bg-amber-100'}`}
+              >
+                {t.label}
+              </button>
             ))}
-          </select>
-          <span className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-white" style={{ backgroundColor: lv?.color }}>
-            {lv?.label}
-          </span>
+          </div>
         </div>
+        {/* 预警类型时：重要等级 */}
+        {type === 'alert' && (
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <span className="text-xs text-gray-400">重要等级</span>
+            <select
+              value={prio}
+              onChange={(e) => update({ priority: e.target.value as ActionNodeData['priority'] })}
+              className="flex-1 rounded-md border bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
+            >
+              {ACTION_PRIORITIES.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            <span
+              className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-white"
+              style={{ backgroundColor: typeMeta?.value === 'alert' ? (prio === 'Important&Urgent' ? '#DC2626' : prio === 'Important' ? '#D97706' : prio === 'Urgent' ? '#EA580C' : '#64748B') : '#F59E0B' }}
+            >
+              {ACTION_PRIORITIES.find((p) => p.value === prio)?.label}
+            </span>
+          </div>
+        )}
         <input
           value={d.title}
           onChange={(e) => update({ title: e.target.value })}
-          placeholder="预警标题，如：订单金额异常"
+          placeholder="预警标题，如：店仓超期未开单预警"
           className="mt-1.5 w-full rounded-md border px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
         />
-        <textarea
-          value={d.content ?? ''}
-          onChange={(e) => update({ content: e.target.value })}
-          placeholder="预警描述（提醒文案），如：当月已经3到5天没有开单了，请务必重视"
-          rows={2}
-          className="mt-1.5 w-full resize-none rounded-md border px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
-        />
-        <div className="mt-1 text-[10px] text-gray-400">规则终点：命中后触发通知</div>
+        <div className="mt-1.5 flex items-start gap-1.5">
+          <textarea
+            value={d.content ?? ''}
+            onChange={(e) => update({ content: e.target.value })}
+            placeholder="预警消息，支持插入字段，如：本周已过去 {已过天数} 天，{店铺名称} 店仓超过3天未开单了，请务必分析原因"
+            rows={3}
+            className="w-full resize-none rounded-md border px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
+          />
+        </div>
+        {availFields.length > 0 && (
+          <div className="mt-1 flex flex-wrap items-center gap-1 pl-2">
+            <span className="text-[10px] text-gray-400">插入字段：</span>
+            {availFields.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => insertField(f.key)}
+                className="rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-700 hover:bg-amber-200"
+              >
+                {f.label ?? f.key}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="mt-1 text-[10px] text-gray-400">
+          规则终点：输入位置插入 {`{字段名}`}，触发时替换为命中行的实际值
+        </div>
         <TargetPanel targets={notify} onChange={(next) => update({ notify: next })} />
       </div>
       <Handle type="target" position={Position.Left} style={{ background: '#F59E0B', width: 10, height: 10 }} />
@@ -4350,7 +4420,7 @@ export function createNodeData(
     case 'relation':
       return { tableId: '', tableName: '', fieldKey: '', fieldLabel: '', targetTableId: '', targetTable: '', targetField: '', relationType: 'inner', name: '' };
     case 'action':
-      return { level: 'warn', title: '触发预警通知', content: '', notify: { departments: [], personnel: [] } };
+      return { type: 'alert', priority: 'Important', level: 'warn', title: '触发预警通知', content: '', notify: { departments: [], personnel: [] } };
     case 'time':
       return { timeWindow: { preset: 'thisWeek' } };
     case 'topn':

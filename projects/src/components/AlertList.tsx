@@ -135,7 +135,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
               </thead>
               <tbody>
                 {alerts.map((a, idx) => {
-                  const lv = LEVEL_META[a.level] ?? LEVEL_META.warn;
+                  const lv = (LEVEL_META[(a.level ?? 'warn') as keyof typeof LEVEL_META] ?? LEVEL_META.warn);
                   const st = STATUS_META[a.status];
                   const actions: { label: string; fn: () => void; cls: string }[] = [];
                   if (a.status === 'new') {
@@ -308,7 +308,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                     level === lv ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
                   }`}
                 >
-                  {LEVEL_META[lv].label}
+                  {LEVEL_META[lv as keyof typeof LEVEL_META]?.label ?? lv}
                 </button>
               ))}
             </div>

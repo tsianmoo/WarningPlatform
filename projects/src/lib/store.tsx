@@ -44,7 +44,7 @@ export function buildAlertsForRule(
 ): Omit<AlertTask, 'id' | 'createdAt' | 'updatedAt'>[] {
   const base: { id: string; data: ActionNodeData }[] = [];
   for (const nd of rule.flow.nodes) {
-    if (nd.kind === 'action' && nd.data && 'level' in nd.data) {
+    if (nd.kind === 'action' && nd.data) {
       base.push({ id: nd.id, data: nd.data as ActionNodeData });
     }
   }
@@ -67,12 +67,28 @@ export function buildAlertsForRule(
     const preview = hit && hit.rows && hit.rows.length
       ? { columns: hit.columns, rows: hit.rows.slice(0, 200) }
       : undefined;
+    // 类型/重要等级 → 兼容 level；字段模板替换
+    const type = a.data.type;
+    const priority = a.data.priority;
+    const lv =
+      type === 'remind' ? 'remind'
+      : type === 'alert' ? (priority === 'Important&Urgent' || priority === 'Urgent' ? 'critical' : 'warn')
+      : (a.data.level ?? ('warn' as const));
+    let content = a.data.content?.trim();
+    if (content && hit && hit.rows && hit.rows.length && hit.columns) {
+      const row = hit.rows[0] as Record<string, unknown>;
+      content = content.replace(/\{([^}]+)\}/g, (_, f: string) => {
+        const st = String(row[f] ?? '');
+        return st === 'undefined' || st === '' ? '' : st;
+      });
+    }
     return {
       ruleId: rule.id,
       ruleName: rule.name,
-      level: a.data.level,
+      level: lv,
+      priority: type === 'alert' ? priority : undefined,
       title: rule.name, // 预警标题 = 预警规则标题
-      content: a.data.content?.trim() || `${rule.name} · ${actionTitle} 已触发，请及时处理`,
+      content: content || `${rule.name} · ${actionTitle} 已触发，请及时处理`,
       reason: rule.description || `${rule.name} 命中「${actionTitle}」预警动作，达到触发条件`,
       conditionDesc: conditionDesc || undefined,
       preview,
