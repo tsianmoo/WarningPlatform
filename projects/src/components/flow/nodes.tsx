@@ -2341,21 +2341,20 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
   const [pickNode, setPickNode] = useState(nodeOptions[0]?.id ?? '');
   const selNodeId = nodeOptions.some((o) => o.id === pickNode) ? pickNode : (nodeOptions[0]?.id ?? '');
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
-  const [cursorPos, setCursorPos] = useState<number | null>(null);
+  const curPosRef = useRef<number>(0);
   const availFields = selNodeId ? (fieldsByNode[selNodeId] ?? []) : [];
   const insertField = (k: string) => {
     const tok = `{${k}}`;
-    const cur = (d.content ?? '');
-    const pos = typeof cursorPos === 'number' && cursorPos >= 0 ? Math.min(cursorPos, cur.length) : cur.length;
-    update({ content: `${cur.slice(0, pos)}${tok}${cur.slice(pos)}` });
-    setCursorPos(pos + tok.length);
-    requestAnimationFrame(() => {
-      const el = contentRef.current;
-      if (el) {
-        el.focus();
-        try { el.setSelectionRange(pos + tok.length, pos + tok.length); } catch { /* ignore */ }
-      }
-    });
+    const el = contentRef.current;
+    const cur = el ? el.value : (d.content ?? '');
+    const pos = curPosRef.current >= 0 ? Math.min(curPosRef.current, cur.length) : cur.length;
+    const next = `${cur.slice(0, pos)}${tok}${cur.slice(pos)}`;
+    if (el) {
+      el.value = next;
+      el.focus();
+      try { el.setSelectionRange(pos + tok.length, pos + tok.length); } catch { /* ignore */ }
+    }
+    update({ content: next });
   };
   return (
     <div className="w-[300px] overflow-hidden rounded-xl border border-amber-500/50 bg-white shadow-sm">
@@ -2437,13 +2436,15 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
         <div className="mt-1.5 flex items-start gap-1.5">
           <textarea
             ref={contentRef}
-            value={d.content ?? ''}
-            onChange={(e) => {
-              setCursorPos(e.target.selectionStart);
-              update({ content: e.target.value });
+            defaultValue={d.content ?? ''}
+            onChange={(e) => { curPosRef.current = e.target.selectionStart; }}
+            onBlur={() => {
+              const el = contentRef.current;
+              const v = el ? el.value : (d.content ?? '');
+              update({ content: v });
             }}
-            onClick={(e) => setCursorPos(e.currentTarget.selectionStart)}
-            onKeyUp={(e) => setCursorPos((e.currentTarget as HTMLTextAreaElement).selectionStart)}
+            onSelect={(e) => { curPosRef.current = (e.target as HTMLTextAreaElement).selectionStart; }}
+            onClick={(e) => { curPosRef.current = (e.currentTarget as HTMLTextAreaElement).selectionStart; }}
             placeholder="预警消息，支持插入字段，如：本周已过去 {已过天数} 天，{店铺名称} 店仓超过3天未开单了，请务必分析原因"
             rows={3}
             className="w-full resize-none rounded-md border px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
