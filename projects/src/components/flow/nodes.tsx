@@ -3619,22 +3619,37 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
       </div>
 
       <div className="mb-1 mt-2 flex items-center gap-1">
-        <span className="shrink-0 text-[11px] text-gray-400">全集返回列(可选)</span>
-        <select
-          value={d.universeReturnField || ''}
-          onChange={(e) => {
-            const f = uniSrcCols.find((x) => x.key === e.target.value);
-            update({ universeReturnField: e.target.value || undefined, universeReturnLabel: f?.label || e.target.value || undefined });
-          }}
-          className={inputCls}
-        >
-          <option value="">（无，仅返回键列）</option>
-          {uniSrcCols.filter((f) => f.key !== d.universeField).map((f) => (
-            <option key={f.key} value={f.key}>
-              {f.label}
-            </option>
-          ))}
-        </select>
+        <span className="shrink-0 text-[11px] text-gray-400">全集返回列(可选，空=返回全部)</span>
+      </div>
+      <div className="max-h-36 overflow-y-auto rounded-md border border-gray-200 p-1 field-list-scroll">
+        <label className="flex cursor-pointer items-center gap-1.5 px-1 py-0.5 text-[12px]">
+          <input
+            type="checkbox"
+            checked={!(d.universeReturnFields && d.universeReturnFields.length > 0) && !d.universeReturnField}
+            onChange={() => update({ universeReturnFields: [], universeReturnField: undefined, universeReturnLabel: undefined } as any)}
+          />
+          <span className="text-gray-600">全部返回（不带回键列）</span>
+        </label>
+        {uniSrcCols.filter((f) => f.key !== d.universeField).map((f) => {
+          const checked = (d.universeReturnFields || [])
+            .map((x) => x.key)
+            .concat(d.universeReturnField ? [d.universeReturnField] : [])
+            .includes(f.key);
+          return (
+            <label key={f.key} className="flex cursor-pointer items-center gap-1.5 px-1 py-0.5 text-[12px]">
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => {
+                  const cur = (d.universeReturnFields || []).filter((x) => x.key !== f.key);
+                  if (!checked) cur.push({ key: f.key, label: f.label });
+                  update({ universeReturnFields: cur, universeReturnField: undefined, universeReturnLabel: undefined } as any);
+                }}
+              />
+              <span className="text-gray-700">{f.label}</span>
+            </label>
+          );
+        })}
       </div>
 
       <div className="mt-2">

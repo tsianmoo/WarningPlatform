@@ -611,9 +611,10 @@ export interface FillJoinNodeData {
     factField: string;
     factFieldLabel?: string;
   }>;
-  /** 全集表额外返回字段（非键列，随行带回，用于带出该档位自身指标，如库存） */
+  /** 全集返回列：为空时默认返回全部列；可多选（universeReturnFields）或单列兼容（universeReturnField） */
   universeReturnField?: string;
   universeReturnLabel?: string;
+  universeReturnFields?: Array<{ key: string; label: string }>;
   /** 全集来源：table（默认，选数据表）或 node（节点结果，如前一补全结果）。universeNodeId 为该节点 id */
   universeSource?: 'table' | 'node';
   universeNodeId?: string;

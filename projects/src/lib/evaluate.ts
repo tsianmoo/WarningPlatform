@@ -1290,9 +1290,19 @@ function evalNode(
       }, []);
       const uniKeyCols = [universeField, ...extraKeys.map((k) => k.universeField)];
       const uniLabels = [fd.universeFieldLabel || universeField, ...extraKeys.map((k) => k.universeFieldLabel || k.universeField)];
-      // 可选：全集额外返回的非键列（如库存）
-      const retField = fd.universeReturnField && !uniKeyCols.includes(fd.universeReturnField) ? fd.universeReturnField : undefined;
-      const retLabel = fd.universeReturnLabel || retField || undefined;
+      // 全集返回列：universeReturnFields 多选（空则默认返回全部列）；兼容旧单列 universeReturnField
+      const uniAllCols = uniRows.length
+        ? Object.keys(uniRows[0] ?? {}).filter((c) => !uniKeyCols.includes(c))
+        : [];
+      const wantsAll =
+        !fd.universeReturnFields || fd.universeReturnFields.length === 0 || fd.universeReturnFields.some((f) => !f.key || f.key === '__all__');
+      const returnRefs = wantsAll
+        ? uniAllCols.map((k) => ({ key: k, label: k }))
+        : (fd.universeReturnFields || []).filter((f) => f.key && !uniKeyCols.includes(f.key));
+      if (!wantsAll && fd.universeReturnField && !returnRefs.some((f) => f.key === fd.universeReturnField)) {
+        returnRefs.push({ key: fd.universeReturnField, label: fd.universeReturnLabel || fd.universeReturnField });
+      }
+      const retFields = returnRefs.filter((f) => !uniLabels.includes(f.label));
       // 全集组合（多键去重）
       const comboSeen = new Set<string>();
       const uniCombos: Array<{ key: string; row: Record<string, string | number> }> = [];
@@ -1308,9 +1318,11 @@ function evalNode(
           else if (typeof v === 'number' || typeof v === 'string') row[lab] = v;
           else row[lab] = String(v);
         });
-        if (retField && retLabel) {
-          const rv = r[retField];
-          row[retLabel] = rv == null ? '' : typeof rv === 'number' ? rv : String(rv);
+        if (retFields.length) {
+          for (const rf of retFields) {
+            const rv = r[rf.key];
+            row[rf.label] = rv == null ? '' : typeof rv === 'number' ? rv : String(rv);
+          }
         }
         uniCombos.push({ key, row });
       }
@@ -1366,7 +1378,7 @@ function evalNode(
       });
       return {
         title: '左关联补全',
-        columns: [...uniLabels, ...(retLabel ? [retLabel] : []), ...factCols],
+        columns: [...uniLabels, ...retFields.map((f) => f.label), ...factCols],
         rows: cap(rows),
         shape: 'table',
         scalar: { kind: 'column', col: factCols[factCols.length - 1] },
