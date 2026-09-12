@@ -119,6 +119,7 @@
 - **⚠️ 部署启动必须先 `export COZE_PROJECT_ENV=PROD`**：`start.sh` 已内置；否则 `node dist/server.js` 会误走 dev 模式（`next dev` + `.next/dev` lock，可能与预览进程冲突）。部署验证用临时端口：`DEPLOY_RUN_PORT=5033 bash scripts/start.sh`。
 - web 项目验收用 `test_run`（静态检查 + 服务探活 + 接口冒烟），不用 shell 绕跑。
 - **⚠️ React Flow 节点内输入/选择控件（input/textarea/select）在拖动选择文本时会触发节点移动**：已通过 FlowCanvas 容器 `onPointerDownCapture` + 目标是 input/textarea/select 时 `stopPropagation` 统一解决，改动节点表单项时勿回退。
+- **画布连线样式**：边固定用 `type: 'bezier'`（贝塞尔曲线，`defaultEdgeOptions` 与 `toRfEdges` 同步）。用曲线而非 `smoothstep`——平滑过渡可避免直角折线带来的"尾部先向右折、再直角跳回左侧 target handle"的观感（用户报连线时尾端跳动）。连线层级用 `globals.css` 的 `.react-flow__edges{z-index:3}` / `.react-flow__nodes{z-index:2}` 让连线盖在重叠节点之上（bezier 边 svg 自身 pointer-events 透传，不挡节点拖拽/点击；Controls/MiniMap 仍默认 5 层在上）。改边类型/z-index 时这两处要保持一致。
 - **lint 基准**：本项目已修至 `pnpm lint` 0 error 0 warning（禁 `any`/未用变量、JSX 内不直接 `Date.now()`/`Math.random()`/`"` 等）。改动代码后保持 `pnpm lint` / `pnpm ts-check` / `pnpm lint:style` 全绿，勿回退。
 
 ## 数据库（Supabase）

@@ -157,3 +157,11 @@ body {
 .field-list-scroll::-webkit-scrollbar-thumb:hover {
   background: #fb923c;
 }
+
+/* 连线层级置于节点之上：组件重叠时连线不被节点遮挡（节点仍可拖拽/点击，连线 svg 本身 pointer-events 透传） */
+.react-flow__edges {
+  z-index: 3;
+}
+.react-flow__nodes {
+  z-index: 2;
+}
