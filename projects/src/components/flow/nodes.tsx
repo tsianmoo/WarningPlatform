@@ -1004,7 +1004,7 @@ const ConditionNode = memo(({ id, data }: NodeProps) => {
             const isNoValue = c.op === 'empty' || c.op === 'notEmpty' || c.op === 'gt' || c.op === 'gte' || c.op === 'lt' || c.op === 'lte';
             return (
               <div key={i} className="space-y-1 rounded-md border border-gray-200 p-1.5">
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <select
                     value={c.col ?? ''}
                     onChange={(e) => {
@@ -1127,7 +1127,7 @@ const ConditionNode = memo(({ id, data }: NodeProps) => {
         </div>
       )}
 
-        <div className="text-[10px] text-gray-400">
+        <div className="mt-1 pl-0.5 leading-relaxed text-[10px] text-gray-400">
           {leftMode === 'node' && d.conditions && d.conditions.length ? (
             `即：命中（${d.conditionJoin === 'or' ? '任一' : '全部'}）` +
             d.conditions
