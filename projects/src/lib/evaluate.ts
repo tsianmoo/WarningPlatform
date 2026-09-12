@@ -1491,10 +1491,22 @@ function evalNode(
             // 「空/0」同时匹配空值与 0
             const emptyHit = values.includes('') && (emptyVal(raw) || String(raw ?? '') === '0');
             let valHit = false;
+            const cmpOps = op === 'gt' || op === 'gte' || op === 'lt' || op === 'lte';
             for (const v of values) {
               if (v === '') continue;
               if (op === 'contains') {
                 if (String(raw ?? '').toLowerCase().includes(String(v).toLowerCase())) { valHit = true; break; }
+              } else if (cmpOps) {
+                const r = toNum(raw);
+                const n = toNum(v);
+                if (Number.isFinite(r) && Number.isFinite(n)) {
+                  const hit =
+                    op === 'gt' ? r > n :
+                    op === 'gte' ? r >= n :
+                    op === 'lt' ? r < n :
+                    r <= n;
+                  if (hit) { valHit = true; break; }
+                }
               } else if (numEq(raw, v)) {
                 valHit = true;
                 break;

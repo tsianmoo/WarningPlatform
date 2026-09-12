@@ -1036,22 +1036,48 @@ const ConditionNode = memo(({ id, data }: NodeProps) => {
                     <option value="notEmpty">不为空</option>
                   </select>
                   {(c.op === 'gt' || c.op === 'gte' || c.op === 'lt' || c.op === 'lte') && (
-                    <select
-                      value={c.refNode?.nodeId ?? ''}
-                      onChange={(e) => {
-                        const ref = scalarOutputs.find((o) => o.ref.nodeId === e.target.value)?.ref;
-                        setCond(i, { refNode: e.target.value ? ref : undefined, values: [] });
-                      }}
-                      className="max-w-40 shrink-0 rounded-md border bg-white px-1 py-0.5 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
-                      title="引用基准统计/节点标量作比较值"
-                    >
-                      <option value="">比较值选择…</option>
-                      {scalarOutputs.map((o) => (
-                        <option key={o.ref.nodeId} value={o.ref.nodeId}>
-                          {o.ref.label}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <span
+                        onClick={() => setCond(i, { refNode: undefined, values: [] })}
+                        className={`cursor-pointer rounded px-1 py-0.5 text-[10px] ${!c.refNode?.nodeId ? 'bg-violet-100 text-violet-700' : 'text-gray-400 hover:bg-gray-100'}`}
+                        title="直接输入数字比较"
+                      >
+                        数字
+                      </span>
+                      <span
+                        onClick={() => setCond(i, { refNode: scalarOutputs[0]?.ref, values: [] })}
+                        className={`cursor-pointer rounded px-1 py-0.5 text-[10px] ${c.refNode?.nodeId ? 'bg-violet-100 text-violet-700' : 'text-gray-400 hover:bg-gray-100'}`}
+                        title="引用其他节点结果作比较值"
+                      >
+                        节点
+                      </span>
+                      {!c.refNode?.nodeId ? (
+                        <input
+                          value={c.values?.[0] ?? ''}
+                          onChange={(e) => setCond(i, { values: e.target.value ? [e.target.value] : [] })}
+                          placeholder="输入数值"
+                          type="number"
+                          className="w-20 shrink-0 rounded-md border bg-white px-1 py-0.5 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                        />
+                      ) : (
+                        <select
+                          value={c.refNode?.nodeId ?? ''}
+                          onChange={(e) => {
+                            const ref = scalarOutputs.find((o) => o.ref.nodeId === e.target.value)?.ref;
+                            setCond(i, { refNode: e.target.value ? ref : undefined, values: [] });
+                          }}
+                          className="max-w-40 shrink-0 rounded-md border bg-white px-1 py-0.5 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                          title="引用基准统计/节点标量作比较值"
+                        >
+                          <option value="">比较值选择…</option>
+                          {scalarOutputs.map((o) => (
+                            <option key={o.ref.nodeId} value={o.ref.nodeId}>
+                              {o.ref.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
                   )}
                   <button onClick={() => removeCond(i)} className="shrink-0 rounded px-1 text-[12px] text-gray-400 hover:text-red-500" title="删除条件">
                     ×
