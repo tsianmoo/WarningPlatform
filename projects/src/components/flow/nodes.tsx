@@ -2988,7 +2988,7 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
         return (
           <div className="space-y-1">
             {shown.map((mt, idx) => (
-              <div key={mt.id || idx} className="flex items-center gap-1">
+              <div key={mt.id || idx} className="flex flex-wrap items-center gap-1">
                 <select
                   value={mt.fieldKey}
                   onChange={(e) => {
@@ -3033,6 +3033,20 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
                     ✕
                   </button>
                 )}
+                <input
+                  value={mt.resultLabel || ''}
+                  onChange={(e) => {
+                    const next = [...shown];
+                    next[idx] = { ...mt, resultLabel: e.target.value, id: mt.id || `gm_${Date.now()}_${idx}` };
+                    setMetrics(next);
+                  }}
+                  placeholder={
+                    mt.fieldKey
+                      ? `结果字段名（默认：${AGG_FN_OPTIONS.find((a) => a.value === mt.fn)?.label.split(' ')[0] || ''}(${mt.fieldLabel || mt.fieldKey})）`
+                      : '结果字段名…'
+                  }
+                  className="w-full rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 placeholder:text-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                />
               </div>
             ))}
             <button
