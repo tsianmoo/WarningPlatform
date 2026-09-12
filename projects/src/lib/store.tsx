@@ -10,7 +10,7 @@ import type {
   TargetSetting,
 } from './types';
 import { uid, OPERATOR_OPTIONS } from './types';
-import { buildSampleTable } from './parser';
+import { buildSampleTable, ensureFieldsComplete } from './parser';
 import { evaluateFlow } from './evaluate';
 import type { NodePreview } from './evaluate';
 import type { ActionNodeData, ConditionNodeData, FlowNode } from './types';
@@ -193,7 +193,7 @@ function migrateState(raw: AppState | null): AppState {
           : [];
     return { ...r, tableIds };
   });
-  return { ...raw, rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [] };
+  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [] };
 }
 
 function loadInitial(): AppState {
@@ -422,7 +422,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         }
         setState((s) => ({
           ...s,
-          tables,
+          tables: (tables ?? []).map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })),
           rules,
           alerts: remote.alerts ?? [],
           activeTableId: tables[0]?.id ?? '',

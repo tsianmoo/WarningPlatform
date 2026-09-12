@@ -64,6 +64,27 @@ export function buildTableFromRows(rows: Record<string, unknown>[]): {
   return { fields, previewRows, rowCount: rows.length, rows: fullRows };
 }
 
+/** 补齐表格 fields：若 rows 中出现但 fields 缺失的列，追加到尾部（兼容旧字段快照） */
+export function ensureFieldsComplete(fields: TableField[], rows: Record<string, unknown>[]): TableField[] {
+  const first = rows[0];
+  if (!first) return fields;
+  const known = new Set(fields.map((f) => f.key));
+  const keys = Object.keys(first);
+  const next = [...fields];
+  keys.forEach((k, i) => {
+    if (known.has(k)) return;
+    const samples = rows.map((r) => String(r[k] ?? ''));
+    next.push({
+      key: k,
+      alias: k,
+      type: inferFieldType(samples),
+      tagColor: TAG_COLORS[next.length % TAG_COLORS.length],
+      sample: samples.find((s) => s !== '') ?? '',
+    });
+  });
+  return next;
+}
+
 /** 解析 Excel 文件 */
 export async function parseExcel(file: File): Promise<ParsedResult> {
   const buf = await file.arrayBuffer();
