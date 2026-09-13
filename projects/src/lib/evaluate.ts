@@ -1267,9 +1267,9 @@ function evalNode(
       if ((bd.source ?? 'node') === 'node') {
         const src = pickColumnOutput(outputs, incoming, bd.refNode?.nodeId);
         if (!src) return { title: '基准统计', columns: [], rows: [], note: '请先添加「查找·聚合带回 / 分组聚合」节点并连到本节点。' };
-        valueKey = bd.refNode?.label || src.columns[src.columns.length - 1];
+        valueKey = bd.valueField || bd.refNode?.label || src.columns[src.columns.length - 1];
         rowset = src.rows;
-        basis = `节点结果「${valueKey}」的 ${rowset.length} 个取值`;
+        basis = `节点结果「${bd.valueFieldLabel || valueKey}」的 ${rowset.length} 个取值`;
       } else {
         const t = resolveTable(tables, bd.tableId);
         valueKey = bd.valueField || t?.fields.find((f) => f.type === 'number')?.key || '';

@@ -3616,7 +3616,7 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
   const isTailAvg = d.baselineFn === 'topAvg' || d.baselineFn === 'bottomAvg';
   const percent = typeof d.percent === 'number' && d.percent > 0 ? d.percent : 20;
   const pickedLabel = source === 'node' ? d.refNode?.label : d.valueFieldLabel;
-  const hasStatField = source === 'node' ? !!d.refNode?.nodeId : !!d.valueField;
+  const hasStatField = source === 'node' ? !!d.valueField : !!d.valueField;
 
   return (
     <NodeShell fnode={fnode}>
@@ -3646,17 +3646,12 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
 
       {source === 'node' ? (
         <>
-          <div className={rowLabel}>① 统计字段（选择要统计的数值列）</div>
+          <div className={rowLabel}>① 引用节点输出（先选择节点）</div>
           <select
             value={d.refNode?.nodeId ?? ''}
             onChange={(e) => {
               const o = columnOutputs.find((x) => x.ref.nodeId === e.target.value);
-              update({
-                refNode: o?.ref,
-                resultLabel: o
-                  ? `${o.ref.label}${isTailAvg ? `前/后${percent}%` : ''}的平均值`
-                  : d.resultLabel,
-              });
+              update({ refNode: o?.ref, valueField: '', valueFieldLabel: '' });
             }}
             className={inputCls}
           >
@@ -3670,6 +3665,35 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
           {columnOutputs.length === 0 && (
             <div className="mt-1.5 rounded-md bg-amber-50 px-2 py-1 text-[10px] leading-relaxed text-amber-700">
               画布上还没有&quot;逐组指标&quot;节点。请先添加「查找·聚合带回」或「分组聚合」，输出每个店仓的成交金额。
+            </div>
+          )}
+
+          <div className={rowLabel}>② 统计字段（选择要统计的数值列）</div>
+          <select
+            value={d.valueField}
+            disabled={!d.refNode?.nodeId}
+            onChange={(e) => {
+              const f = columnOutputs.find((x) => x.ref.label === e.target.value);
+              update({
+                valueField: e.target.value,
+                valueFieldLabel: f?.ref.label ?? e.target.value,
+                resultLabel: f ? `${f.ref.label}${isTailAvg ? `前/后${percent}%` : ''}的平均值` : d.resultLabel,
+              });
+            }}
+            className={inputCls}
+          >
+            <option value="">选择节点输出字段，如：未开单天数…</option>
+            {columnOutputs
+              .filter((o) => o.ref.nodeId === d.refNode?.nodeId)
+              .map((o) => (
+                <option key={o.ref.nodeId + ':' + o.ref.label} value={o.ref.label}>
+                  {o.ref.label}
+                </option>
+              ))}
+          </select>
+          {d.refNode?.nodeId && columnOutputs.filter((o) => o.ref.nodeId === d.refNode?.nodeId).length === 0 && (
+            <div className="mt-1.5 rounded-md bg-amber-50 px-2 py-1 text-[10px] leading-relaxed text-amber-700">
+              该节点暂无可统计的数值列，请重选引用节点。
             </div>
           )}
         </>
