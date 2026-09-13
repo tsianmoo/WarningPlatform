@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Bell, Eye, Plus, RotateCcw, Send, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Bell, Eye, Plus, RotateCcw, Send, X } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import type { AlertStatus, AlertTask } from '@/lib/types';
 import { PERSONNEL } from '@/lib/types';
@@ -72,6 +72,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
   const [handoffId, setHandoffId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [filter, setFilter] = useState(emptyFilter);
+  const [confirmBox, setConfirmBox] = useState<{ title: string; desc: string; confirmLabel: string; onConfirm: () => void } | null>(null);
   const rules = state.rules;
 
   const deptOptions = useMemo(() => [...new Set(alerts.map((a) => a.dept).filter(Boolean))], [alerts]);
@@ -224,7 +225,13 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                 if (a.status === 'new') {
                   actions.push({
                     label: '接受',
-                    fn: () => updateAlertStatus(a.id, { status: 'accepted', assignee: a.assignee || '当前用户', updatedAt: Date.now() }),
+                    fn: () =>
+                      setConfirmBox({
+                        title: '确认接受该预警？',
+                        desc: `将「${a.ruleName || a.title || '该预警'}」分配给 ${a.assignee || '当前用户'}，状态改为「已接受」。`,
+                        confirmLabel: '确认接受',
+                        onConfirm: () => updateAlertStatus(a.id, { status: 'accepted', assignee: a.assignee || '当前用户', updatedAt: Date.now() }),
+                      }),
                     cls: 'bg-gray-800 text-white hover:bg-gray-700',
                   });
                 } else if (a.status === 'accepted') {
@@ -248,7 +255,13 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                   });
                   actions.push({
                     label: '无法完成',
-                    fn: () => updateAlertStatus(a.id, { status: 'failed', updatedAt: Date.now() }),
+                    fn: () =>
+                      setConfirmBox({
+                        title: '确认标记为无法完成？',
+                        desc: '确认后将「' + (a.ruleName || a.title || '该预警') + '」状态改为「无法完成」，不再视为待处理。',
+                        confirmLabel: '确认无法完成',
+                        onConfirm: () => updateAlertStatus(a.id, { status: 'failed', updatedAt: Date.now() }),
+                      }),
                     cls: 'border border-gray-100 bg-white text-gray-300 hover:bg-gray-50',
                   });
                 }
@@ -448,14 +461,21 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                 <button
                   key={p.name}
                   onClick={() => {
-                    updateAlertStatus(handoffId, {
-                      assignee: p.name,
-                      handoffTo: p.name,
-                      dept: p.dept,
-                      status: 'processing',
-                      updatedAt: Date.now(),
+                    setConfirmBox({
+                      title: '确认转交预警？',
+                      desc: `确认将「${alerts.find((x) => x.id === handoffId)?.ruleName || alerts.find((x) => x.id === handoffId)?.title || '该预警'}」转交给「${p.name}（${p.dept}）」？`,
+                      confirmLabel: '确认转交',
+                      onConfirm: () => {
+                        updateAlertStatus(handoffId, {
+                          assignee: p.name,
+                          handoffTo: p.name,
+                          dept: p.dept,
+                          status: 'processing',
+                          updatedAt: Date.now(),
+                        });
+                        setHandoffId(null);
+                      },
                     });
-                    setHandoffId(null);
                   }}
                   className="flex w-full items-center justify-between rounded px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
                 >
@@ -463,6 +483,40 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                   <span className="text-xs text-gray-400">{p.dept}</span>
                 </button>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 二次确认弹窗（接受 / 转交 / 无法完成） */}
+      {confirmBox && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/20 p-4 backdrop-blur-sm" onClick={() => setConfirmBox(null)}>
+          <div className="w-full max-w-xs rounded-lg border border-gray-200 bg-white p-5 shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-500">
+                <AlertTriangle size={17} />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-gray-800">{confirmBox.title}</h3>
+                <p className="mt-1 text-xs leading-relaxed text-gray-500">{confirmBox.desc}</p>
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmBox(null)}
+                className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  confirmBox.onConfirm();
+                  setConfirmBox(null);
+                }}
+                className="rounded-md bg-gray-800 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700"
+              >
+                {confirmBox.confirmLabel}
+              </button>
             </div>
           </div>
         </div>
