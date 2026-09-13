@@ -57,28 +57,6 @@ function buildConditionDesc(nodes: FlowNode[]): string {
   return parts.join(' 且 ') || '';
 }
 
-/** 通知对象节点「超时未完成推送」已选对象数（预览承载超时推送配置用） */
-function notifyTimeoutCount(nd: NotifyNodeData) {
-  return (
-    (nd.timeoutStores?.length || 0) +
-    (nd.timeoutStaff?.length || 0) +
-    (nd.timeoutDepartments?.length || 0) +
-    (nd.timeoutPositions?.length || 0) +
-    (nd.timeoutCustom?.length || 0)
-  );
-}
-
-/** 提取超时未完成推送对象，随预警预览持久化（供超时任务升级推送用） */
-function pickTimeoutNotify(nd: NotifyNodeData) {
-  return {
-    stores: nd.timeoutStores ?? [],
-    staff: nd.timeoutStaff ?? [],
-    departments: nd.timeoutDepartments ?? [],
-    positions: nd.timeoutPositions ?? [],
-    custom: nd.timeoutCustom ?? [],
-  };
-}
-
 /** 依据规则里配置的预警动作节点生成预警工单（不含 id/时间戳，由 ADD_ALERT 落库时补齐） */
 export function buildAlertsForRule(
   rule: AlertRule,
@@ -136,12 +114,7 @@ export function buildAlertsForRule(
         })
       : undefined;
     const preview = hit && hitRows.length
-      ? {
-          columns: hit.columns,
-          rows: hitRows,
-          ...(storeMessages ? { storeMessages } : {}),
-          ...(nData && notifyTimeoutCount(nData) ? { timeoutNotify: pickTimeoutNotify(nData) } : {}),
-        }
+      ? { columns: hit.columns, rows: hitRows, ...(storeMessages ? { storeMessages } : {}) }
       : undefined;
     // 类型/重要等级 → 兼容 level；字段模板替换（列表预览取第一行）
     const type = a.data.type;

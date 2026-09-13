@@ -2543,39 +2543,48 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
   );
 });
 
-/** 通知对象节点：独立流程节点，两块推送配置（①推送对象 ②超时未完成推送给谁），各维度独立多选，接收人取并集 */
+/** 统计通知对象已选元素数 */
+function notifyCount(nd: NotifyNodeData) {
+  return (
+    (nd.stores?.length || 0) +
+    (nd.staff?.length || 0) +
+    (nd.departments?.length || 0) +
+    (nd.positions?.length || 0) +
+    (nd.custom?.length || 0)
+  );
+}
+
+/** 通知对象节点：独立流程节点，各投递维度（门店/门店员工/管理部门/部门职位/自定义）独立多选，接收人取并集 */
 const NotifyNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'notify' as const, data, position: { x: 0, y: 0 } } as FlowNode;
   const d = data as unknown as NotifyNodeData;
   const update = useNodeUpdater(id);
-  const PUSH_DIMS = [
+  const GROUPS: {
+    key: 'stores' | 'staff' | 'departments' | 'positions' | 'custom';
+    title: string;
+    hint: string;
+    options: string[];
+  }[] = [
     { key: 'stores', title: '按门店', hint: '对应门店收到该店预警消息', options: STORES },
     { key: 'staff', title: '按门店员工', hint: '门店下的员工收与自己相关的预警', options: PERSONNEL.map((p) => p.name) },
     { key: 'departments', title: '按管理部门', hint: '该部门收到预警', options: DEPARTMENTS },
     { key: 'positions', title: '按部门职位', hint: '该职位的人收到预警', options: POSITIONS },
     { key: 'custom', title: '自定义指定的人', hint: '指定的人收到', options: PERSONNEL.map((p) => p.name) },
-  ] as const;
-  const TIMEOUT_DIMS = [
-    { key: 'timeoutStores', title: '按门店', hint: '超时未完成时通知该门店', options: STORES },
-    { key: 'timeoutStaff', title: '按门店员工', hint: '超时转发给门店员工', options: PERSONNEL.map((p) => p.name) },
-    { key: 'timeoutDepartments', title: '按管理部门', hint: '超时转发给该部门', options: DEPARTMENTS },
-    { key: 'timeoutPositions', title: '按部门职位', hint: '超时转发给该职位的人', options: POSITIONS },
-    { key: 'timeoutCustom', title: '自定义指定的人', hint: '超时转发给指定的人', options: PERSONNEL.map((p) => p.name) },
-  ] as const;
-  const block = (
-    dims: readonly { key: NotifyListKey; title: string; hint: string; options: string[] }[],
-    accent: string,
-  ) => (
-    <>
-      {dims.map((g, gi) => {
-        const arr = (d[g.key] as string[] | undefined) ?? [];
+  ];
+  const total = notifyCount(d);
+  const label = d.notifyLabel || (total ? `通知对象（${total}）` : '通知对象');
+  return (
+    <NodeShell fnode={fnode}>
+      <div className="text-[10px] font-semibold text-pink-700">{label}</div>
+      {GROUPS.map((g) => {
+        const arr = (d[g.key] as string[]) ?? [];
         const toggle = (item: string) =>
           update({ [g.key]: arr.includes(item) ? arr.filter((x) => x !== item) : [...arr, item] } as never);
         return (
-          <div key={g.key} className={gi ? 'mt-1.5' : ''}>
+          <div key={g.key} className={g === GROUPS[0] ? '' : 'mt-1.5'}>
             <div className="mb-0.5 flex items-center justify-between text-[9px] text-gray-500">
               <span className="font-semibold">{g.title}</span>
-              <span className={`rounded px-1 font-semibold ${accent}`}>{arr.length}</span>
+              <span className="rounded bg-pink-500/15 px-1 font-semibold text-pink-700">{arr.length}</span>
             </div>
             <div className="flex flex-wrap gap-1">
               {g.options.map((o) => (
@@ -2594,67 +2603,11 @@ const NotifyNode = memo(({ id, data }: NodeProps) => {
           </div>
         );
       })}
-    </>
-  );
-  const pushCount = notifyCount(d);
-  const timeoutCount = notifyTimeoutCount(d);
-  const label = d.notifyLabel || (pushCount || timeoutCount ? `通知对象（${pushCount + timeoutCount}）` : '通知对象');
-  return (
-    <NodeShell fnode={fnode}>
-      <div className="text-[10px] font-semibold text-pink-700">{label}</div>
-      <div className="mt-1.5 rounded border border-pink-200/70 bg-pink-50/40 p-1.5">
-        <div className="mb-1 flex items-center justify-between text-[9px] font-semibold text-pink-700">
-          <span>推送对象</span>
-          <span className="rounded bg-white/70 px-1">{pushCount}</span>
-        </div>
-        {block(PUSH_DIMS, 'bg-pink-500/15 text-pink-700')}
-      </div>
-      <div className="mt-1 rounded border border-amber-300/60 bg-amber-50/60 p-1.5">
-        <div className="mb-1 flex items-center justify-between text-[9px] font-semibold text-amber-700">
-          <span>超时未完成推送给谁</span>
-          <span className="rounded bg-white/70 px-1">{timeoutCount}</span>
-        </div>
-        {block(TIMEOUT_DIMS, 'bg-amber-500/15 text-amber-700')}
-      </div>
       <div className="mt-1.5 text-[9px] text-gray-400">各维度同时通知，接收人取并集</div>
       <Handle type="target" position={Position.Left} style={{ background: '#DB2777', width: 10, height: 10 }} />
     </NodeShell>
   );
 });
-
-type NotifyListKey =
-  | 'stores'
-  | 'staff'
-  | 'departments'
-  | 'positions'
-  | 'custom'
-  | 'timeoutStores'
-  | 'timeoutStaff'
-  | 'timeoutDepartments'
-  | 'timeoutPositions'
-  | 'timeoutCustom';
-
-/** 统计通知对象已选元素数 */
-function notifyCount(nd: NotifyNodeData) {
-  return (
-    (nd.stores?.length || 0) +
-    (nd.staff?.length || 0) +
-    (nd.departments?.length || 0) +
-    (nd.positions?.length || 0) +
-    (nd.custom?.length || 0)
-  );
-}
-
-/** 统计超时未完成推送已选元素数 */
-function notifyTimeoutCount(nd: NotifyNodeData) {
-  return (
-    (nd.timeoutStores?.length || 0) +
-    (nd.timeoutStaff?.length || 0) +
-    (nd.timeoutDepartments?.length || 0) +
-    (nd.timeoutPositions?.length || 0) +
-    (nd.timeoutCustom?.length || 0)
-  );
-}
 
 // ---------- 排名取数（TopN）节点 ----------
 const TopNNode = memo(({ id, data }: NodeProps) => {  const fnode = { id, kind: 'topn' as const, data, position: { x: 0, y: 0 } } as FlowNode;
@@ -4699,19 +4652,7 @@ export function createNodeData(
     case 'action':
       return { type: 'alert', priority: 'Important', level: 'warn', title: '触发预警通知', content: '', notify: { stores: [], roles: [], departments: [], positions: [], personnel: [] } };
     case 'notify':
-      return {
-        stores: [],
-        staff: [],
-        departments: [],
-        positions: [],
-        custom: [],
-        timeoutStores: [],
-        timeoutStaff: [],
-        timeoutDepartments: [],
-        timeoutPositions: [],
-        timeoutCustom: [],
-        notifyLabel: '',
-      };
+      return { stores: [], staff: [], departments: [], positions: [], custom: [], notifyLabel: '' };
     case 'time':
       return { timeWindow: { preset: 'thisWeek' } };
     case 'topn':

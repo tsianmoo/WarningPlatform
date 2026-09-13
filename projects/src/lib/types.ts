@@ -740,16 +740,6 @@ export interface NotifyNodeData {
   positions: string[];
   /** 自定义通知：指定的人收到 */
   custom: string[];
-  /** 超时未完成推送：按门店（预警超时未处理时通知该门店） */
-  timeoutStores: string[];
-  /** 超时未完成推送：按门店员工 */
-  timeoutStaff: string[];
-  /** 超时未完成推送：按管理部门 */
-  timeoutDepartments: string[];
-  /** 超时未完成推送：按部门职位 */
-  timeoutPositions: string[];
-  /** 超时未完成推送：自定义指定的人 */
-  timeoutCustom: string[];
   /** 节点标题（展示用） */
   notifyLabel?: string;
 }
@@ -944,14 +934,6 @@ export interface AlertTask {
     createdBy?: string;
     /** 每个店铺/店仓的预警消息（逐行渲染 action 消息模板） */
     storeMessages?: { store: string; message: string }[];
-    /** 超时未完成推送对象（随 preview JSON 持久化，供超时任务升级推送用） */
-    timeoutNotify?: {
-      stores: string[];
-      staff: string[];
-      departments: string[];
-      positions: string[];
-      custom: string[];
-    };
   };
   /** 创建人（展示用，持久化于 preview.createdBy） */
   createdBy?: string;
