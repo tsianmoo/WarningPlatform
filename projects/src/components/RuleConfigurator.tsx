@@ -126,7 +126,7 @@ export function RuleConfigurator({
       const final: AlertRule = {
         ...r,
         name: r.name.trim(),
-        targets: { ...finalTargets, stores: [], roles: [], positions: [] },
+        targets: finalTargets,
         status: mode === 'activate' ? 'active' : exists ? r.status : 'draft',
         executions:
           mode === 'activate' && r.executions.length === 0

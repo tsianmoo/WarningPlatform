@@ -8,7 +8,6 @@ import type {
   ExecutionRecord,
   Schedule,
   TargetSetting,
-  NotifyNodeData,
 } from './types';
 import { uid, OPERATOR_OPTIONS } from './types';
 import { buildSampleTable, ensureFieldsComplete } from './parser';
@@ -82,12 +81,6 @@ export function buildAlertsForRule(
   const conditionDesc = buildConditionDesc(rule.flow.nodes);
   return base.map((a) => {
     const notify = a.data.notify;
-    // 独立通知对象节点（action.refNotifyNode 指向画布上 kind='notify' 的节点）
-    const refNotify = a.data.refNotifyNode?.nodeId
-      ? rule.flow.nodes.find((nd) => nd.id === a.data.refNotifyNode?.nodeId && nd.kind === 'notify')
-      : undefined;
-    const nData = refNotify?.data as NotifyNodeData | undefined;
-    const nMode = nData?.mode;
     const actionTitle = a.data.title?.trim() || rule.name;
     const hit = a.id ? evalMap?.[a.id] : undefined;
     const rawTpl = a.data.content?.trim() || '';
@@ -137,12 +130,8 @@ export function buildAlertsForRule(
       conditionDesc: conditionDesc || undefined,
       preview,
       createdBy: '系统',
-      dept: nMode === 'dept' ? (nData?.departments ?? []).join('、')
-        : nMode === 'store' ? (nData?.stores ?? []).join('、')
-        : notify?.departments?.[0] ?? notify?.roles?.[0] ?? targets?.departments?.[0] ?? '',
-      assignee: nMode === 'staff' ? (nData?.staff ?? []).join('、')
-        : nMode === 'custom' ? (nData?.custom ?? []).join('、')
-        : notify?.personnel?.[0] ?? notify?.positions?.[0] ?? targets?.personnel?.[0] ?? '',
+      dept: notify?.departments?.[0] ?? targets?.departments?.[0] ?? '',
+      assignee: notify?.personnel?.[0] ?? targets?.personnel?.[0] ?? '',
       status: 'new' as const,
     };
   });
@@ -307,7 +296,7 @@ export function makeDefaultRule(): AlertRule {
     updatedAt: Date.now(),
     flow: { nodes: [], edges: [] },
     schedule: makeDefaultSchedule(),
-    targets: { departments: [], personnel: [], stores: [], roles: [], positions: [] },
+    targets: { departments: [], personnel: [] },
     executions: [],
   };
 }

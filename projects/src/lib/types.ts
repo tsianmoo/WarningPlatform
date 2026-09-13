@@ -58,8 +58,7 @@ export type NodeKind =
   | 'base' // 基础数据（从一张表取一列去重值，如店仓表→全部店仓）
   | 'filter' // 过滤（对某表按多条件筛选行，支持搜索多选/单选）
   | 'elapsed' // 已过天数（本周/月/季/年或自定义区间，已过去的天数，标量）
-  | 'logic' // 逻辑关联（如果/且/或），串联多个判断
-  | 'notify'; // 通知对象（按门店/门店员工/部门/自定义），独立终点节点，供预警动作引用
+  | 'logic'; // 逻辑关联（如果/且/或），串联多个判断
 
 /** 比较运算符 */
 export type Operator =
@@ -637,10 +636,8 @@ export interface ActionNodeData {
   title: string;
   /** 提醒文案（预警描述），支持 {字段名} 模板占位，触发时替换为命中行实际值 */
   content?: string;
-  /** 本动作独立的通知对象（门店/角色/部门/职位），不随其它动作联动（旧结构，存量兼容） */
-  notify?: TargetSetting;
-  /** 关联的通知对象节点（独立流程节点），优先级高于 notify */
-  refNotifyNode?: { nodeId: string; label: string };
+  /** 本动作独立的通知对象（部门/人员），不随其它动作联动 */
+  notify?: { departments: string[]; personnel: string[] };
   /** 命中数据来源（上游节点）：预览与触发时从此节点取命中的行/列 */
   sourceNode?: NodeResultRef;
 }
@@ -728,35 +725,10 @@ export interface Schedule {
 
 // ============ 通知对象 ============
 
-/** 通知方式：按门店 / 按门店员工 / 按部门 / 自定义 */
-export type NotifyMode = 'store' | 'staff' | 'dept' | 'custom';
-
-/** 通知对象节点数据（独立流程节点，供预警动作引用） */
-export interface NotifyNodeData {
-  /** 通知方式（单选） */
-  mode: NotifyMode;
-  /** 按门店通知（激活后被命中的每个门店各收到一条） */
-  stores: string[];
-  /** 按门店员工通知（每个门店的导购收到与自己相关的预警） */
-  staff: string[];
-  /** 按部门通知（门店所负责的部门收到该预警） */
-  departments: string[];
-  /** 自定义通知（指定的人收到） */
-  custom: string[];
-  /** 节点标题（展示用） */
-  notifyLabel?: string;
-}
-
 export interface TargetSetting {
-  /** 按门店通知（激活后被命中的每个门店各收到一条） */
-  stores: string[];
-  /** 按角色通知 */
-  roles: string[];
   /** 适用部门 */
   departments: string[];
-  /** 按职位通知 */
-  positions: string[];
-  /** 适用人员（保留兼容，供预警 assignee 兜底） */
+  /** 适用人员 */
   personnel: string[];
 }
 
@@ -800,14 +772,8 @@ export interface AlertRule {
   executions: ExecutionRecord[];
 }
 
-// ============ 内置部门 / 人员 / 门店 / 角色 / 职位 ============
+// ============ 内置部门 / 人员 ============
 
-/** 门店名单（预警画布的业务门店；通知对象「按门店」时勾选） */
-export const STORES = ['万悦城', '万达', '吾悦', '银泰', '恒隆', '大悦城', '万象城', '龙湖天街'];
-/** 角色名单（通知对象「按角色」时勾选） */
-export const ROLES = ['销售经理', '区域经理', '店长', '督导', '运营专员', '客服主管'];
-/** 职位名单（通知对象「按职位」时勾选） */
-export const POSITIONS = ['经理', '主管', '专员', '统计员'];
 export const DEPARTMENTS = ['风控部', '运营部', '数据部', '安全部', '财务部', '客服部'];
 export const PERSONNEL = [
   { name: '张伟', dept: '风控部' },
@@ -858,7 +824,6 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   filter: '数据过滤',
   elapsed: '已过天数',
   rank: '排名',
-  notify: '通知对象',
 };
 
 /** 节点分类色 */
@@ -884,7 +849,6 @@ export const KIND_COLOR: Record<
   filter: { bg: '#F0FDF4', border: '#16A34A', text: '#166534', dot: '#16A34A' },
   elapsed: { bg: '#ECFEFF', border: '#0891B2', text: '#155E75', dot: '#0891B2' },
   rank: { bg: '#EFF6FF', border: '#2563EB', text: '#1D4ED8', dot: '#2563EB' },
-  notify: { bg: '#FDF2F8', border: '#DB2777', text: '#BE185D', dot: '#DB2777' },
 };
 
 /** 预警类型（级别→类型：提醒/预警） */
