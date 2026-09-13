@@ -47,6 +47,9 @@ import {
   type RankItem,
   DEPARTMENTS,
   PERSONNEL,
+  POSITIONS,
+  ROLES,
+  STORES,
 } from '@/lib/types';
 import { useStore } from '@/lib/store';
 import TimeComponent from './TimeComponent';
@@ -2301,7 +2304,7 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
   const prio = d.priority ?? 'ImportantNotUrgent';
   const typeMeta = ACTION_TYPES.find((t) => t.value === type);
   // 通知对象独立保存
-  const notify = d.notify ?? { departments: [] as string[], personnel: [] as string[] };
+  const notify = d.notify ?? { stores: [] as string[], roles: [] as string[], departments: [] as string[], positions: [] as string[], personnel: [] as string[] };
   // 可插入字段：优先用 evaluateFlow 的真实输出列（=预览数据字段，保证完整），失败时回退 inferNodeCols 推断
   // 只依赖"其它节点的配置数据 + edges 结构"，用内容签名缓存：action 自身 content/title 输入不触发重算，
   // 避免每次敲键都全量 evaluate 导致输入卡顿
@@ -2507,58 +2510,52 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
   );
 });
 
-/** 通知对象配置（部门 + 人员），供预警动作节点内嵌 */
+/** 通知对象配置（按门店 / 按角色 / 按部门 / 按职位，均多选；门店通知=每个命中门店单独发一条），供预警动作节点内嵌 */
 function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: (t: TargetSetting) => void }) {
-  const toggleDept = (d: string) =>
-    onChange({
-      ...targets,
-      departments: targets.departments.includes(d) ? targets.departments.filter((x) => x !== d) : [...targets.departments, d],
-    });
-  const togglePerson = (p: string) =>
-    onChange({
-      ...targets,
-      personnel: targets.personnel.includes(p) ? targets.personnel.filter((x) => x !== p) : [...targets.personnel, p],
-    });
+  const toggle = <K extends keyof TargetSetting>(key: K, val: string[]) =>
+    onChange({ ...targets, [key]: val });
+  const toggleItem = (key: keyof TargetSetting, item: string) => {
+    const cur = (targets[key] as string[]) ?? [];
+    toggle(key, cur.includes(item) ? cur.filter((x) => x !== item) : [...cur, item]);
+  };
   const groupLabel = 'mb-1 text-[10px] text-gray-400';
+  const Count = ({ arr }: { arr: string[] }) =>
+    arr.length ? (
+      <span className="ml-1 rounded bg-amber-500/15 px-1 text-[9px] font-semibold text-amber-700">{arr.length}</span>
+    ) : null;
+  const groups: { key: keyof TargetSetting; title: string; options: string[] }[] = [
+    { key: 'stores', title: '门店（每个门店单独发一条）', options: STORES },
+    { key: 'roles', title: '通知角色', options: ROLES },
+    { key: 'departments', title: '通知部门', options: DEPARTMENTS },
+    { key: 'positions', title: '通知职位', options: POSITIONS },
+  ];
   return (
     <div className="mt-1.5 rounded-lg border border-amber-200/70 bg-amber-50/50 p-1.5">
       <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-amber-700">
         <Users size={11} /> 通知对象
       </div>
-      <div className="mb-1.5">
-        <div className={groupLabel}>适用部门</div>
-        <div className="flex flex-wrap gap-1">
-          {DEPARTMENTS.map((dt) => (
-            <button
-              key={dt}
-              type="button"
-              onClick={() => toggleDept(dt)}
-              className={`rounded px-1.5 py-0.5 text-[10px] transition ${
-                targets.departments.includes(dt) ? 'bg-amber-500 text-white' : 'bg-white text-gray-500 hover:bg-amber-100'
-              }`}
-            >
-              {dt}
-            </button>
-          ))}
+      {groups.map((g) => (
+        <div key={g.key} className="mb-1.5 last:mb-0">
+          <div className={groupLabel}>
+            {g.title}
+            <Count arr={(targets[g.key] as string[]) ?? []} />
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {g.options.map((o) => (
+              <button
+                key={o}
+                type="button"
+                onClick={() => toggleItem(g.key, o)}
+                className={`rounded px-1.5 py-0.5 text-[10px] transition ${
+                  ((targets[g.key] as string[]) ?? []).includes(o) ? 'bg-amber-500 text-white' : 'bg-white text-gray-500 hover:bg-amber-100'
+                }`}
+              >
+                {o}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
-      <div>
-        <div className={groupLabel}>适用人员</div>
-        <div className="flex flex-wrap gap-1">
-          {PERSONNEL.map((p) => (
-            <button
-              key={p.name}
-              type="button"
-              onClick={() => togglePerson(p.name)}
-              className={`rounded px-1.5 py-0.5 text-[10px] transition ${
-                targets.personnel.includes(p.name) ? 'bg-amber-500 text-white' : 'bg-white text-gray-500 hover:bg-amber-100'
-              }`}
-            >
-              {p.name}
-            </button>
-          ))}
-        </div>
-      </div>
+      ))}
     </div>
   );
 }
@@ -4602,7 +4599,7 @@ export function createNodeData(
     case 'relation':
       return { tableId: '', tableName: '', fieldKey: '', fieldLabel: '', targetTableId: '', targetTable: '', targetField: '', relationType: 'inner', name: '' };
     case 'action':
-      return { type: 'alert', priority: 'Important', level: 'warn', title: '触发预警通知', content: '', notify: { departments: [], personnel: [] } };
+      return { type: 'alert', priority: 'Important', level: 'warn', title: '触发预警通知', content: '', notify: { stores: [], roles: [], departments: [], positions: [], personnel: [] } };
     case 'time':
       return { timeWindow: { preset: 'thisWeek' } };
     case 'topn':

@@ -130,8 +130,8 @@ export function buildAlertsForRule(
       conditionDesc: conditionDesc || undefined,
       preview,
       createdBy: '系统',
-      dept: notify?.departments?.[0] ?? targets?.departments?.[0] ?? '',
-      assignee: notify?.personnel?.[0] ?? targets?.personnel?.[0] ?? '',
+      dept: notify?.departments?.[0] ?? notify?.roles?.[0] ?? targets?.departments?.[0] ?? '',
+      assignee: notify?.personnel?.[0] ?? notify?.positions?.[0] ?? targets?.personnel?.[0] ?? '',
       status: 'new' as const,
     };
   });
@@ -296,7 +296,7 @@ export function makeDefaultRule(): AlertRule {
     updatedAt: Date.now(),
     flow: { nodes: [], edges: [] },
     schedule: makeDefaultSchedule(),
-    targets: { departments: [], personnel: [] },
+    targets: { departments: [], personnel: [], stores: [], roles: [], positions: [] },
     executions: [],
   };
 }

@@ -636,8 +636,8 @@ export interface ActionNodeData {
   title: string;
   /** 提醒文案（预警描述），支持 {字段名} 模板占位，触发时替换为命中行实际值 */
   content?: string;
-  /** 本动作独立的通知对象（部门/人员），不随其它动作联动 */
-  notify?: { departments: string[]; personnel: string[] };
+  /** 本动作独立的通知对象（门店/角色/部门/职位），不随其它动作联动 */
+  notify?: TargetSetting;
   /** 命中数据来源（上游节点）：预览与触发时从此节点取命中的行/列 */
   sourceNode?: NodeResultRef;
 }
@@ -726,9 +726,15 @@ export interface Schedule {
 // ============ 通知对象 ============
 
 export interface TargetSetting {
+  /** 按门店通知（激活后被命中的每个门店各收到一条） */
+  stores: string[];
+  /** 按角色通知 */
+  roles: string[];
   /** 适用部门 */
   departments: string[];
-  /** 适用人员 */
+  /** 按职位通知 */
+  positions: string[];
+  /** 适用人员（保留兼容，供预警 assignee 兜底） */
   personnel: string[];
 }
 
@@ -772,8 +778,14 @@ export interface AlertRule {
   executions: ExecutionRecord[];
 }
 
-// ============ 内置部门 / 人员 ============
+// ============ 内置部门 / 人员 / 门店 / 角色 / 职位 ============
 
+/** 门店名单（预警画布的业务门店；通知对象「按门店」时勾选） */
+export const STORES = ['万悦城', '万达', '吾悦', '银泰', '恒隆', '大悦城', '万象城', '龙湖天街'];
+/** 角色名单（通知对象「按角色」时勾选） */
+export const ROLES = ['销售经理', '区域经理', '店长', '督导', '运营专员', '客服主管'];
+/** 职位名单（通知对象「按职位」时勾选） */
+export const POSITIONS = ['经理', '主管', '专员', '统计员'];
 export const DEPARTMENTS = ['风控部', '运营部', '数据部', '安全部', '财务部', '客服部'];
 export const PERSONNEL = [
   { name: '张伟', dept: '风控部' },
