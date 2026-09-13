@@ -3616,58 +3616,7 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
   const isTailAvg = d.baselineFn === 'topAvg' || d.baselineFn === 'bottomAvg';
   const percent = typeof d.percent === 'number' && d.percent > 0 ? d.percent : 20;
   const pickedLabel = source === 'node' ? d.refNode?.label : d.valueFieldLabel;
-  const dims = Array.isArray(d.dims) ? d.dims : [];
-  const setDims = (next: BaselineNodeData['dims']) => update({ dims: next } as Partial<BaselineNodeData>);
-  const dimsOptions: Array<{ key: string; label: string }> = (() => {
-    const map = new Map<string, { key: string; label: string }>();
-    const push = (key: string, label: string) => {
-      const k = key ?? '';
-      if (k !== '' && !map.has(k)) map.set(k, { key: k, label: label || k });
-    };
-    if (source === 'node') {
-      if (d.refNode?.nodeId) {
-        inferNodeCols(allNodes, tables, d.refNode.nodeId).forEach((c) => push(c.key, c.label));
-        // 穿透上游节点引用的数据表字段，补全可分组业务维度（分公司/区域/店仓/渠道等）
-        const byId = new Map(allNodes.map((n) => [n.id, n] as const));
-        const seen = new Set<string>();
-        const q: string[] = [d.refNode.nodeId];
-        while (q.length) {
-          const rid = q.shift() as string;
-          if (seen.has(rid)) continue;
-          seen.add(rid);
-          const n = byId.get(rid);
-          if (!n) continue;
-          const rec = (n.data ?? {}) as Record<string, unknown>;
-          [rec.tableId, rec.factTableId, rec.universeTableId]
-            .filter((t): t is string => typeof t === 'string' && !!t)
-            .forEach((tid) => {
-              const t = tables.find((t2) => t2.id === tid);
-              (t?.fields ?? []).forEach((f) => push(f.key, f.alias || f.key));
-            });
-          ['universeNodeId', 'factNodeId', 'sourceNode', 'aggNode', 'leftNodeId', 'rightNodeId'].forEach((k) => {
-            const v = rec[k];
-            if (typeof v === 'string' && v && !seen.has(v)) q.push(v);
-          });
-          const expr = rec.expr as Record<string, unknown> | undefined;
-          if (expr) {
-            for (const key of ['left', 'right', 'ref', 'leftCmp', 'rightCmp', 'universe', 'fact']) {
-              const v = expr[key];
-              if (Array.isArray(v)) {
-                const n0 = v[0] as { nodeId?: string } | undefined;
-                if (n0?.nodeId && !seen.has(n0.nodeId)) q.push(n0.nodeId);
-              } else if (v && typeof v === 'object') {
-                const nid = (v as { nodeId?: string }).nodeId;
-                if (typeof nid === 'string' && nid && !seen.has(nid)) q.push(nid);
-              } else if (typeof v === 'string' && v && !seen.has(v)) q.push(v);
-            }
-          }
-        }
-      }
-    } else {
-      fields.forEach((f) => push(f.key, f.alias || f.key));
-    }
-    return [...map.values()];
-  })();
+  const hasStatField = source === 'node' ? !!d.refNode?.nodeId : !!d.valueField;
 
   return (
     <NodeShell fnode={fnode}>
@@ -3697,7 +3646,7 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
 
       {source === 'node' ? (
         <>
-          <div className={rowLabel}>① 引用节点输出（逐组的指标列）</div>
+          <div className={rowLabel}>① 统计字段（选择要统计的数值列）</div>
           <select
             value={d.refNode?.nodeId ?? ''}
             onChange={(e) => {
@@ -3743,7 +3692,7 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
             ))}
           </select>
 
-          <div className={rowLabel}>② 待统计数值字段（=各分组的指标列）</div>
+          <div className={rowLabel}>② 统计字段（选择要统计的数值列）</div>
           <select
             value={d.valueField}
             onChange={(e) => {
@@ -3762,58 +3711,10 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
         </>
       )}
 
-      <div className={rowLabel}>{source === 'node' ? '②' : '③'} 分组维度（可多字段，空=对全部取值求一个基准）</div>
-      {dimsOptions.length === 0 ? (
-        <div className="rounded-md bg-gray-50 px-2 py-1 text-[10px] leading-relaxed text-gray-400">
-          {source === 'node'
-            ? '先在上方选择节点结果，再从该节点输出中的列里选分组维度。'
-            : '先在上方选择数据表，再从表字段里选分组维度。'}
-        </div>
-      ) : (
-        <div className="space-y-1">
-          {dims.map((dim, i) => (
-            <div key={i} className="flex items-center gap-1">
-              <select
-                value={dim.key}
-                onChange={(e) => {
-                  const o = dimsOptions.find((x) => x.key === e.target.value);
-                  if (o) {
-                    const next = [...dims];
-                    next[i] = { key: o.key, label: o.label };
-                    setDims(next);
-                  }
-                }}
-                className={inputCls}
-              >
-                <option value="">选择维度字段…</option>
-                {dimsOptions.map((o) => (
-                  <option key={o.key} value={o.key}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => setDims(dims.filter((_, j) => j !== i))}
-                className="shrink-0 rounded-md px-1.5 py-1 text-[11px] leading-none text-gray-300 transition hover:bg-red-50 hover:text-red-500"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={() => setDims([...dims, { key: '', label: '' }])}
-            className="text-[11px] text-violet-600 transition hover:text-violet-700"
-          >
-            + 添加维度字段
-          </button>
-        </div>
-      )}
-
-      <div className={rowLabel}>{source === 'node' ? '③' : '④'} 统计方式（基准值口径）</div>
+      <div className={rowLabel}>{source === 'node' ? '②' : '③'} 统计方式（对该列所有值求基准）</div>
       <select
         value={d.baselineFn}
+        disabled={!hasStatField}
         onChange={(e) => {
           const fn = e.target.value as BaselineNodeData['baselineFn'];
           update({
@@ -3863,7 +3764,7 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
 
       {pickedLabel && (
         <div className="mt-2 rounded-md bg-violet-50/70 px-2 py-1.5 text-[10px] leading-relaxed text-violet-700">
-          以「{pickedLabel}」这一组值（每个店仓一个值）
+          对「{pickedLabel}」这一列的全部值
           {isTailAvg ? (
             <>
               按{d.baselineFn === 'topAvg' ? '高→低' : '低→高'}排序，取

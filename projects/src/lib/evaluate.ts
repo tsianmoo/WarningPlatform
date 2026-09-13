@@ -1261,7 +1261,6 @@ function evalNode(
 
     case 'baseline': {
       const bd = d as unknown as BaselineNodeData;
-      const dims = (Array.isArray(bd.dims) ? bd.dims : []).filter((x) => x && x.key);
       let rowset: Array<Record<string, unknown>> = [];
       let valueKey = '';
       let basis = '';
@@ -1270,7 +1269,7 @@ function evalNode(
         if (!src) return { title: '基准统计', columns: [], rows: [], note: '请先添加「查找·聚合带回 / 分组聚合」节点并连到本节点。' };
         valueKey = bd.refNode?.label || src.columns[src.columns.length - 1];
         rowset = src.rows;
-        basis = `节点结果「${valueKey}」的 ${rowset.length} 个分组值`;
+        basis = `节点结果「${valueKey}」的 ${rowset.length} 个取值`;
       } else {
         const t = resolveTable(tables, bd.tableId);
         valueKey = bd.valueField || t?.fields.find((f) => f.type === 'number')?.key || '';
@@ -1295,23 +1294,6 @@ function evalNode(
         min: '最低值',
       };
       const label = bd.resultLabel || '基准值';
-      if (dims.length) {
-        const groups = new Map<string, { dimRow: Record<string, string>; vals: number[] }>();
-        for (const r of rowset) {
-          const dimRow: Record<string, string> = {};
-          for (const dim of dims) dimRow[dim.label] = String(r[dim.key] ?? '');
-          const gk = dims.map((dim) => String(r[dim.key] ?? '')).join('\u0001');
-          const v = toNum(r[valueKey]);
-          if (!Number.isFinite(v)) continue;
-          const g = groups.get(gk);
-          if (g) g.vals.push(v);
-          else groups.set(gk, { dimRow, vals: [v] });
-        }
-        const columns = [...dims.map((dim) => dim.label), label];
-        const rows = [...groups.values()].map((g) => ({ ...g.dimRow, [label]: fmtNum(stat(g.vals)) }));
-        const fnDesc = fn === 'topAvg' || fn === 'bottomAvg' ? `按指标降序排序取${fn === 'topAvg' ? '前' : '后'} ${pct()}% 再求平均` : `求「${fnText[fn]}」`;
-        return { title: '基准统计', columns, rows, shape: 'table', note: `按「${dims.map((dm) => dm.label).join('、')}」分组，对${basis}${fnDesc}，每组得到基准值「${label}」。` };
-      }
       const values = rowset.map((r) => toNum(r[valueKey])).filter((n) => Number.isFinite(n));
       const single = stat(values);
       return {
