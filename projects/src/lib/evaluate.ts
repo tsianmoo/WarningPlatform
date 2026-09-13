@@ -1223,10 +1223,19 @@ function evalNode(
             fk = m ? m.key : refCol;
           }
           const norm = { ...c, fieldKey: fk || c.fieldKey, fieldLabel: fk || c.fieldLabel, refColumn: refCol };
-          if (ref && ref.rows.length) {
-            const col = norm.refColumn && ref.columns.includes(norm.refColumn) ? norm.refColumn : ref.columns[0];
-            const refVal = String(ref.rows[0][col] ?? '');
-            return { ...norm, value: refVal, values: norm.op === 'in' || norm.op === 'nin' ? [refVal] : norm.values };
+          if (ref) {
+            const col =
+              norm.refColumn && ref.columns.includes(norm.refColumn) ? norm.refColumn : ref.columns[0] || '';
+            let vals: string[] = [];
+            if (ref.rows.length) {
+              vals = ref.rows.map((r) => String((r as Record<string, unknown>)[col] ?? '')).filter((v) => v !== '');
+            } else if (ref.scalar && typeof ref.scalar.value !== 'undefined') {
+              vals = [String(ref.scalar.value)];
+            }
+            if (vals.length) {
+              const inOp: FilterCondition['op'] = norm.op === 'nin' ? 'nin' : 'in';
+              return { ...norm, value: vals.length === 1 ? vals[0] : '', values: vals, op: inOp, refColumn: col };
+            }
           }
           // 引用取不到值时条件不成立（避免误命中全部）
           return { ...norm, value: '', values: [] };
