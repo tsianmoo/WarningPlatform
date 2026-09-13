@@ -394,6 +394,7 @@ export function PalettePanel({
     { kind: 'time', label: '时间窗口', desc: '今天/本周/本月…', payload: { kind: 'time' }, color: KIND_COLOR.time.border, dot: KIND_COLOR.time.dot },
     { kind: 'elapsed', label: '已过天数', desc: '本周/月/季/年/区间已过天数', payload: { kind: 'elapsed' }, color: KIND_COLOR.elapsed.border, dot: KIND_COLOR.elapsed.dot },
     { kind: 'action', label: '预警动作', desc: '终点·通知', payload: { kind: 'action' }, color: KIND_COLOR.action.border, dot: KIND_COLOR.action.dot },
+    { kind: 'notify', label: '通知对象', desc: '门店/门店员工/部门/自定义', payload: { kind: 'notify' }, color: KIND_COLOR.notify.border, dot: KIND_COLOR.notify.dot },
   ];
 
   return (
