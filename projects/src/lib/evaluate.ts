@@ -1265,8 +1265,15 @@ function evalNode(
       let valueKey = '';
       let basis = '';
       if ((bd.source ?? 'node') === 'node') {
-        const src = pickColumnOutput(outputs, incoming, bd.refNode?.nodeId);
+        let src = pickColumnOutput(outputs, incoming, bd.refNode?.nodeId);
         if (!src) return { title: '基准统计', columns: [], rows: [], note: '请先添加「查找·聚合带回 / 分组聚合」节点并连到本节点。' };
+        // 所选统计列若不在引用节点自身输出（如选的是上游源的数值列），回退到上游含该列的行集
+        if (bd.valueField) {
+          const holder =
+            Object.values(outputs).find((o) => o && o.columns.includes(bd.valueField)) ||
+            incoming.find((o) => o && o.columns.includes(bd.valueField));
+          if (holder) src = holder;
+        }
         valueKey = bd.valueField || bd.refNode?.label || src.columns[src.columns.length - 1];
         rowset = src.rows;
         basis = `节点结果「${bd.valueFieldLabel || valueKey}」的 ${rowset.length} 个取值`;

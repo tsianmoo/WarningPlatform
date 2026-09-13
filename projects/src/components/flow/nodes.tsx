@@ -3617,6 +3617,11 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
   const percent = typeof d.percent === 'number' && d.percent > 0 ? d.percent : 20;
   const pickedLabel = source === 'node' ? d.refNode?.label : d.valueFieldLabel;
   const hasStatField = source === 'node' ? !!d.valueField : !!d.valueField;
+  // ② 统计字段候选：引用节点及其上游可统计的全部列（不只引用节点自身输出那一列）
+  const statFieldOptions: ColOpt[] =
+    source === 'node' && d.refNode?.nodeId
+      ? inferNodeCols(allNodes, tables, d.refNode.nodeId).filter((o) => o.label && o.label.trim())
+      : [];
 
   return (
     <NodeShell fnode={fnode}>
@@ -3673,27 +3678,25 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
             value={d.valueField}
             disabled={!d.refNode?.nodeId}
             onChange={(e) => {
-              const f = columnOutputs.find((x) => x.ref.label === e.target.value);
+              const f = statFieldOptions.find((x) => x.key === e.target.value);
               update({
                 valueField: e.target.value,
-                valueFieldLabel: f?.ref.label ?? e.target.value,
-                resultLabel: f ? `${f.ref.label}${isTailAvg ? `前/后${percent}%` : ''}的平均值` : d.resultLabel,
+                valueFieldLabel: f?.label ?? e.target.value,
+                resultLabel: f ? `${f.label}${isTailAvg ? `前/后${percent}%` : ''}的平均值` : d.resultLabel,
               });
             }}
             className={inputCls}
           >
-            <option value="">选择节点输出字段，如：未开单天数…</option>
-            {columnOutputs
-              .filter((o) => o.ref.nodeId === d.refNode?.nodeId)
-              .map((o) => (
-                <option key={o.ref.nodeId + ':' + o.ref.label} value={o.ref.label}>
-                  {o.ref.label}
-                </option>
-              ))}
+            <option value="">选择要统计的数值列，如：未开单天数…</option>
+            {statFieldOptions.map((o) => (
+              <option key={o.key} value={o.key}>
+                {o.label}
+              </option>
+            ))}
           </select>
-          {d.refNode?.nodeId && columnOutputs.filter((o) => o.ref.nodeId === d.refNode?.nodeId).length === 0 && (
+          {d.refNode?.nodeId && statFieldOptions.length === 0 && (
             <div className="mt-1.5 rounded-md bg-amber-50 px-2 py-1 text-[10px] leading-relaxed text-amber-700">
-              该节点暂无可统计的数值列，请重选引用节点。
+              该节点及其上游暂无可统计的数值列，请重选引用节点。
             </div>
           )}
         </>
