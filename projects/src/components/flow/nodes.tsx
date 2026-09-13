@@ -42,13 +42,13 @@ import {
   type ExprToken,
   type Schedule,
   type TargetSetting,
-  type NotifyMode,
   type NotifyNodeData,
   type RepeatType,
   type RankNodeData,
   type RankItem,
   DEPARTMENTS,
   PERSONNEL,
+  POSITIONS,
   STORES,
 } from '@/lib/types';
 import { useStore } from '@/lib/store';
@@ -2515,7 +2515,8 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
               if (!nid) { update({ refNotifyNode: undefined }); return; }
               const n = allNodes.find((nn) => (nn as unknown as FlowNode).kind === 'notify' && (nn as unknown as FlowNode).id === nid);
               const nd = n ? (n.data as unknown as NotifyNodeData | undefined) : undefined;
-              update({ refNotifyNode: { nodeId: nid, label: nd?.notifyLabel || NOTIFY_MODE_LABEL[nd?.mode ?? 'store'] } });
+              const c = nd ? notifyCount(nd) : 0;
+              update({ refNotifyNode: { nodeId: nid, label: nd?.notifyLabel || `通知对象${c ? `（${c}）` : ''}` } });
             }}
             className="w-full rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
           >
@@ -2523,11 +2524,11 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
             {allNodes.filter((nn) => (nn as unknown as FlowNode).kind === 'notify').map((nn) => {
               const flow = nn as unknown as FlowNode;
               const nd = flow.data as unknown as NotifyNodeData | undefined;
-              const total = (nd?.stores?.length || 0) + (nd?.staff?.length || 0) + (nd?.departments?.length || 0) + (nd?.custom?.length || 0);
+              const c = nd ? notifyCount(nd) : 0;
               return (
                 <option key={flow.id} value={flow.id}>
-                  {nd?.notifyLabel || NOTIFY_MODE_LABEL[nd?.mode ?? 'store']}
-                  {total ? `（已选 ${total} 项）` : ''}
+                  {nd?.notifyLabel || `通知对象${c ? `（${c}）` : ''}`}
+                  {c ? ` · 已选 ${c} 项` : ''}
                 </option>
               );
             })}
@@ -2542,74 +2543,67 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
   );
 });
 
-/** 通知方式中文名 */
-const NOTIFY_MODE_LABEL: Record<NotifyMode, string> = {
-  store: '按门店',
-  staff: '按门店员工',
-  dept: '按部门',
-  custom: '自定义',
-};
+/** 统计通知对象已选元素数 */
+function notifyCount(nd: NotifyNodeData) {
+  return (
+    (nd.stores?.length || 0) +
+    (nd.staff?.length || 0) +
+    (nd.departments?.length || 0) +
+    (nd.positions?.length || 0) +
+    (nd.custom?.length || 0)
+  );
+}
 
-/** 通知对象节点：独立流程节点，按门店/门店员工/部门/自定义，单选一种方式后多选对象 */
+/** 通知对象节点：独立流程节点，各投递维度（门店/门店员工/管理部门/部门职位/自定义）独立多选，接收人取并集 */
 const NotifyNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'notify' as const, data, position: { x: 0, y: 0 } } as FlowNode;
   const d = data as unknown as NotifyNodeData;
   const update = useNodeUpdater(id);
-  const mode = d.mode ?? 'store';
-  const MODES: { value: NotifyMode; hint: string }[] = [
-    { value: 'store', hint: '每个命中门店单独发一条相应预警' },
-    { value: 'staff', hint: '每个门店的导购收到与自己相关的预警' },
-    { value: 'dept', hint: '门店所负责的部门收到该预警' },
-    { value: 'custom', hint: '指定的人收到该预警' },
+  const GROUPS: {
+    key: 'stores' | 'staff' | 'departments' | 'positions' | 'custom';
+    title: string;
+    hint: string;
+    options: string[];
+  }[] = [
+    { key: 'stores', title: '按门店', hint: '对应门店收到该店预警消息', options: STORES },
+    { key: 'staff', title: '按门店员工', hint: '门店下的员工收与自己相关的预警', options: PERSONNEL.map((p) => p.name) },
+    { key: 'departments', title: '按管理部门', hint: '该部门收到预警', options: DEPARTMENTS },
+    { key: 'positions', title: '按部门职位', hint: '该职位的人收到预警', options: POSITIONS },
+    { key: 'custom', title: '自定义指定的人', hint: '指定的人收到', options: PERSONNEL.map((p) => p.name) },
   ];
-  const g: { key: 'stores' | 'staff' | 'departments' | 'custom'; title: string; options: string[] } =
-    mode === 'staff'
-      ? { key: 'staff', title: '选择导购 / 门店员工', options: PERSONNEL.map((p) => p.name) }
-      : mode === 'dept'
-      ? { key: 'departments', title: '选择部门', options: DEPARTMENTS }
-      : mode === 'custom'
-      ? { key: 'custom', title: '指定的人', options: PERSONNEL.map((p) => p.name) }
-      : { key: 'stores', title: '选择门店', options: STORES };
-  const arr = (d[g.key] as string[]) ?? [];
-  const toggle = (item: string) =>
-    update({ [g.key]: arr.includes(item) ? arr.filter((x) => x !== item) : [...arr, item] } as never);
-  const label = d.notifyLabel || `通知对象·${NOTIFY_MODE_LABEL[mode]}`;
+  const total = notifyCount(d);
+  const label = d.notifyLabel || (total ? `通知对象（${total}）` : '通知对象');
   return (
     <NodeShell fnode={fnode}>
-      <div className="flex items-center justify-between gap-1">
-        <div className="text-[10px] font-semibold text-pink-700">{label}</div>
-        <span className="rounded bg-pink-500/15 px-1 text-[9px] font-semibold text-pink-700">{NOTIFY_MODE_LABEL[mode]}</span>
-      </div>
-      <div className="mt-1.5 grid grid-cols-2 gap-1">
-        {MODES.map((m) => (
-          <button
-            key={m.value}
-            type="button"
-            onClick={() => update({ mode: m.value } as never)}
-            title={m.hint}
-            className={`rounded px-1.5 py-1 text-[10px] transition ${
-              mode === m.value ? 'bg-pink-500 text-white' : 'bg-white text-gray-500 hover:bg-pink-100'
-            }`}
-          >
-            {NOTIFY_MODE_LABEL[m.value]}
-          </button>
-        ))}
-      </div>
-      <div className="my-1 text-[9px] leading-snug text-gray-400">{MODES.find((m) => m.value === mode)?.hint}</div>
-      <div className="flex flex-wrap gap-1">
-        {g.options.map((o) => (
-          <button
-            key={o}
-            type="button"
-            onClick={() => toggle(o)}
-            className={`rounded px-1.5 py-0.5 text-[10px] transition ${
-              arr.includes(o) ? 'bg-pink-500 text-white' : 'bg-white text-gray-500 hover:bg-pink-100'
-            }`}
-          >
-            {o}
-          </button>
-        ))}
-      </div>
+      <div className="text-[10px] font-semibold text-pink-700">{label}</div>
+      {GROUPS.map((g) => {
+        const arr = (d[g.key] as string[]) ?? [];
+        const toggle = (item: string) =>
+          update({ [g.key]: arr.includes(item) ? arr.filter((x) => x !== item) : [...arr, item] } as never);
+        return (
+          <div key={g.key} className={g === GROUPS[0] ? '' : 'mt-1.5'}>
+            <div className="mb-0.5 flex items-center justify-between text-[9px] text-gray-500">
+              <span className="font-semibold">{g.title}</span>
+              <span className="rounded bg-pink-500/15 px-1 font-semibold text-pink-700">{arr.length}</span>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {g.options.map((o) => (
+                <button
+                  key={o}
+                  type="button"
+                  onClick={() => toggle(o)}
+                  className={`rounded px-1.5 py-0.5 text-[10px] transition ${
+                    arr.includes(o) ? 'bg-pink-500 text-white' : 'bg-white text-gray-500 hover:bg-pink-100'
+                  }`}
+                >
+                  {o}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+      <div className="mt-1.5 text-[9px] text-gray-400">各维度同时通知，接收人取并集</div>
       <Handle type="target" position={Position.Left} style={{ background: '#DB2777', width: 10, height: 10 }} />
     </NodeShell>
   );
@@ -4658,7 +4652,7 @@ export function createNodeData(
     case 'action':
       return { type: 'alert', priority: 'Important', level: 'warn', title: '触发预警通知', content: '', notify: { stores: [], roles: [], departments: [], positions: [], personnel: [] } };
     case 'notify':
-      return { mode: 'store', stores: [], staff: [], departments: [], custom: [], notifyLabel: '' };
+      return { stores: [], staff: [], departments: [], positions: [], custom: [], notifyLabel: '' };
     case 'time':
       return { timeWindow: { preset: 'thisWeek' } };
     case 'topn':

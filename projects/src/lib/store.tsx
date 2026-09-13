@@ -87,7 +87,8 @@ export function buildAlertsForRule(
       ? rule.flow.nodes.find((nd) => nd.id === a.data.refNotifyNode?.nodeId && nd.kind === 'notify')
       : undefined;
     const nData = refNotify?.data as NotifyNodeData | undefined;
-    const nMode = nData?.mode;
+    const nDept = nData ? [...(nData.departments ?? []), ...(nData.positions ?? [])] : [];
+    const nPeople = nData ? [...(nData.staff ?? []), ...(nData.custom ?? [])] : [];
     const actionTitle = a.data.title?.trim() || rule.name;
     const hit = a.id ? evalMap?.[a.id] : undefined;
     const rawTpl = a.data.content?.trim() || '';
@@ -137,11 +138,9 @@ export function buildAlertsForRule(
       conditionDesc: conditionDesc || undefined,
       preview,
       createdBy: '系统',
-      dept: nMode === 'dept' ? (nData?.departments ?? []).join('、')
-        : nMode === 'store' ? (nData?.stores ?? []).join('、')
+      dept: nDept.length ? nDept.join('、')
         : notify?.departments?.[0] ?? notify?.roles?.[0] ?? targets?.departments?.[0] ?? '',
-      assignee: nMode === 'staff' ? (nData?.staff ?? []).join('、')
-        : nMode === 'custom' ? (nData?.custom ?? []).join('、')
+      assignee: nPeople.length ? nPeople.join('、')
         : notify?.personnel?.[0] ?? notify?.positions?.[0] ?? targets?.personnel?.[0] ?? '',
       status: 'new' as const,
     };
