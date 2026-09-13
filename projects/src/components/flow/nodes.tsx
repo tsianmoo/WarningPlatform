@@ -3618,12 +3618,56 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
   const pickedLabel = source === 'node' ? d.refNode?.label : d.valueFieldLabel;
   const dims = Array.isArray(d.dims) ? d.dims : [];
   const setDims = (next: BaselineNodeData['dims']) => update({ dims: next } as Partial<BaselineNodeData>);
-  const dimsOptions: Array<{ key: string; label: string }> =
-    source === 'node'
-      ? d.refNode?.nodeId
-        ? inferNodeCols(allNodes, tables, d.refNode.nodeId).map((c) => ({ key: c.key, label: c.label }))
-        : []
-      : fields.map((f) => ({ key: f.key, label: f.alias || f.key }));
+  const dimsOptions: Array<{ key: string; label: string }> = (() => {
+    const map = new Map<string, { key: string; label: string }>();
+    const push = (key: string, label: string) => {
+      const k = key ?? '';
+      if (k !== '' && !map.has(k)) map.set(k, { key: k, label: label || k });
+    };
+    if (source === 'node') {
+      if (d.refNode?.nodeId) {
+        inferNodeCols(allNodes, tables, d.refNode.nodeId).forEach((c) => push(c.key, c.label));
+        // 穿透上游节点引用的数据表字段，补全可分组业务维度（分公司/区域/店仓/渠道等）
+        const byId = new Map(allNodes.map((n) => [n.id, n] as const));
+        const seen = new Set<string>();
+        const q: string[] = [d.refNode.nodeId];
+        while (q.length) {
+          const rid = q.shift() as string;
+          if (seen.has(rid)) continue;
+          seen.add(rid);
+          const n = byId.get(rid);
+          if (!n) continue;
+          const rec = (n.data ?? {}) as Record<string, unknown>;
+          [rec.tableId, rec.factTableId, rec.universeTableId]
+            .filter((t): t is string => typeof t === 'string' && !!t)
+            .forEach((tid) => {
+              const t = tables.find((t2) => t2.id === tid);
+              (t?.fields ?? []).forEach((f) => push(f.key, f.alias || f.key));
+            });
+          ['universeNodeId', 'factNodeId', 'sourceNode', 'aggNode', 'leftNodeId', 'rightNodeId'].forEach((k) => {
+            const v = rec[k];
+            if (typeof v === 'string' && v && !seen.has(v)) q.push(v);
+          });
+          const expr = rec.expr as Record<string, unknown> | undefined;
+          if (expr) {
+            for (const key of ['left', 'right', 'ref', 'leftCmp', 'rightCmp', 'universe', 'fact']) {
+              const v = expr[key];
+              if (Array.isArray(v)) {
+                const n0 = v[0] as { nodeId?: string } | undefined;
+                if (n0?.nodeId && !seen.has(n0.nodeId)) q.push(n0.nodeId);
+              } else if (v && typeof v === 'object') {
+                const nid = (v as { nodeId?: string }).nodeId;
+                if (typeof nid === 'string' && nid && !seen.has(nid)) q.push(nid);
+              } else if (typeof v === 'string' && v && !seen.has(v)) q.push(v);
+            }
+          }
+        }
+      }
+    } else {
+      fields.forEach((f) => push(f.key, f.alias || f.key));
+    }
+    return [...map.values()];
+  })();
 
   return (
     <NodeShell fnode={fnode}>

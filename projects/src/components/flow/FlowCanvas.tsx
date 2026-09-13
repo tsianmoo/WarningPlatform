@@ -40,7 +40,7 @@ function toRfEdges(edges: FlowEdge[]): Edge[] {
     animated: true,
     reconnectable: true,
     interactionWidth: 24,
-    type: 'bezier',
+    type: 'default',
     markerEnd: { type: MarkerType.ArrowClosed },
     style: { stroke: '#94A3B8', strokeWidth: 1.6 },
   }));
@@ -281,7 +281,7 @@ function CanvasInner({
         onNodeDragStop={onNodeDragStop}
         onNodeContextMenu={handleDeleteNode}
         connectionMode={ConnectionMode.Loose}
-        defaultEdgeOptions={{ type: 'bezier', reconnectable: true }}
+        defaultEdgeOptions={{ type: 'default', reconnectable: true }}
         elevateEdgesOnSelect
         deleteKeyCode={['Backspace', 'Delete']}
         minZoom={0.3}
