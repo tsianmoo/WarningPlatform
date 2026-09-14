@@ -225,6 +225,7 @@ type SelKey = 'bg' | 'login' | 'title' | 'subtitle' | (string & {});
 const ELEM_PREFIX = 'elem:';
 
 export function HomeConfig({ onBack }: { onBack?: () => void }) {
+  const router = useRouter();
   const { state, updateHomeConfig } = useStore();
   const cfg = state.config ?? DEFAULT_HOME_CONFIG;
   const [saved, setSaved] = useState(false);
@@ -788,6 +789,16 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
             title="设置背景"
           >
             背景
+          </button>
+          <button
+            onClick={() => {
+              save();
+              router.push('/login');
+            }}
+            className="rounded-full px-3 py-1 text-sm hover:bg-white/15"
+            title="跳转到登录页查看实际效果"
+          >
+            预览
           </button>
           <button onClick={save} className="rounded-full px-3 py-1 text-sm text-white hover:bg-white/15">
             {saved ? '✓ 已保存' : '保存'}
