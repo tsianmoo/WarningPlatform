@@ -1112,6 +1112,16 @@ export const DEFAULT_HOME_CONFIG: HomeConfig = {
   },
 };
 
+export function normalizeHomeConfig(c?: Partial<HomeConfig> | null): HomeConfig {
+  return {
+    ...DEFAULT_HOME_CONFIG,
+    ...(c || {}),
+    title: { ...DEFAULT_HOME_CONFIG.title, ...(c?.title || {}) },
+    subtitle: { ...DEFAULT_HOME_CONFIG.subtitle, ...(c?.subtitle || {}) },
+    loginBox: { ...DEFAULT_HOME_CONFIG.loginBox, ...(c?.loginBox || {}) },
+  };
+}
+
 export const FONT_OPTIONS = [
   { label: '系统默认', value: 'system-ui' },
   { label: '黑体', value: '"Microsoft YaHei", "PingFang SC", sans-serif' },

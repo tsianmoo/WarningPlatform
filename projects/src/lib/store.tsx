@@ -16,7 +16,7 @@ import type {
   TargetSetting,
   HomeConfig,
 } from './types';
-import { uid, OPERATOR_OPTIONS, DEFAULT_HOME_CONFIG } from './types';
+import { uid, OPERATOR_OPTIONS, DEFAULT_HOME_CONFIG, normalizeHomeConfig } from './types';
 import { buildSampleTable, ensureFieldsComplete } from './parser';
 import { evaluateFlow } from './evaluate';
 import type { NodePreview } from './evaluate';
@@ -163,7 +163,7 @@ async function fetchRemoteState(): Promise<Partial<AppState> | null> {
     const json = (await res.json()) as { tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[]; orgs?: Organization[]; persons?: Person[]; hrAttributes?: HrAttribute[]; dealers?: Dealer[]; stores?: Store[]; config?: HomeConfig; error?: string };
     if (json.error) return null;
     remoteAvailable = true;
-    return { tables: json.tables ?? [], rules: json.rules ?? [], alerts: json.alerts ?? [], ruleGroups: json.groups ?? [], orgs: json.orgs ?? [], persons: json.persons ?? [], hrAttributes: json.hrAttributes ?? [], dealers: json.dealers ?? [], stores: json.stores ?? [], config: json.config ?? DEFAULT_HOME_CONFIG };
+    return { tables: json.tables ?? [], rules: json.rules ?? [], alerts: json.alerts ?? [], ruleGroups: json.groups ?? [], orgs: json.orgs ?? [], persons: json.persons ?? [], hrAttributes: json.hrAttributes ?? [], dealers: json.dealers ?? [], stores: json.stores ?? [], config: normalizeHomeConfig(json.config) };
   } catch {
     return null;
   }
@@ -302,7 +302,7 @@ function migrateState(raw: AppState | null): AppState {
           : [];
     return { ...r, tableIds };
   });
-  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [], hrAttributes: Array.isArray(raw.hrAttributes) ? raw.hrAttributes : [], dealers: Array.isArray(raw.dealers) ? raw.dealers : [], stores: Array.isArray(raw.stores) ? raw.stores : [], config: raw.config ?? DEFAULT_HOME_CONFIG };
+  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [], hrAttributes: Array.isArray(raw.hrAttributes) ? raw.hrAttributes : [], dealers: Array.isArray(raw.dealers) ? raw.dealers : [], stores: Array.isArray(raw.stores) ? raw.stores : [], config: normalizeHomeConfig(raw.config) };
 }
 
 function loadInitial(): AppState {
@@ -658,7 +658,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           hrAttributes: remote.hrAttributes ?? [],
           dealers: remote.dealers ?? [],
           stores: remote.stores ?? [],
-          config: remote.config ?? DEFAULT_HOME_CONFIG,
+          config: normalizeHomeConfig(remote.config),
           activeTableId: tables[0]?.id ?? '',
           builderTableIds: tables.map((t) => t.id),
         }));

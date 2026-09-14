@@ -94,87 +94,127 @@ export default function LoginPage() {
       ? { backgroundImage: `url(${cfg.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
       : { backgroundColor: cfg.bgColor };
 
+  const toRgba = (hex: string, a: number) => {
+    const m = hex.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+    if (!m) return hex;
+    const n = (i: number) => parseInt(m[i], 16);
+    return `rgba(${n(1)}, ${n(2)}, ${n(3)}, ${a})`;
+  };
+
   return (
     <div className="flex h-screen w-full overflow-hidden">
-      {/* 左侧：平台品牌区 */}
+      {/* 背景层（支持背景毛玻璃） */}
+      <div className="absolute inset-0" style={{ ...bgStyle, backdropFilter: `blur(${cfg.bgBlur}px)`, WebkitBackdropFilter: `blur(${cfg.bgBlur}px)` }} />
+
+      {/* 主标题（不换行 + 字重/字宽/左边距 + 拖拽位置） */}
       <div
-        className="relative flex flex-1 items-center px-12"
-        style={{ ...bgStyle, justifyContent: cfg.titleX === 'left' ? 'flex-start' : cfg.titleX === 'center' ? 'center' : 'flex-end' }}
+        className="absolute max-w-full select-none leading-tight"
+        style={{
+          left: `${cfg.title.x}%`,
+          top: `${cfg.title.y}%`,
+          marginLeft: cfg.title.marginLeft,
+          whiteSpace: 'nowrap',
+          fontFamily: cfg.title.font,
+          fontSize: cfg.title.size,
+          fontWeight: cfg.title.weight,
+          letterSpacing: `${cfg.title.letterSpacing}px`,
+          color: cfg.title.color,
+          opacity: cfg.title.opacity,
+        }}
       >
-        <div
-          className="flex max-w-xl flex-col"
-          style={{ alignItems: cfg.titleX === 'left' ? 'flex-start' : cfg.titleX === 'center' ? 'center' : 'flex-end' }}
-        >
-          <div
-            className="font-bold leading-tight"
-            style={{ fontFamily: cfg.title.font, fontSize: cfg.title.size, color: cfg.title.color, opacity: cfg.title.opacity }}
-          >
-            {cfg.title.text}
-          </div>
-          <div
-            className="mt-3"
-            style={{ fontFamily: cfg.subtitle.font, fontSize: cfg.subtitle.size, color: cfg.subtitle.color, opacity: cfg.subtitle.opacity }}
-          >
-            {cfg.subtitle.text}
-          </div>
-        </div>
+        {cfg.title.text}
       </div>
 
-      {/* 右侧：登录表单 */}
-      <div className="flex w-[420px] shrink-0 flex-col justify-center bg-white px-10 shadow-xl">
-        <div className="mb-8">
-          <div className="flex items-center gap-2 text-blue-600">
-            <ShieldCheck size={24} />
-            <span className="text-lg font-bold text-gray-800">店牛预警平台</span>
+      {/* 副标题（不换行 + 位置） */}
+      <div
+        className="absolute max-w-full select-none"
+        style={{
+          left: `${cfg.subtitle.x}%`,
+          top: `${cfg.subtitle.y}%`,
+          marginLeft: cfg.subtitle.marginLeft,
+          whiteSpace: 'nowrap',
+          fontFamily: cfg.subtitle.font,
+          fontSize: cfg.subtitle.size,
+          fontWeight: cfg.subtitle.weight,
+          letterSpacing: `${cfg.subtitle.letterSpacing}px`,
+          color: cfg.subtitle.color,
+          opacity: cfg.subtitle.opacity,
+        }}
+      >
+        {cfg.subtitle.text}
+      </div>
+
+      {/* 登录框（尺寸/位置/背景色/透明度/毛玻璃） */}
+      <div
+        className="absolute flex flex-col overflow-hidden"
+        style={{
+          left: `${cfg.loginBox.x}%`,
+          top: `${cfg.loginBox.y}%`,
+          transform: 'translate(-50%,-50%)',
+          width: cfg.loginBox.width,
+          height: cfg.loginBox.height,
+          background: toRgba(cfg.loginBox.bgColor, cfg.loginBox.bgOpacity),
+          backdropFilter: `blur(${cfg.loginBox.blur}px)`,
+          WebkitBackdropFilter: `blur(${cfg.loginBox.blur}px)`,
+          borderRadius: cfg.loginBox.radius,
+          boxShadow: '0 10px 40px rgba(0,0,0,.18)',
+        }}
+      >
+        <div className="flex h-full flex-col justify-center px-10 py-6">
+          <div className="mb-6">
+            <div className="flex items-center gap-2 text-blue-600">
+              <ShieldCheck size={24} />
+              <span className="text-lg font-bold text-gray-800">店牛预警平台</span>
+            </div>
+            <div className="mt-1 text-xs text-gray-400">请登录您的账号</div>
           </div>
-          <div className="mt-1 text-xs text-gray-400">请登录您的账号</div>
-        </div>
 
-        <label className="mb-1 text-xs text-gray-500">账号</label>
-        <input
-          value={account}
-          onChange={(e) => setAccount(e.target.value)}
-          placeholder="请输入账号"
-          className="mb-4 h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
-          autoFocus
-        />
-
-        <label className="mb-1 text-xs text-gray-500">密码</label>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="请输入密码"
-          onKeyDown={(e) => e.key === 'Enter' && doLogin()}
-          className="mb-4 h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
-        />
-
-        <label className="mb-1 text-xs text-gray-500">验证码</label>
-        <div className="mb-6 flex items-center gap-2">
+          <label className="mb-1 text-xs text-gray-500">账号</label>
           <input
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            placeholder="验证码"
-            maxLength={4}
-            className="h-11 flex-1 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+            value={account}
+            onChange={(e) => setAccount(e.target.value)}
+            placeholder="请输入账号"
+            className="mb-4 h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+            autoFocus
           />
-          <canvas ref={captchaRef} width={90} height={34} className="cursor-pointer rounded-md" onClick={refreshCaptcha} />
-          <button onClick={refreshCaptcha} className="text-gray-400 hover:text-gray-600" title="刷新验证码">
-            <RefreshCw size={16} />
+
+          <label className="mb-1 text-xs text-gray-500">密码</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="请输入密码"
+            onKeyDown={(e) => e.key === 'Enter' && doLogin()}
+            className="mb-4 h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+          />
+
+          <label className="mb-1 text-xs text-gray-500">验证码</label>
+          <div className="mb-6 flex items-center gap-2">
+            <input
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="验证码"
+              maxLength={4}
+              className="h-11 flex-1 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+            />
+            <canvas ref={captchaRef} width={90} height={34} className="cursor-pointer rounded-md" onClick={refreshCaptcha} />
+            <button onClick={refreshCaptcha} className="text-gray-400 hover:text-gray-600" title="刷新验证码">
+              <RefreshCw size={16} />
+            </button>
+          </div>
+
+          {error && <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</div>}
+
+          <button
+            onClick={doLogin}
+            disabled={loading}
+            className="h-11 w-full rounded-lg bg-blue-600 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+          >
+            {loading ? '登录中…' : '登录'}
           </button>
+
+          <div className="mt-6 text-center text-[11px] text-gray-300">© 店牛预警平台 · 零售终端数据预警与通知</div>
         </div>
-
-        {error && <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</div>}
-
-        <button
-          onClick={doLogin}
-          disabled={loading}
-          className="h-11 w-full rounded-lg bg-blue-600 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
-        >
-          {loading ? '登录中…' : '登录'}
-        </button>
-
-        <div className="mt-6 text-center text-[11px] text-gray-300">© 店牛预警平台 · 零售终端数据预警与通知</div>
       </div>
     </div>
   );
