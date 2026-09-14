@@ -633,6 +633,12 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
         const GRAN_COL: Record<string, string> = { week: '本周天数', quarter: '本季天数', year: '本年天数', month: '本月天数', day: '本日天数' };
         const dateCols = [{ key: '开始日期', label: '开始日期' }, { key: '结束日期', label: '结束日期' }, { key: '已过天数', label: '已过天数' }];
         if (granDay && GRAN_COL[granDay]) dateCols.push({ key: GRAN_COL[granDay], label: GRAN_COL[granDay] });
+        dateCols.push(
+          { key: '当前日期', label: '当前日期' },
+          { key: '周几', label: '周几' },
+          { key: '第几周', label: '第几周' },
+          { key: '剩余天数', label: '剩余天数' },
+        );
         cols.unshift(...dateCols);
       }
       // 指标列：多指标 metrics 优先；否则单指标 resultLabel / metricFieldLabel

@@ -1153,6 +1153,13 @@ function evalNode(
       if (twrAll) {
         const day = new Date();
         const y = day.getFullYear();
+        const isoWeekOf = (d: Date) => {
+          const g = new Date(d); g.setHours(0, 0, 0, 0);
+          const t = new Date(g); t.setDate(t.getDate() + 4 - ((t.getDay() + 6) % 7));
+          const yw = new Date(t.getFullYear(), 0, 1);
+          return Math.ceil((((t.getTime() - yw.getTime()) / 86400000) + 1) / 7);
+        };
+        const dowCN = ['日', '一', '二', '三', '四', '五', '六'][day.getDay()];
         const GRAN_VAL: Record<string, string> = {
           week: '7',
           month: String(new Date(y, day.getMonth() + 1, 0).getDate()),
@@ -1166,6 +1173,14 @@ function evalNode(
           { key: '已过天数', label: '已过天数', value: String(calcElapsedDays(twrAll)) },
         );
         if (windowGran && GRAN_DAYS[windowGran]) dateCols.push({ key: GRAN_DAYS[windowGran], label: GRAN_DAYS[windowGran], value: GRAN_VAL[windowGran] });
+        const winTotal = Math.round((twrAll.end.getTime() - twrAll.start.getTime()) / 86400000) + 1;
+        const winElapsed = calcElapsedDays(twrAll);
+        dateCols.push(
+          { key: '当前日期', label: '当前日期', value: fmtD(day) },
+          { key: '周几', label: '周几', value: `星期${dowCN}` },
+          { key: '第几周', label: '第几周', value: String(isoWeekOf(day)) },
+          { key: '剩余天数', label: '剩余天数', value: String(Math.max(0, winTotal - winElapsed)) },
+        );
       }
       const cmpValByKey = new Map<string, number[]>();
       if (cmpGroups && cmpMode) {
@@ -1471,7 +1486,7 @@ function evalNode(
 
       // 时间窗列（开始/结束/已过/本周/本月/本年天数）在同一事实结果内是全局固定值：
       // 无单据店铺缺失匹配时，这些列取自事实结果首行（真实周期值）而非 fillVal，便于统一按周期统计
-      const WINDOW_COLS = new Set(['开始日期', '结束日期', '已过天数', '本周天数', '本月天数', '本年天数']);
+      const WINDOW_COLS = new Set(['开始日期', '结束日期', '已过天数', '本周天数', '本季天数', '本年天数', '本月天数', '本日天数', '当前日期', '周几', '第几周', '剩余天数']);
       const factSeed: Record<string, unknown> = factNode?.rows?.[0] ?? {};
       const rows = uniCombos.map(({ key, row }) => {
         const hit = factMap.get(key);
