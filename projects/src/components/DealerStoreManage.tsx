@@ -60,11 +60,13 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
                 <th className="px-3 py-2.5 font-medium">{unit}编号</th>
                 <th className="px-3 py-2.5 font-medium">{unit}名称</th>
                 {kind === 'store' && <th className="px-3 py-2.5 font-medium">所属经销商</th>}
-                <th className="px-3 py-2.5 font-medium">主营品牌</th>
-                <th className="px-3 py-2.5 font-medium">分公司</th>
-                <th className="px-3 py-2.5 font-medium">部门</th>
-                <th className="px-3 py-2.5 font-medium">销售区域</th>
-                <th className="px-3 py-2.5 font-medium">区部</th>
+                {kind === 'dealer' && <th className="px-3 py-2.5 font-medium">经销商等级</th>}
+                {kind === 'dealer' && <th className="px-3 py-2.5 font-medium">经销商分类</th>}
+                {kind === 'store' && <th className="px-3 py-2.5 font-medium">主营品牌</th>}
+                {kind === 'store' && <th className="px-3 py-2.5 font-medium">分公司</th>}
+                {kind === 'store' && <th className="px-3 py-2.5 font-medium">部门</th>}
+                {kind === 'store' && <th className="px-3 py-2.5 font-medium">销售区域</th>}
+                {kind === 'store' && <th className="px-3 py-2.5 font-medium">区部</th>}
                 {kind === 'store' && <th className="px-3 py-2.5 font-medium">允许零售</th>}
                 <th className="px-3 py-2.5 font-medium">状态</th>
                 <th className="px-3 py-2.5 font-medium text-right">操作</th>
@@ -79,11 +81,13 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
                     <td className="px-3 py-2.5">{d.code || '-'}</td>
                     <td className={`px-3 py-2.5 font-medium ${activeId === d.id ? 'text-blue-700' : 'text-gray-900'}`}>{d.name}</td>
                     {kind === 'store' && <td className="px-3 py-2.5">{dealers.find((x) => x.id === s.dealerId)?.name ?? '-'}</td>}
-                    <td className="px-3 py-2.5">{s.attrs?.['主营品牌'] || '-'}</td>
-                    <td className="px-3 py-2.5">{s.attrs?.['分公司'] || '-'}</td>
-                    <td className="px-3 py-2.5">{s.attrs?.['部门'] || '-'}</td>
-                    <td className="px-3 py-2.5">{s.attrs?.['销售区域'] || '-'}</td>
-                    <td className="px-3 py-2.5">{s.attrs?.['区部'] || '-'}</td>
+                    {kind === 'dealer' && <td className="px-3 py-2.5">{s.attrs?.['经销商等级'] || '-'}</td>}
+                    {kind === 'dealer' && <td className="px-3 py-2.5">{s.attrs?.['经销商分类'] || '-'}</td>}
+                    {kind === 'store' && <td className="px-3 py-2.5">{s.attrs?.['主营品牌'] || '-'}</td>}
+                    {kind === 'store' && <td className="px-3 py-2.5">{s.attrs?.['分公司'] || '-'}</td>}
+                    {kind === 'store' && <td className="px-3 py-2.5">{s.attrs?.['部门'] || '-'}</td>}
+                    {kind === 'store' && <td className="px-3 py-2.5">{s.attrs?.['销售区域'] || '-'}</td>}
+                    {kind === 'store' && <td className="px-3 py-2.5">{s.attrs?.['区部'] || '-'}</td>}
                     {kind === 'store' && <td className="px-3 py-2.5">{s.allowRetail === false ? '不允许' : '允许'}</td>}
                     <td className="px-3 py-2.5">{s.enabled === false ? <span className="rounded bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-500">停用</span> : <span className="rounded bg-green-50 px-1.5 py-0.5 text-xs font-medium text-green-600">启用</span>}</td>
                     <td className="px-3 py-2.5">
