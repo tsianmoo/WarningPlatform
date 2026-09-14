@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Save, Rocket, Table2, Folder } from 'lucide-react';
+import { ArrowLeft, Save, Rocket, Table2, Folder, Plus, Trash2 } from 'lucide-react';
 
 const STEPS = [
   { key: 'flow', label: '流程搭建' },
@@ -68,7 +68,7 @@ export function RuleConfigurator({
   draft: AlertRule;
   onBack: () => void;
 }) {
-  const { state, addRule, setBuilderTables, addAlert, updateAlertStatus } = useStore();
+  const { state, addRule, setBuilderTables, addAlert, updateAlertStatus, addRuleGroup, removeRuleGroup } = useStore();
   const [rule, setRule] = useState<AlertRule>(draft);
   const [, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -78,6 +78,8 @@ export function RuleConfigurator({
   const hasAction = rule.flow.nodes.some((n) => n.kind === 'action');
   // 分步向导：0 流程搭建 / 1 调度与通知 / 2 确认激活
   const [step, setStep] = useState(0);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [groupName, setGroupName] = useState('');
 
   const set = (patch: Partial<AlertRule>) => {
     setRule((r) => ({ ...r, ...patch }));
@@ -188,9 +190,9 @@ export function RuleConfigurator({
           placeholder="未命名规则（点击命名）"
         />
         <div className="mx-0.5 hidden h-5 w-px bg-gray-200 md:block" />
-        {/* 标题右侧：再次配置规则分组 */}
-        <label className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50/70 px-2.5 py-1 text-xs font-medium text-gray-600">
-          <Folder size={14} className="text-gray-400" />
+        {/* 标题右侧：规则分组（可新建 / 删除） */}
+        <div className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50/70 px-2 py-1 text-xs font-medium text-gray-600">
+          <Folder size={14} className="shrink-0 text-gray-400" />
           <select
             value={rule.groupId ?? ''}
             onChange={(e) => set({ groupId: e.target.value })}
@@ -201,7 +203,50 @@ export function RuleConfigurator({
               <option key={g.id} value={g.id}>{g.name}</option>
             ))}
           </select>
-        </label>
+          {creatingGroup ? (
+            <input
+              autoFocus
+              value={groupName}
+              onChange={(e) => setGroupName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const g = addRuleGroup(groupName);
+                  if (g) { set({ groupId: g.id }); setGroupName(''); setCreatingGroup(false); }
+                }
+                if (e.key === 'Escape') { setCreatingGroup(false); setGroupName(''); }
+              }}
+              placeholder="新分组名，回车确认"
+              className="w-28 rounded border border-emerald-300 bg-white px-1.5 py-0.5 text-xs text-gray-700 outline-none"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setCreatingGroup(true)}
+              title="新建分组"
+              className="shrink-0 rounded px-1 text-gray-500 transition hover:bg-gray-200 hover:text-emerald-600"
+            >
+              <Plus size={13} />
+            </button>
+          )}
+          {rule.groupId && (
+            <button
+              type="button"
+              onClick={() => {
+                const gid = rule.groupId;
+                if (!gid) return;
+                const gName = state.ruleGroups.find((g) => g.id === gid)?.name ?? '';
+                if (window.confirm(`删除分组「${gName}」？其中的规则将归入未分组。`)) {
+                  removeRuleGroup(gid);
+                  set({ groupId: '' });
+                }
+              }}
+              title="删除当前分组"
+              className="shrink-0 rounded px-1 text-gray-400 transition hover:bg-gray-200 hover:text-red-500"
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
+        </div>
         <div className="ml-auto flex items-center gap-3">
           <div className="flex shrink-0 items-center gap-0.5">
           {STEPS.map((s, i) => {
