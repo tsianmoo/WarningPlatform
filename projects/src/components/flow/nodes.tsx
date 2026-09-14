@@ -683,17 +683,31 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
     case 'filljoin': {
       const tag: ColOpt[] = [];
       const pushUniq = (c: ColOpt) => { if (!tag.some((t) => t.key === c.key)) tag.push(c); };
-      // 1) 全集主键列（label 优先取全集字段展示名）
+      // 匹配键（全集侧）+ 主键，用于去重全额带出的列
       const uniKey = s(data.universeField);
+      const extras = Array.isArray(data.extraKeys) ? (data.extraKeys as Record<string, unknown>[]) : [];
+      const uniKeySet = new Set([uniKey, ...extras.map((k) => s(k.universeField)).filter(Boolean)]);
+      // 1) 全集主键列（label 优先取全集字段展示名）
       if (uniKey) pushUniq({ key: uniKey, label: s(data.universeFieldLabel) || uniKey });
       // 2) 追加匹配键（复合键）—— 全集侧标签
-      const extras = Array.isArray(data.extraKeys) ? (data.extraKeys as Record<string, unknown>[]) : [];
       for (const k of extras) {
         const uf = s(k.universeField);
         if (!uf) continue;
         pushUniq({ key: uf, label: s(k.universeFieldLabel) || uf });
       }
-      // 3) 全集额外返回列（如把"店铺成交"命名为"数量"）—— 用命名后的列名作为输出 key
+      // 3) 全集来源其余业务列（与 evaluate filljoin 输出对齐：默认带回全集全部非键列，供下游选字段）
+      if (s(data.universeSource) === 'node') {
+        const uniNode = s(data.universeNodeId);
+        if (uniNode) for (const c of inferNodeCols(allNodes, tables, uniNode)) if (!uniKeySet.has(c.key)) pushUniq(c);
+      } else {
+        const ut = tables.find((x) => x.id === s(data.universeTableId));
+        if (ut) for (const f of ut.fields) if (!uniKeySet.has(f.key)) pushUniq({ key: f.key, label: f.alias || f.key });
+      }
+      // 4) 全集额外返回列（如把"店铺成交"命名为"数量"）—— 用命名后的列名作为输出 key
+      const retFields: ColOpt[] = (Array.isArray(data.universeReturnFields) ? data.universeReturnFields as Record<string, unknown>[] : [])
+        .filter((f) => s(f.key) && !uniKeySet.has(s(f.key)))
+        .map((f) => ({ key: s(f.label) || s(f.key), label: s(f.label) || s(f.key) }));
+      for (const rf of retFields) pushUniq(rf);
       const retField = s(data.universeReturnField);
       if (retField) {
         const retLabel = s(data.universeReturnLabel) || retField;
@@ -705,7 +719,7 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
       const factTid = s(data.factTableId);
       const factKey = s(data.factKeyField);
       const factExtraFields = extras.map((k) => s(k.factField)).filter(Boolean);
-      const factKeys = [factKey, ...factExtraFields];
+      const factKeys = [factKey, ...factExtraFields].filter(Boolean);
       const factRet = s(data.factReturnField);
       const allowFact = (key: string) => {
         if (!key) return false;
