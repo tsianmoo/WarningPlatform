@@ -1130,10 +1130,13 @@ function evalNode(
       const fmtD = (x: Date) => `${x.getFullYear()}/${String(x.getMonth() + 1).padStart(2, '0')}/${String(x.getDate()).padStart(2, '0')}`;
       const dateCols: { key: string; label: string; value: string }[] = [];
       if (twrAll) {
+        const day = new Date();
         dateCols.push(
           { key: '开始日期', label: '开始日期', value: fmtD(twrAll.start) },
           { key: '结束日期', label: '结束日期', value: fmtD(twrAll.end) },
           { key: '已过天数', label: '已过天数', value: String(calcElapsedDays(twrAll)) },
+          { key: '本周天数', label: '本周天数', value: String(((day.getDay() + 6) % 7) + 1) },
+          { key: '本月天数', label: '本月天数', value: String(day.getDate()) },
         );
       }
       const cmpValByKey = new Map<string, number[]>();
