@@ -1091,6 +1091,18 @@ export interface Store {
   birthday?: string;
   /** 是否启用 */
   enabled?: boolean;
+  /** 主营品牌 */
+  brand?: string;
+  /** 所属分公司 */
+  company?: string;
+  /** 所属部门 */
+  department?: string;
+  /** 销售区域 */
+  salesArea?: string;
+  /** 区部 */
+  district?: string;
+  /** 是否允许零售 */
+  allowRetail?: boolean;
   /** 店仓属性（挂分类标签值） */
   attrs?: DictAttrs;
 }

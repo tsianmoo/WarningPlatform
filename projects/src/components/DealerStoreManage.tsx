@@ -71,15 +71,13 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {list.map((d) => (
+          {kind === 'dealer' ? (
+            list.map((d) => (
             <div key={d.id} className={`group flex items-center justify-between border-b border-gray-50 px-4 py-2.5 text-sm ${activeId === d.id ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-50'}`}>
               <button className="flex flex-1 items-center gap-2 text-left" onClick={() => setActiveId(d.id)}>
                 <span className={`h-1.5 w-1.5 rounded-full ${activeId === d.id ? 'bg-white' : d.enabled === false ? 'bg-red-300' : 'bg-gray-300'}`} />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate">{d.name}</span>
-                  {kind === 'store' && (d as Store).dealerId && (
-                    <span className={`truncate text-[10px] ${activeId === d.id ? 'text-white/60' : 'text-gray-400'}`}>上级：{dealers.find((x) => x.id === (d as Store).dealerId)?.name ?? '未知'}</span>
-                  )}
                 </span>
                 {d.enabled === false && <span className="rounded bg-red-50 px-1 text-[10px] text-red-500">停用</span>}
               </button>
@@ -92,7 +90,57 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
                 </span>
               )}
             </div>
-          ))}
+          ))
+          ) : (
+            <table className="w-full border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50 text-left text-[11px] text-gray-500">
+                  <th className="px-2 py-2 font-medium">序号</th>
+                  <th className="px-2 py-2 font-medium">店仓编号</th>
+                  <th className="px-2 py-2 font-medium">店仓名称</th>
+                  <th className="px-2 py-2 font-medium">所属经销商</th>
+                  <th className="px-2 py-2 font-medium">主营品牌</th>
+                  <th className="px-2 py-2 font-medium">分公司</th>
+                  <th className="px-2 py-2 font-medium">部门</th>
+                  <th className="px-2 py-2 font-medium">销售区域</th>
+                  <th className="px-2 py-2 font-medium">区部</th>
+                  <th className="px-2 py-2 font-medium">允许零售</th>
+                  <th className="px-2 py-2 font-medium">状态</th>
+                  {editMode && <th className="px-2 py-2 font-medium">操作</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((d, idx) => {
+                  const s = d as Store;
+                  return (
+                    <tr key={d.id} onClick={() => setActiveId(d.id)} className={`cursor-pointer border-b border-gray-50 ${activeId === d.id ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-50'}`}>
+                      <td className="px-2 py-2">{idx + 1}</td>
+                      <td className="px-2 py-2">{s.code || '-'}</td>
+                      <td className="px-2 py-2 font-medium">{s.name}</td>
+                      <td className="px-2 py-2">{dealers.find((x) => x.id === s.dealerId)?.name ?? '-'}</td>
+                      <td className="px-2 py-2">{s.brand || '-'}</td>
+                      <td className="px-2 py-2">{s.company || '-'}</td>
+                      <td className="px-2 py-2">{s.department || '-'}</td>
+                      <td className="px-2 py-2">{s.salesArea || '-'}</td>
+                      <td className="px-2 py-2">{s.district || '-'}</td>
+                      <td className="px-2 py-2">{s.allowRetail === false ? '不允许' : '允许'}</td>
+                      <td className="px-2 py-2">{s.enabled === false ? <span className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-500">停用</span> : <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-600">启用</span>}</td>
+                      {editMode && (
+                        <td className="px-2 py-2">
+                          <span className={`flex items-center gap-0.5 ${activeId === d.id ? 'text-white/80' : 'text-gray-400'}`}>
+                            <button title="上移" onClick={(e) => { e.stopPropagation(); move(d.id, -1); }} className="rounded p-0.5 hover:bg-gray-200"><ChevronUp size={13} /></button>
+                            <button title="下移" onClick={(e) => { e.stopPropagation(); move(d.id, 1); }} className="rounded p-0.5 hover:bg-gray-200"><ChevronDown size={13} /></button>
+                            <button title="编辑" onClick={(e) => { e.stopPropagation(); setDictForm({ item: d }); }} className="rounded p-0.5 hover:bg-gray-200"><Pencil size={12} /></button>
+                            <button title="删除" onClick={(e) => { e.stopPropagation(); setConfirmDel(d.id); }} className="rounded p-0.5 hover:text-red-600 hover:bg-red-50"><Trash2 size={12} /></button>
+                          </span>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
           {list.length === 0 && <div className="px-4 py-8 text-center text-xs text-gray-400">暂无{unit}，点击右上角 + 新增</div>}
         </div>
       </aside>
@@ -229,6 +277,12 @@ function DictForm(props: {
   const [birthday, setBirthday] = useState(initial?.birthday ?? '');
   const [enabled, setEnabled] = useState(initial ? (initial.enabled !== false) : true);
   const [attrs, setAttrs] = useState<Record<string, string>>(initial?.attrs ?? {});
+  const [brand, setBrand] = useState(initial ? (initial as Store).brand ?? '' : '');
+  const [company, setCompany] = useState(initial ? (initial as Store).company ?? '' : '');
+  const [department, setDepartment] = useState(initial ? (initial as Store).department ?? '' : '');
+  const [salesArea, setSalesArea] = useState(initial ? (initial as Store).salesArea ?? '' : '');
+  const [district, setDistrict] = useState(initial ? (initial as Store).district ?? '' : '');
+  const [allowRetail, setAllowRetail] = useState(initial ? (initial as Store).allowRetail === true : true);
 
   const save = () => {
     if (!name.trim()) return toast.error('请填写名称');
@@ -238,6 +292,12 @@ function DictForm(props: {
       password: password || undefined, birthday: birthday || undefined,
       enabled, attrs, sort: initial?.sort ?? 0,
       dealerId: kind === 'store' ? (dealerId || undefined) : undefined,
+      brand: kind === 'store' ? (brand.trim() || undefined) : undefined,
+      company: kind === 'store' ? (company.trim() || undefined) : undefined,
+      department: kind === 'store' ? (department.trim() || undefined) : undefined,
+      salesArea: kind === 'store' ? (salesArea.trim() || undefined) : undefined,
+      district: kind === 'store' ? (district.trim() || undefined) : undefined,
+      allowRetail: kind === 'store' ? allowRetail : undefined,
     } as Omit<Store, 'id' | 'createdAt'>);
     onClose();
   };
@@ -264,6 +324,37 @@ function DictForm(props: {
                 {dealerOptions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </div>
+          )}
+          {kind === 'store' && (
+            <>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-500">主营品牌</label>
+                <input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="如：NIKE / 自有品牌" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-500">分公司</label>
+                <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="所属分公司" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-500">部门</label>
+                <input value={department} onChange={(e) => setDepartment(e.target.value)} placeholder="所属部门" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-500">销售区域</label>
+                <input value={salesArea} onChange={(e) => setSalesArea(e.target.value)} placeholder="销售区域" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-500">区部</label>
+                <input value={district} onChange={(e) => setDistrict(e.target.value)} placeholder="区部" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-500">允许零售</label>
+                <label className="flex h-9 items-center gap-2 text-sm text-gray-700">
+                  <input type="checkbox" checked={allowRetail} onChange={(e) => setAllowRetail(e.target.checked)} className="h-4 w-4" />
+                  {allowRetail ? '允许' : '不允许'}
+                </label>
+              </div>
+            </>
           )}
           <div>
             <label className="mb-1.5 block text-xs font-medium text-gray-500">联系人</label>

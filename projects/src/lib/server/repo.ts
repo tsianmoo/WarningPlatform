@@ -442,6 +442,12 @@ interface DictRow {
   enabled?: boolean | null;
   attrs?: Record<string, string> | null;
   dealer_id?: string | null;
+  brand?: string | null;
+  company?: string | null;
+  department?: string | null;
+  sales_area?: string | null;
+  district?: string | null;
+  allow_retail?: boolean | null;
 }
 
 function toDealer(r: DictRow): Dealer {
@@ -476,6 +482,12 @@ function toStore(r: DictRow): Store {
     enabled: r.enabled ?? true,
     attrs: r.attrs ?? undefined,
     dealerId: r.dealer_id ?? undefined,
+    brand: r.brand ?? undefined,
+    company: r.company ?? undefined,
+    department: r.department ?? undefined,
+    salesArea: r.sales_area ?? undefined,
+    district: r.district ?? undefined,
+    allowRetail: r.allow_retail ?? undefined,
   };
 }
 
@@ -539,6 +551,12 @@ export async function syncStores(stores: Store[]): Promise<void> {
     enabled: s.enabled ?? true,
     attrs: s.attrs ?? null,
     dealer_id: s.dealerId ?? null,
+    brand: s.brand ?? null,
+    company: s.company ?? null,
+    department: s.department ?? null,
+    sales_area: s.salesArea ?? null,
+    district: s.district ?? null,
+    allow_retail: s.allowRetail ?? null,
   }));
   if (rows.length > 0) {
     const { error } = await client.from('stores').upsert(rows, { onConflict: 'id' });
