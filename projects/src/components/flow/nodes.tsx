@@ -618,9 +618,22 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
             .filter((x) => x.key)
         : [];
       // 时间窗起止列（与 evaluate groupby 输出对齐：dateField+timeWindow 且非 all 时前置两列）
-      const gtw = data.timeWindow as { preset?: string } | undefined;
+      const gtw = data.timeWindow as { preset?: string; dateUnit?: string; unit?: string } | undefined;
       if (s(data.dateField) && gtw && gtw.preset !== 'all') {
-        cols.unshift({ key: '开始日期', label: '开始日期' }, { key: '结束日期', label: '结束日期' }, { key: '已过天数', label: '已过天数' }, { key: '本周天数', label: '本周天数' }, { key: '本月天数', label: '本月天数' }, { key: '本年天数', label: '本年天数' });
+        const granDay = (() => {
+          const p = gtw.preset || '';
+          const u = gtw.dateUnit || gtw.unit || '';
+          if (p === 'all' || p === 'custom') return u ? (u === 'week' ? 'week' : u === 'month' ? 'month' : u === 'year' ? 'year' : u === 'quarter' ? 'quarter' : u === 'day' ? 'day' : null) : null;
+          if (/week|Week/.test(p)) return 'week';
+          if (/Quarter|quarter/.test(p)) return 'quarter';
+          if (/Year|year/.test(p)) return 'year';
+          if (/Month|month/.test(p)) return 'month';
+          return 'day';
+        })();
+        const GRAN_COL: Record<string, string> = { week: '本周天数', quarter: '本季天数', year: '本年天数', month: '本月天数', day: '本日天数' };
+        const dateCols = [{ key: '开始日期', label: '开始日期' }, { key: '结束日期', label: '结束日期' }, { key: '已过天数', label: '已过天数' }];
+        if (granDay && GRAN_COL[granDay]) dateCols.push({ key: GRAN_COL[granDay], label: GRAN_COL[granDay] });
+        cols.unshift(...dateCols);
       }
       // 指标列：多指标 metrics 优先；否则单指标 resultLabel / metricFieldLabel
       const fnTxt = (fn: unknown) =>

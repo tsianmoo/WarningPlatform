@@ -1128,17 +1128,44 @@ function evalNode(
       const dateKey = gd.dateField || t.fields.find((f) => f.type === 'date')?.key || '';
       // 时间窗起止日期列：解析出的统计窗口范围（如 2026/09/01 ~ 2026/09/30），置于结果首列
       const fmtD = (x: Date) => `${x.getFullYear()}/${String(x.getMonth() + 1).padStart(2, '0')}/${String(x.getDate()).padStart(2, '0')}`;
+      // 时间窗粒度：选什么显什么——只显示与所选窗口匹配的一个周期天数（+ 固定的已过天数）
+      const windowGran: string | null = (() => {
+        const tw = gd.timeWindow;
+        if (!tw) return null;
+        const p = tw.preset || '';
+        const u = (tw as { dateUnit?: string; unit?: string }).dateUnit || (tw as { dateUnit?: string; unit?: string }).unit || '';
+        if (p === 'all' || p === 'custom') {
+          if (u === 'week') return 'week';
+          if (u === 'month') return 'month';
+          if (u === 'year') return 'year';
+          if (u === 'quarter') return 'quarter';
+          if (u === 'day') return 'day';
+          return null;
+        }
+        if (/week|Week/.test(p)) return 'week';
+        if (/Quarter|quarter/.test(p)) return 'quarter';
+        if (/Year|year/.test(p)) return 'year';
+        if (/Month|month/.test(p)) return 'month';
+        return 'day';
+      })();
+      const GRAN_DAYS: Record<string, string> = { week: '本周天数', quarter: '本季天数', year: '本年天数', month: '本月天数', day: '本日天数' };
       const dateCols: { key: string; label: string; value: string }[] = [];
       if (twrAll) {
         const day = new Date();
+        const y = day.getFullYear();
+        const GRAN_VAL: Record<string, string> = {
+          week: '7',
+          month: String(new Date(y, day.getMonth() + 1, 0).getDate()),
+          year: String(new Date(y, 1, 29).getMonth() === 1 ? 366 : 365),
+          quarter: String([0, 1, 2].reduce((sum, i) => sum + new Date(y, Math.floor(day.getMonth() / 3) * 3 + i + 1, 0).getDate(), 0)),
+          day: '1',
+        };
         dateCols.push(
           { key: '开始日期', label: '开始日期', value: fmtD(twrAll.start) },
           { key: '结束日期', label: '结束日期', value: fmtD(twrAll.end) },
           { key: '已过天数', label: '已过天数', value: String(calcElapsedDays(twrAll)) },
-          { key: '本周天数', label: '本周天数', value: '7' },
-          { key: '本月天数', label: '本月天数', value: String(new Date(day.getFullYear(), day.getMonth() + 1, 0).getDate()) },
-          { key: '本年天数', label: '本年天数', value: String(new Date(day.getFullYear(), 1, 29).getMonth() === 1 ? 366 : 365) },
         );
+        if (windowGran && GRAN_DAYS[windowGran]) dateCols.push({ key: GRAN_DAYS[windowGran], label: GRAN_DAYS[windowGran], value: GRAN_VAL[windowGran] });
       }
       const cmpValByKey = new Map<string, number[]>();
       if (cmpGroups && cmpMode) {
