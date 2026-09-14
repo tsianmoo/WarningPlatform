@@ -63,6 +63,19 @@ function buildConditionDesc(nodes: FlowNode[]): string {
   return parts.join(' 且 ') || '';
 }
 
+/** 取该预警动作关联判断节点的命名作为预警标题；未命名时回退规则标题 */
+function resolveAlertTitle(rule: AlertRule, actionId: string): string {
+  const incoming = rule.flow.edges?.find((e) => e.target === actionId);
+  if (incoming) {
+    const up = rule.flow.nodes?.find((n) => n.id === incoming.source);
+    if (up && up.kind === 'condition') {
+      const label = (up.data as { resultLabel?: string } | undefined)?.resultLabel?.trim();
+      if (label) return label;
+    }
+  }
+  return rule.name;
+}
+
 /** 依据规则里配置的预警动作节点生成预警工单（不含 id/时间戳，由 ADD_ALERT 落库时补齐） */
 export function buildAlertsForRule(
   rule: AlertRule,
@@ -131,7 +144,7 @@ export function buildAlertsForRule(
       ruleName: rule.name,
       level: lv,
       priority: type === 'alert' ? priority : undefined,
-      title: rule.name, // 预警标题 = 预警规则标题
+      title: resolveAlertTitle(rule, a.id),
       content: content || `${rule.name} · ${actionTitle} 已触发，请及时处理`,
       reason: rule.description || `${rule.name} 命中「${actionTitle}」预警动作，达到触发条件`,
       conditionDesc: conditionDesc || undefined,

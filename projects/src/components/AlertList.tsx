@@ -73,6 +73,18 @@ export function AlertList({ onBack }: { onBack: () => void }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [filter, setFilter] = useState(emptyFilter);
   const rules = state.rules;
+  const groupNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    (state.ruleGroups ?? []).forEach((g) => m.set(g.id, g.name));
+    return m;
+  }, [state.ruleGroups]);
+  const groupOf = useMemo(() => {
+    const m = new Map<string, string>();
+    (state.rules ?? []).forEach((r) => {
+      if (r.groupId && groupNameById.has(r.groupId)) m.set(r.id, groupNameById.get(r.groupId)!);
+    });
+    return m;
+  }, [state.rules, groupNameById]);
 
   const deptOptions = useMemo(() => [...new Set(alerts.map((a) => a.dept).filter(Boolean))], [alerts]);
   const personOptions = useMemo(
@@ -202,7 +214,9 @@ export function AlertList({ onBack }: { onBack: () => void }) {
             <thead>
               <tr className="sticky top-0 z-10 bg-white text-left text-xs text-gray-400">
                 <th className="whitespace-nowrap px-4 py-3 pl-6 font-medium">序号</th>
-                <th className="min-w-44 whitespace-nowrap px-4 py-3 font-medium">标题</th>
+                <th className="min-w-36 whitespace-nowrap px-4 py-3 font-medium">预警规则</th>
+                <th className="min-w-40 whitespace-nowrap px-4 py-3 font-medium">预警标题</th>
+                <th className="whitespace-nowrap px-4 py-3 font-medium">预警分组</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">预警条数</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">重要程度</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">适用部门</th>
@@ -257,8 +271,10 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                     <tr className="align-middle transition-colors last:border-0 hover:bg-gray-50/70">
                       <td className="whitespace-nowrap px-4 py-3 pl-6 text-xs tabular-nums text-gray-300">{String(idx + 1).padStart(2, '0')}</td>
                       <td className="whitespace-nowrap px-4 py-3 align-middle text-[13px] font-medium text-gray-800">
-                        {a.ruleName || a.title || '—'}
+                        {a.ruleName || '—'}
                       </td>
+                      <td className="whitespace-nowrap px-4 py-3 align-middle text-[13px] text-gray-600">{a.title || '—'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-gray-600">{groupOf.get(a.ruleId) || '—'}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs tabular-nums text-gray-600">{count}</td>
                       <td className="whitespace-nowrap px-4 py-3">
                         <span className={`inline-flex items-center gap-1.5 text-[13px] font-medium ${lv.text}`}>

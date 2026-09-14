@@ -4,6 +4,14 @@
 
 预警规则画布：可视化编排预警规则（节点流 + 求值引擎），规则触发后产生预警工单，数据经 Supabase 持久化。前端读写整份对象（DataTable / AlertRule / AlertTask），经 `/api/state` 全量读取与全量覆盖式同步。
 
+### 预警/规则/分组模型关联
+
+- **预警工单** `AlertTask`：字段含 `id`(NOT NULL，落库必需，缺失时后端 `syncAlerts` 自动补齐)、`ruleId`、`ruleName`(规则标题)、`title`(预警标题)、`level`、`status`、`dept`、`assignee`、`preview`、`conditionDesc`。
+- **预警标题规则**：`buildAlertsForRule`（`src/lib/store.tsx`）生成预警时，`title` 取该预警动作节点上游**判断节点**（kind=`condition`）的命名 `data.resultLabel`（`resolveAlertTitle` 辅助函数）；无命名时回退规则标题 `rule.name`。`ruleName` 始终为规则标题，二者可不同。
+- **预警分组**：`AlertRule.groupId` 关联 `RuleGroup`(id/name/created_at)。前端 `AlertList` 经 `ruleId → rule.groupId → ruleGroups.name` 解析分组名展示；无 → '—'。分组数据经 `/api/state` 同步。
+- **预警列表列结构**（`src/components/AlertList.tsx`）：序号 / 预警规则(`ruleName`) / 预警标题(`title`) / 预警分组(`groupOf`) / 预警条数 / 级别 / 部门 / 接收人 / 创建人 / 时间 / 已耗时 / 状态 / 操作。
+- **预警动作独立开关**：动作节点数据含 `enabled?: boolean`，`buildAlertsForRule` 过滤 `enabled !== false`；配置页激活与列表页启用（`activateRule`）均会生成本规则预警。
+
 ## 项目结构（多层导入）
 
 - **工作区根（git 仓库根）**：`/workspace/projects` — 平台 `AGENTS.md` 读取与 `.coze` 入口所在
