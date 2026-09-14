@@ -1442,10 +1442,18 @@ function evalNode(
         }
       }
 
+      // 时间窗列（开始/结束/已过/本周/本月/本年天数）在同一事实结果内是全局固定值：
+      // 无单据店铺缺失匹配时，这些列取自事实结果首行（真实周期值）而非 fillVal，便于统一按周期统计
+      const WINDOW_COLS = new Set(['开始日期', '结束日期', '已过天数', '本周天数', '本月天数', '本年天数']);
+      const factSeed: Record<string, unknown> = factNode?.rows?.[0] ?? {};
       const rows = uniCombos.map(({ key, row }) => {
         const hit = factMap.get(key);
         const r: Record<string, string | number> = { ...row };
         for (const c of factCols) {
+          if (!hit && WINDOW_COLS.has(c)) {
+            const sv = factSeed[c];
+            if (sv != null) { r[c] = typeof sv === 'number' || typeof sv === 'string' ? (sv as string | number) : String(sv); continue; }
+          }
           const v = hit ? (hit[c] ?? fillVal) : fillVal;
           if (typeof v === 'number' || typeof v === 'string') r[c] = v;
           else r[c] = String(v);
