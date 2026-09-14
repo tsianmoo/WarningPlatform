@@ -240,12 +240,12 @@ function Shell() {
                 title="账号"
                 className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white hover:ring-2 hover:ring-blue-200"
               >
-                {(me?.name ?? '用').slice(0, 1)}
+                {(me?.name || meName || '用').slice(0, 1)}
               </button>
               {menuOpen && (
                 <div className="absolute right-0 top-10 z-30 w-44 rounded-lg border bg-white p-1 shadow-lg">
                   <div className="border-b px-3 py-1.5 text-xs text-gray-400">
-                    {me ? `${me.name}${me.username ? ` · ${me.username}` : ''}` : '未登录'}
+                    {`${me?.name || meName}${me?.username ? ` · ${me.username}` : ''}`}
                   </div>
                   <button
                     onClick={() => { setMenuOpen(false); openProfile(); }}
