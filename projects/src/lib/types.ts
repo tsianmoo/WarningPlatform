@@ -1121,6 +1121,11 @@ export interface LoginBoxStyle {
   padX: number;          // 内边距：水平（px）
   padY: number;          // 内边距：垂直（px）
   fieldHeight: number;   // 登录框内输入框高度（px）
+  shadowColor: string;   // 阴影颜色
+  shadowOpacity: number; // 0-1 阴影透明度
+  shadowX: number;       // 投影距离X（px）
+  shadowY: number;       // 投影距离Y（px）
+  shadowBlur: number;    // 投影模糊（px）
 }
 /** 画布可添加的文本组件 */
 export interface HomeTextElement {
@@ -1177,6 +1182,7 @@ export const DEFAULT_HOME_CONFIG: HomeConfig = {
   loginBox: {
     x: 66, y: 26, width: 320, height: 340, bgColor: '#ffffff', bgOpacity: 0.12, blur: 12, radius: 16,
     padX: 40, padY: 24, fieldHeight: 44,
+    shadowColor: '#000000', shadowOpacity: 0.25, shadowX: 0, shadowY: 12, shadowBlur: 24,
   },
   elements: [],
 };

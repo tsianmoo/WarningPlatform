@@ -159,7 +159,7 @@ export default function LoginPage() {
           backdropFilter: `blur(${cfg.loginBox.blur}px)`,
           WebkitBackdropFilter: `blur(${cfg.loginBox.blur}px)`,
           borderRadius: cfg.loginBox.radius,
-          boxShadow: '0 10px 40px rgba(0,0,0,.18)',
+          boxShadow: `${cfg.loginBox.shadowX}px ${cfg.loginBox.shadowY}px ${cfg.loginBox.shadowBlur}px ${toRgba(cfg.loginBox.shadowColor, cfg.loginBox.shadowOpacity)}`,
         }}
       >
         <div className="flex h-full flex-col justify-evenly" style={{ padding: `${cfg.loginBox.padY}px ${cfg.loginBox.padX}px` }}>

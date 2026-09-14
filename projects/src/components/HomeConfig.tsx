@@ -522,6 +522,21 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
           <Field label="输入框高">
             <NumberInput value={cfg.loginBox.fieldHeight} min={24} max={72} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, fieldHeight: n } }))} />
           </Field>
+          <Field label="阴影颜色">
+            <ColorPick value={cfg.loginBox.shadowColor} onChange={(v) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, shadowColor: v } }))} />
+          </Field>
+          <Field label="阴影透明">
+            <OpacityPick value={cfg.loginBox.shadowOpacity} onChange={(v) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, shadowOpacity: v } }))} />
+          </Field>
+          <Field label="投影X">
+            <NumberInput value={cfg.loginBox.shadowX} min={-40} max={40} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, shadowX: n } }))} />
+          </Field>
+          <Field label="投影Y">
+            <NumberInput value={cfg.loginBox.shadowY} min={-40} max={40} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, shadowY: n } }))} />
+          </Field>
+          <Field label="投影模糊">
+            <NumberInput value={cfg.loginBox.shadowBlur} min={0} max={80} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, shadowBlur: n } }))} />
+          </Field>
         </>
       );
     }
@@ -632,7 +647,7 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
               background: toRgba(cfg.loginBox.bgColor, cfg.loginBox.bgOpacity),
               backdropFilter: `blur(${cfg.loginBox.blur}px)`,
               WebkitBackdropFilter: `blur(${cfg.loginBox.blur}px)`,
-              boxShadow: '0 8px 30px rgba(0,0,0,0.18)',
+              boxShadow: `${cfg.loginBox.shadowX}px ${cfg.loginBox.shadowY}px ${cfg.loginBox.shadowBlur}px ${toRgba(cfg.loginBox.shadowColor, cfg.loginBox.shadowOpacity)}`,
               padding: `${cfg.loginBox.padY}px ${cfg.loginBox.padX}px`,
             }}
             onPointerDown={(e) => startDrag('login', e)}
