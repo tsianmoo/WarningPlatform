@@ -115,6 +115,7 @@
   - **匹配键必须显式手动选择，不做自动兜底**：evaluate 要求 `universeField`（全集主匹配键）与 `factKeyField`（事实主匹配键）都显式存在，否则返回提示"请先选择全集主匹配键字段/请选择事实主匹配键"，**不再自动取全集首列兜底**。⚠️ 全集侧字段来自它的源（如"直联营店仓"filter 的结果列）可选项，而事实侧字段来自事实节点列——两侧字段名可能不同（如全集是`店仓名称`、事实是`店铺名称`），用户需各自分别选择后再匹配，选错/漏选会导致匹配不上、指标列全变填充值。改动时勿恢复自动兜底。
   - 关联诊断：`evaluate.ts` 可用 esbuild 打包后 node 运行，脚本 fetch `/api/state` 取真实数据复现（见 /tmp/diag 系列脚本思路）。
 - 诊断脚本可用 `npx esbuild /tmp/x.ts --bundle --platform=node --format=esm --outfile=/tmp/x.mjs` 打包后 `node /tmp/x.mjs` 运行。
+- **数据表删除保护 + 规则删除/复制的二次确认**：用户不允许"删数据表连带删规则"。store `REMOVE_TABLE` 已改为：若有规则 `r.tableIds?.includes(id)`，**直接拒绝删除返回原 state**（不再隐式清掉引用规则）；未引用时只删表、不动规则。UI 两层配合（DataTableManager.tsx）：删除按钮先 `tryDelete(t)` 计算引用规则 → 弹 `ui/alert-dialog`；被引用时对话框只显示"无法删除 + 引用的规则名"，仅提供「知道了」，无确认删除按钮；无引用时提供「取消 / 确认删除」二次确认。规则侧 RuleList.tsx 的删除与复制也走同一个 alert-dialog 做二次确认（copy 确认文案注明"复制后为草稿"）。⚠️ 改 REMOVE_TABLE 时勿恢复旧逻辑（删表时 `rules.filter(不含该表)`），否则又会造成"删表丢规则"。引用关系判断一律用 `r.tableIds?.includes(id)`。
 - **预警列表字段为空 / 预警无法关联规则**：预警由入驻前端 `buildAlertsForRule`（store.tsx）在「激活规则/手动触发」时生成，会带全字段（ruleId/ruleName/title/conditionDesc/dept/assignee/preview）。若库里出现 `rule_id` 为空、字段全空的碎片预警，说明它不是该路径生成，直接清理。数据库无正确预警时，可用 esbuild 打包的 Node 脚本复用 `evaluateFlow`（读 `alert_rules`/`data_tables` 的 `data` 列 → 对 active 规则求值 → 按 `buildAlertsForRule` 同款逻辑构造 AlertTask → 清空 `alert_tasks` 后 `insert`），`preview` 存 `{columns, rows}`（rows 取前 200），content 用 `{field}` 按首行替换真实列值。注意库同步是前端 `/api/state` 全量覆盖，写库后前端刷新即看到。
 
 ## 运行与预览

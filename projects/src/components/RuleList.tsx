@@ -5,6 +5,16 @@ import { Plus, BellRing, ArrowLeft, Trash2, Users, CalendarClock, Table2, Pencil
 import type { AlertRule } from '@/lib/types';
 import { useStore, formatDateTime } from '@/lib/store';
 import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
 
 const RULE_STATUS: Record<AlertRule['status'], { label: string; cls: string }> = {
   draft: { label: '草稿', cls: 'bg-gray-100 text-gray-600' },
@@ -25,8 +35,9 @@ export function RuleList({
   const { state, removeRule, updateRule, addRule } = useStore();
   const [detailId, setDetailId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: 'delete' | 'copy'; rule: AlertRule } | null>(null);
 
-  const copyRule = (r: AlertRule) => {
+  const doCopy = (r: AlertRule) => {
     const copy = JSON.parse(JSON.stringify(r)) as AlertRule;
     copy.id = 'rule_' + Math.random().toString(36).slice(2, 10) + '_' + Date.now().toString(36);
     copy.name = `${r.name} 副本`;
@@ -133,17 +144,14 @@ export function RuleList({
                         <Pencil size={15} />
                       </button>
                       <button
-                        onClick={() => {
-                          removeRule(r.id);
-                          toast.success('已删除规则');
-                        }}
+                        onClick={() => setConfirm({ kind: 'delete', rule: r })}
                         className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
                         title="删除"
                       >
                         <Trash2 size={15} />
                       </button>
                       <button
-                        onClick={() => copyRule(r)}
+                        onClick={() => setConfirm({ kind: 'copy', rule: r })}
                         className="rounded-md p-1.5 text-gray-400 hover:bg-blue-50 hover:text-blue-500"
                         title="复制为新规则"
                       >
@@ -203,6 +211,53 @@ export function RuleList({
           })}
         </div>
       )}
+
+      <AlertDialog open={!!confirm} onOpenChange={(v) => !v && setConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirm?.kind === 'copy' ? '复制预警规则' : '删除预警规则'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirm?.kind === 'copy' ? (
+                <>
+                  将复制「<span className="font-semibold text-gray-700">{confirm?.rule.name}</span>」为新规则，复制后为草稿状态。
+                </>
+              ) : (
+                <>
+                  确定删除「<span className="font-semibold text-gray-700">{confirm?.rule.name}</span>」吗？删除后不可恢复。
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setConfirm(null)}>取消</AlertDialogCancel>
+            {confirm?.kind === 'copy' ? (
+              <AlertDialogAction
+                onClick={() => {
+                  if (confirm) doCopy(confirm.rule);
+                  setConfirm(null);
+                }}
+              >
+                确认复制
+              </AlertDialogAction>
+            ) : (
+              <AlertDialogAction
+                className="bg-red-600 text-white hover:bg-red-700"
+                onClick={() => {
+                  if (confirm) {
+                    removeRule(confirm.rule.id);
+                    toast.success('已删除规则');
+                  }
+                  setConfirm(null);
+                }}
+              >
+                确认删除
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

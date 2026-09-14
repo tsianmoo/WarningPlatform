@@ -13,8 +13,18 @@ import {
 } from 'lucide-react';
 import { useStore, formatDateTime } from '@/lib/store';
 import { parseTableFile, buildTableFromRows } from '@/lib/parser';
-import { uid, type FieldType, type DataTable } from '@/lib/types';
+import { uid, type FieldType, type DataTable, type AlertRule } from '@/lib/types';
 import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
 
 const TYPE_LABEL: Record<FieldType, string> = {
   string: '文本',
@@ -26,6 +36,12 @@ const TYPE_LABEL: Record<FieldType, string> = {
 export function DataTableManager({ onHome }: { onHome?: () => void }) {
   const { state, addTable, removeTable, setActiveTable, renameField, setFieldType } = useStore();
   const [dragging, setDragging] = useState(false);
+  const [openDelete, setOpenDelete] = useState<{ id: string; refs: AlertRule[] } | null>(null);
+
+  const tryDelete = (t: DataTable) => {
+    // 若已被规则引用，标注引用来源并由对话框阻止删除；无引用时仍须二次确认
+    setOpenDelete({ id: t.id, refs: state.rules.filter((r) => r.tableIds?.includes(t.id)) });
+  };
 
   const handleFile = async (file: File) => {
     try {
@@ -145,7 +161,7 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        removeTable(t.id);
+                        tryDelete(t);
                       }}
                       className="rounded-md p-1.5 text-gray-300 opacity-0 transition hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
                       title="删除数据表"
@@ -296,6 +312,49 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
           )}
         </section>
       </div>
+
+      <AlertDialog open={!!openDelete} onOpenChange={(v) => !v && setOpenDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {openDelete && openDelete.refs.length > 0 ? '无法删除数据表' : '删除数据表'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {openDelete && openDelete.refs.length > 0 ? (
+                <>
+                  该数据表已被 <span className="font-semibold text-gray-700">{openDelete.refs.length}</span>{' '}
+                  条预警规则引用：
+                  <span className="mt-1 block">
+                    {openDelete.refs.map((r) => r.name).join('、')}
+                  </span>
+                  <span className="mt-2 block text-gray-500">
+                    请先删除这些预警规则，才能删除数据表，以免规则因数据缺失而失效。
+                  </span>
+                </>
+              ) : (
+                <>
+                  删除后该数据表将无法用于任何预警规则，且不可恢复。确认要删除吗？
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setOpenDelete(null)}>{openDelete && openDelete.refs.length > 0 ? '知道了' : '取消'}</AlertDialogCancel>
+            {openDelete && openDelete.refs.length === 0 && (
+              <AlertDialogAction
+                className="bg-red-600 text-white hover:bg-red-700"
+                onClick={() => {
+                  if (openDelete) removeTable(openDelete.id);
+                  setOpenDelete(null);
+                  toast.success('已删除数据表');
+                }}
+              >
+                确认删除
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

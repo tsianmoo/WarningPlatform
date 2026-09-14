@@ -313,12 +313,13 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
     }
     case 'REMOVE_TABLE': {
       const id = action.payload as string;
+      // 已有规则引用该数据表时禁止删除（需先删除/解除关联规则），避免删表连带丢失规则
+      if (state.rules.some((r) => r.tableIds?.includes(id))) return state;
       const tables = state.tables.filter((t) => t.id !== id);
       return {
         ...state,
         tables,
         activeTableId: state.activeTableId === id ? tables[0]?.id ?? '' : state.activeTableId,
-        rules: state.rules.filter((r) => !r.tableIds.includes(id)),
       };
     }
     case 'SET_ACTIVE_TABLE':
