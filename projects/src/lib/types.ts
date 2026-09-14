@@ -642,6 +642,8 @@ export interface ActionNodeData {
   notify?: { departments: string[]; personnel: string[] };
   /** 命中数据来源（上游节点）：预览与触发时从此节点取命中的行/列 */
   sourceNode?: NodeResultRef;
+  /** 是否启用本动作：false 表示关闭，激活时不生成对应预警（默认 true） */
+  enabled?: boolean;
 }
 
 /** 时间窗口节点数据 */

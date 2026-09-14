@@ -2450,6 +2450,20 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
         </button>
       </div>
       <div className="nodrag px-3 py-2">
+        {/* 动作开关：关闭则不生成对应预警 */}
+        <div className="mb-1.5 flex items-center justify-between">
+          <span className="text-xs text-gray-400">启用动作</span>
+          <button
+            type="button"
+            onClick={() => update({ enabled: d.enabled === false ? true : false })}
+            className={`relative h-4.5 w-8 rounded-full transition ${d.enabled === false ? 'bg-gray-300' : 'bg-emerald-500'}`}
+            title={d.enabled === false ? '当前关闭：激活时不生成该预警' : '当前开启：激活时生成该预警'}
+          >
+            <span
+              className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow transition ${d.enabled === false ? 'left-0.5' : 'left-4'}`}
+            />
+          </button>
+        </div>
         {/* 类型：提醒 / 预警 */}
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-gray-400">类型</span>

@@ -32,7 +32,7 @@ export function RuleList({
   onEdit: (id: string) => void;
   onHome?: () => void;
 }) {
-  const { state, removeRule, updateRule, addRule } = useStore();
+  const { state, removeRule, updateRule, addRule, activateRule } = useStore();
   const [detailId, setDetailId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ kind: 'delete' | 'copy'; rule: AlertRule } | null>(null);
@@ -127,7 +127,8 @@ export function RuleList({
                         <button
                           onClick={() => {
                             const next = r.status === 'active' ? 'paused' : 'active';
-                            updateRule(r.id, { status: next });
+                            if (next === 'active') activateRule(r.id);
+                            else updateRule(r.id, { status: next });
                             toast.success(next === 'paused' ? '已停用，不再自动生成新预警（已有预警保留）' : '已启用');
                           }}
                           className="rounded-md p-1.5 text-gray-400 hover:bg-amber-50 hover:text-amber-500"
@@ -264,7 +265,7 @@ export function RuleList({
 
 /** 规则详情：摘要 + 调度与通知 */
 function RuleDetail({ rule, onBack, onEdit }: { rule: AlertRule; onBack: () => void; onEdit: () => void }) {
-  const { state, updateRule } = useStore();
+  const { state, updateRule, activateRule } = useStore();
   const tablesUsed = state.tables.filter((t) => rule.tableIds?.includes(t.id));
   const st = RULE_STATUS[rule.status];
   const pending = rule.executions.find((e) => e.status === 'pending');
@@ -291,7 +292,8 @@ function RuleDetail({ rule, onBack, onEdit }: { rule: AlertRule; onBack: () => v
             <button
               onClick={() => {
                 const next = rule.status === 'active' ? 'paused' : 'active';
-                updateRule(rule.id, { status: next });
+                if (next === 'active') activateRule(rule.id);
+                else updateRule(rule.id, { status: next });
                 toast.success(next === 'paused' ? '已停用，不再自动生成新预警（已有预警保留）' : '已启用');
               }}
               className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm ${

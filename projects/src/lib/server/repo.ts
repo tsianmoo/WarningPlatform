@@ -74,7 +74,7 @@ export async function getAllAlerts(): Promise<AlertTask[]> {
 export async function syncAlerts(alerts: AlertTask[]): Promise<void> {
   const client = getSupabaseClient();
   const rows = alerts.map((a) => ({
-    id: a.id,
+    id: a.id ?? `alert_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     rule_id: a.ruleId,
     rule_name: a.ruleName,
     level: a.level,
@@ -98,7 +98,7 @@ export async function syncAlerts(alerts: AlertTask[]): Promise<void> {
 
   const { data: existing, error: selErr } = await client.from('alert_tasks').select('id');
   if (selErr) throw new Error(`读取预警ID失败: ${selErr.message}`);
-  const keep = new Set(alerts.map((a) => a.id));
+  const keep = new Set(rows.map((r) => r.id));
   const staleIds = ((existing as { id: string }[] | null) ?? [])
     .map((r) => r.id)
     .filter((id) => !keep.has(id));

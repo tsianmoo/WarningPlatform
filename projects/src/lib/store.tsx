@@ -70,7 +70,7 @@ export function buildAlertsForRule(
 ): Omit<AlertTask, 'id' | 'createdAt' | 'updatedAt'>[] {
   const base: { id: string; data: ActionNodeData }[] = [];
   for (const nd of rule.flow.nodes) {
-    if (nd.kind === 'action' && nd.data) {
+    if (nd.kind === 'action' && nd.data && (nd.data as ActionNodeData).enabled !== false) {
       base.push({ id: nd.id, data: nd.data as ActionNodeData });
     }
   }
@@ -231,6 +231,7 @@ type StoreApi = {
   addRule: (r: AlertRule) => void;
   updateRule: (id: string, patch: Partial<AlertRule>) => void;
   removeRule: (id: string) => void;
+  activateRule: (id: string) => void;
   // execution
   updateExecution: (ruleId: string, execId: string, patch: Partial<ExecutionRecord>) => void;
   // alerts
@@ -561,6 +562,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setFieldType: (tableId, fieldKey, type) => dispatch('SET_FIELD_TYPE', { tableId, fieldKey, type }),
       addRule: (r) => dispatch('ADD_RULE', r),
       updateRule: (id, patch) => dispatch('UPDATE_RULE', { id, patch }),
+      activateRule: (id) => {
+        const rule = state.rules.find((r) => r.id === id);
+        if (!rule) return;
+        const alerts = buildAlertsForRule(rule, state.tables);
+        const seen = new Set<string>();
+        for (const a of alerts) {
+          const key = `${a.ruleId}|${a.level}|${a.title}|${a.dept ?? ''}|${a.assignee ?? ''}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const hit = state.alerts.find(
+            (x) => x.ruleId === a.ruleId && x.level === a.level && x.title === a.title && x.dept === a.dept && x.assignee === a.assignee
+          );
+          if (hit) dispatch('UPDATE_ALERT', { id: hit.id, patch: { ...a, updatedAt: Date.now() } });
+          else dispatch('ADD_ALERT', a);
+        }
+        if (rule.status !== 'active') dispatch('UPDATE_RULE', { id, patch: { status: 'active' } });
+      },
       removeRule: (id) => dispatch('REMOVE_RULE', id),
       updateExecution: (ruleId, execId, patch) => dispatch('UPDATE_EXECUTION', { ruleId, execId, patch }),
       addRuleGroup: (name) => {
