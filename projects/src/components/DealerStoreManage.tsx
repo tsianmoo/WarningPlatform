@@ -75,7 +75,12 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
             <div key={d.id} className={`group flex items-center justify-between border-b border-gray-50 px-4 py-2.5 text-sm ${activeId === d.id ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-50'}`}>
               <button className="flex flex-1 items-center gap-2 text-left" onClick={() => setActiveId(d.id)}>
                 <span className={`h-1.5 w-1.5 rounded-full ${activeId === d.id ? 'bg-white' : d.enabled === false ? 'bg-red-300' : 'bg-gray-300'}`} />
-                <span className="flex-1 truncate">{d.name}</span>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate">{d.name}</span>
+                  {kind === 'store' && (d as Store).dealerId && (
+                    <span className={`truncate text-[10px] ${activeId === d.id ? 'text-white/60' : 'text-gray-400'}`}>上级：{dealers.find((x) => x.id === (d as Store).dealerId)?.name ?? '未知'}</span>
+                  )}
+                </span>
                 {d.enabled === false && <span className="rounded bg-red-50 px-1 text-[10px] text-red-500">停用</span>}
               </button>
               {editMode && (
@@ -146,6 +151,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
           kind={kind}
           initial={dictForm.item as (Dealer | Store) | null}
           categoryAttrs={categoryAttrs}
+          dealerOptions={dealers}
           onClose={() => setDictForm(null)}
           onSave={saveUnit}
         />
@@ -207,13 +213,15 @@ function DictForm(props: {
   kind: Kind;
   initial: (Dealer | Store) | null;
   categoryAttrs: HrAttribute[];
+  dealerOptions: Dealer[];
   onClose: () => void;
   onSave: (d: Omit<Dealer, 'id' | 'createdAt'> | Omit<Store, 'id' | 'createdAt'>) => void;
 }) {
-  const { kind, initial, categoryAttrs, onClose, onSave } = props;
+  const { kind, initial, categoryAttrs, dealerOptions, onClose, onSave } = props;
   const unit = META[kind].unit;
   const [code, setCode] = useState(initial?.code ?? '');
   const [name, setName] = useState(initial?.name ?? '');
+  const [dealerId, setDealerId] = useState(initial ? (initial as Store).dealerId ?? '' : '');
   const [contact, setContact] = useState(initial?.contact ?? '');
   const [phone, setPhone] = useState(initial?.phone ?? '');
   const [address, setAddress] = useState(initial?.address ?? '');
@@ -229,7 +237,8 @@ function DictForm(props: {
       phone: phone.trim() || undefined, address: address.trim() || undefined,
       password: password || undefined, birthday: birthday || undefined,
       enabled, attrs, sort: initial?.sort ?? 0,
-    });
+      dealerId: kind === 'store' ? (dealerId || undefined) : undefined,
+    } as Omit<Store, 'id' | 'createdAt'>);
     onClose();
   };
 
@@ -247,6 +256,15 @@ function DictForm(props: {
             <label className="mb-1.5 block text-xs font-medium text-gray-500">{unit}名称 *</label>
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder={`请输入${unit}名称`} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
           </div>
+          {kind === 'store' && (
+            <div className="col-span-2">
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">上级经销商</label>
+              <select value={dealerId} onChange={(e) => setDealerId(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900">
+                <option value="">请选择上级经销商</option>
+                {dealerOptions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </div>
+          )}
           <div>
             <label className="mb-1.5 block text-xs font-medium text-gray-500">联系人</label>
             <input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="联系人姓名" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />

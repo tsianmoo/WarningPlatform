@@ -1075,6 +1075,8 @@ export interface Store {
   name: string;
   sort: number;
   createdAt: number;
+  /** 上级经销商 id（可选，店仓可归属某经销商） */
+  dealerId?: string;
   /** 店仓编号 */
   code?: string;
   /** 联系人 */

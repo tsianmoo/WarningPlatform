@@ -441,6 +441,7 @@ interface DictRow {
   birthday?: string | null;
   enabled?: boolean | null;
   attrs?: Record<string, string> | null;
+  dealer_id?: string | null;
 }
 
 function toDealer(r: DictRow): Dealer {
@@ -474,6 +475,7 @@ function toStore(r: DictRow): Store {
     birthday: r.birthday ?? undefined,
     enabled: r.enabled ?? true,
     attrs: r.attrs ?? undefined,
+    dealerId: r.dealer_id ?? undefined,
   };
 }
 
@@ -536,6 +538,7 @@ export async function syncStores(stores: Store[]): Promise<void> {
     birthday: s.birthday ?? null,
     enabled: s.enabled ?? true,
     attrs: s.attrs ?? null,
+    dealer_id: s.dealerId ?? null,
   }));
   if (rows.length > 0) {
     const { error } = await client.from('stores').upsert(rows, { onConflict: 'id' });
