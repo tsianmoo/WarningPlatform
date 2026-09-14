@@ -9,7 +9,7 @@
 - **预警工单** `AlertTask`：字段含 `id`(NOT NULL，落库必需，缺失时后端 `syncAlerts` 自动补齐)、`ruleId`、`ruleName`(规则标题)、`title`(预警标题)、`level`、`status`、`dept`、`assignee`、`preview`、`conditionDesc`。
 - **预警标题规则**：`buildAlertsForRule`（`src/lib/store.tsx`）生成预警时，`title` 取该预警**动作节点的 `title` 字段**（`ActionNodeData.title` 的 `.trim()`），未填时回退规则标题 `rule.name`。动作节点面板已有"预警标题"输入框（带"将显示在预警列表的标题列"提示）。`ruleName` 始终为规则标题，二者可不同。
 - **预警分组**：`AlertRule.groupId` 关联 `RuleGroup`(id/name/created_at)。前端 `AlertList` 经 `ruleId → rule.groupId → ruleGroups.name` 解析分组名展示；无 → '—'。分组数据经 `/api/state` 同步。
-- **预警列表列结构**（`src/components/AlertList.tsx`）：序号 / 预警规则(`ruleName`) / 预警标题(`title`) / 预警分组(`groupOf`) / 预警条数 / 级别 / 部门 / 接收人 / 创建人 / 时间 / 已耗时 / 状态 / 操作。
+- **预警列表列结构**（`src/components/AlertList.tsx`）：序号 / 预警规则(`ruleName`) / 预警标题(`title`) / 预警分组(`groupOf`) / 预警条数 / 级别 / 部门 / 接收人 / 创建人 / 时间 / 已耗时 / 状态 / 操作。列表上方有「快捷日期标签（今天/昨天/本周/上周/本月/上月/全部，经 `quickRange` 生成 start/end 驱动 `filter.start/end`）+ 自定义日期区间 + 四项统计卡片（预警条数=总数、已完成=`done`、未完成=总数-完成-失败、无法完成=`failed`）」，统计基于当前筛选结果 `filtered` 动态计算，与列表同步联动。
 - **预警动作独立开关**：动作节点数据含 `enabled?: boolean`，`buildAlertsForRule` 过滤 `enabled !== false`；配置页激活与列表页启用（`activateRule`）均会生成本规则预警。
 - **全量覆盖同步风险**：`/api/state` POST 会全量覆盖数据库（upsert 传入 + 删除不在传入集合的旧预警）。`syncAlerts`（`src/lib/server/repo.ts`）已加**空集合守卫**：本次提交 alerts 为空数组时不执行 stale 删除（return），避免前端某次空同步误删全部业务预警。任何调整预警同步逻辑或新增前端触发源时，务必注意"若某次 push 的 alerts 集合不完整，会静默删掉库中其它预警"。
 

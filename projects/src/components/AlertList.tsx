@@ -57,6 +57,51 @@ function alertStores(a: AlertTask): string[] {
 
 const emptyFilter = { kw: '', level: 'all' as string, status: 'all' as string, dept: 'all' as string, person: 'all' as string, store: 'all' as string, start: '', end: '' };
 
+/** 快捷日期标签定义 */
+const QUICK_TAGS: { key: string; label: string }[] = [
+  { key: 'today', label: '今天' },
+  { key: 'yesterday', label: '昨天' },
+  { key: 'thisWeek', label: '本周' },
+  { key: 'lastWeek', label: '上周' },
+  { key: 'thisMonth', label: '本月' },
+  { key: 'lastMonth', label: '上月' },
+];
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+function toYMD(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+/** 返回某快捷日期对应的 [start, end]（'YYYY-MM-DD'），用于驱动 filter.start/end */
+function quickRange(key: string): { start: string; end: string } {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const ONE = 86400000;
+  if (key === 'today') return { start: toYMD(today), end: toYMD(today) };
+  if (key === 'yesterday') {
+    const d = new Date(today.getTime() - ONE);
+    return { start: toYMD(d), end: toYMD(d) };
+  }
+  const dow = today.getDay() || 7; // 周日=0 => 7
+  const monday = new Date(today.getTime() - (dow - 1) * ONE);
+  if (key === 'thisWeek') return { start: toYMD(monday), end: toYMD(today) };
+  if (key === 'lastWeek') {
+    const lm = new Date(monday.getTime() - 7 * ONE);
+    const le = new Date(monday.getTime() - ONE);
+    return { start: toYMD(lm), end: toYMD(le) };
+  }
+  if (key === 'thisMonth') return { start: toYMD(new Date(today.getFullYear(), today.getMonth(), 1)), end: toYMD(today) };
+  if (key === 'lastMonth') {
+    const fm = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const le = new Date(today.getFullYear(), today.getMonth(), 0);
+    return { start: toYMD(fm), end: toYMD(le) };
+  }
+  return { start: '', end: '' };
+}
+
 export function AlertList({ onBack }: { onBack: () => void }) {
   const { state, addAlert, updateAlertStatus } = useStore();
   const PEOPLE = PERSONNEL as unknown as { name: string; dept: string }[];
@@ -72,6 +117,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
   const [handoffId, setHandoffId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [filter, setFilter] = useState(emptyFilter);
+  const [quickKey, setQuickKey] = useState('');
   const rules = state.rules;
   const groupNameById = useMemo(() => {
     const m = new Map<string, string>();
@@ -108,6 +154,20 @@ export function AlertList({ onBack }: { onBack: () => void }) {
       return true;
     });
   }, [alerts, filter]);
+
+  const stats = useMemo(() => {
+    const total = filtered.length;
+    const done = filtered.filter((a) => a.status === 'done').length;
+    const failed = filtered.filter((a) => a.status === 'failed').length;
+    const undone = total - done - failed;
+    return { total, done, undone, failed };
+  }, [filtered]);
+
+  const applyQuick = (key: string) => {
+    const r = quickRange(key);
+    setQuickKey(key);
+    setFilter({ ...filter, start: r.start, end: r.end });
+  };
 
   const createAlert = () => {
     const rule = rules.find((r) => r.id === ruleId);
@@ -199,6 +259,50 @@ export function AlertList({ onBack }: { onBack: () => void }) {
           <RotateCcw size={12} /> 重置
         </button>
         <span className="ml-auto text-xs tabular-nums text-gray-400">{filtered.length} 条</span>
+      </div>
+
+      {/* 快捷日期 + 统计 */}
+      <div className="border-b border-gray-100 bg-white px-6 py-2.5">
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          {QUICK_TAGS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => applyQuick(t.key)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                quickKey === t.key
+                  ? 'bg-gray-800 text-white'
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+          <button
+            onClick={() => {
+              setQuickKey('');
+              setFilter({ ...filter, start: '', end: '' });
+            }}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              quickKey === '' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+          >
+            全部
+          </button>
+        </div>
+        <div className="grid grid-cols-4 gap-3">
+          {[
+            { label: '预警条数', value: stats.total, text: 'text-gray-800', sub: `${filtered.length} 条` },
+            { label: '已完成', value: stats.done, text: 'text-green-600', sub: `done` },
+            { label: '未完成', value: stats.undone, text: 'text-amber-600', sub: `new/accepted/processing` },
+            { label: '无法完成', value: stats.failed, text: 'text-red-500', sub: `failed` },
+          ].map((s) => (
+            <div key={s.label} className="rounded-lg border border-gray-100 bg-[#F7F8FA] px-3 py-2.5">
+              <div className="text-[11px] text-gray-400">{s.label}</div>
+              <div className={`mt-1 text-xl font-semibold tabular-nums ${s.text}`}>{s.value}</div>
+              <div className="mt-0.5 text-[10px] text-gray-300">{s.sub}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* 列表 */}
