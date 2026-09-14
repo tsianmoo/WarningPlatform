@@ -33,6 +33,22 @@ export function AttrManage() {
     updateHrAttribute({ ...attr, items: attr.items.filter((i) => i.id !== id) });
   };
 
+  const renameItem = (attr: HrAttribute, id: string) => {
+    const item = attr.items.find((i) => i.id === id);
+    const n = prompt('重命名标签', item?.name || '');
+    if (n?.trim()) updateHrAttribute({ ...attr, items: attr.items.map((i) => (i.id === id ? { ...i, name: n.trim() } : i)) });
+  };
+
+  const moveItem = (attr: HrAttribute, idx: number, dir: -1 | 1) => {
+    const target = idx + dir;
+    if (target < 0 || target >= attr.items.length) return;
+    const items = [...attr.items];
+    const t = items[idx];
+    items[idx] = items[target];
+    items[target] = t;
+    updateHrAttribute({ ...attr, items });
+  };
+
   return (
     <div className="flex h-full flex-col overflow-y-auto px-8 pb-10 pt-6">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -110,14 +126,40 @@ export function AttrManage() {
                 </button>
               </div>
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {attr.items.map((it) => (
-                <span key={it.id} className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700">
-                  {it.name}
-                  <button onClick={() => delItem(attr, it.id)} className="text-gray-400 hover:text-red-500">
-                    <span className="text-[14px] leading-none">×</span>
+            <div className="mt-3 space-y-1">
+              {attr.items.map((it, idx) => (
+                <div key={it.id} className="flex items-center gap-1.5 rounded-md bg-gray-50 px-2 py-1 text-xs text-gray-700">
+                  <span className="w-4 shrink-0 text-center text-[10px] text-gray-400">{idx + 1}</span>
+                  <span className="flex-1 truncate">{it.name}</span>
+                  <button
+                    onClick={() => moveItem(attr, idx, -1)}
+                    disabled={idx === 0}
+                    className="text-gray-400 hover:text-gray-700 disabled:opacity-30"
+                    title="左移"
+                  >
+                    ‹
                   </button>
-                </span>
+                  <button
+                    onClick={() => moveItem(attr, idx, 1)}
+                    disabled={idx === attr.items.length - 1}
+                    className="text-gray-400 hover:text-gray-700 disabled:opacity-30"
+                    title="右移"
+                  >
+                    ›
+                  </button>
+                  <button onClick={() => renameItem(attr, it.id)} className="text-gray-400 hover:text-gray-700" title="重命名标签">
+                    ✎
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm(`确认删除标签「${it.name}」？`)) delItem(attr, it.id);
+                    }}
+                    className="text-gray-400 hover:text-red-500"
+                    title="删除标签"
+                  >
+                    ×
+                  </button>
+                </div>
               ))}
               {attr.items.length === 0 && <span className="text-xs text-gray-300">暂无标签</span>}
             </div>
