@@ -162,53 +162,57 @@ export default function LoginPage() {
           boxShadow: '0 10px 40px rgba(0,0,0,.18)',
         }}
       >
-        <div className="flex h-full flex-col justify-center" style={{ padding: `${cfg.loginBox.padY}px ${cfg.loginBox.padX}px` }}>
-          <div className="mb-6">
-            <div className="flex items-center gap-2 text-blue-600">
-              <ShieldCheck size={24} />
-              <span className="text-lg font-bold text-gray-800">店牛预警平台</span>
-            </div>
-            <div className="mt-1 text-xs text-gray-400">请登录您的账号</div>
+        <div className="flex h-full flex-col justify-evenly" style={{ padding: `${cfg.loginBox.padY}px ${cfg.loginBox.padX}px` }}>
+          <div className="flex items-center gap-2 text-blue-600">
+            <ShieldCheck size={24} />
+            <span className="text-lg font-bold text-gray-800">店牛预警平台</span>
           </div>
+          <div className="text-xs text-gray-400">请登录您的账号</div>
 
-          <label className="mb-1 text-xs text-gray-500">账号</label>
-          <input
-            value={account}
-            onChange={(e) => setAccount(e.target.value)}
-            placeholder="请输入账号"
-            style={{ height: cfg.loginBox.fieldHeight }}
-            className="mb-4 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
-            autoFocus
-          />
-
-          <label className="mb-1 text-xs text-gray-500">密码</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="请输入密码"
-            onKeyDown={(e) => e.key === 'Enter' && doLogin()}
-            style={{ height: cfg.loginBox.fieldHeight }}
-            className="mb-4 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
-          />
-
-          <label className="mb-1 text-xs text-gray-500">验证码</label>
-          <div className="mb-6 flex items-center gap-2">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">账号</label>
             <input
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="验证码"
-              maxLength={4}
+              value={account}
+              onChange={(e) => setAccount(e.target.value)}
+              placeholder="请输入账号"
               style={{ height: cfg.loginBox.fieldHeight }}
-              className="flex-1 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+              className="rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+              autoFocus
             />
-            <canvas ref={captchaRef} width={90} height={34} className="cursor-pointer rounded-md" onClick={refreshCaptcha} />
-            <button onClick={refreshCaptcha} className="text-gray-400 hover:text-gray-600" title="刷新验证码">
-              <RefreshCw size={16} />
-            </button>
           </div>
 
-          {error && <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</div>}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">密码</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="请输入密码"
+              onKeyDown={(e) => e.key === 'Enter' && doLogin()}
+              style={{ height: cfg.loginBox.fieldHeight }}
+              className="rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">验证码</label>
+            <div className="flex items-center gap-2">
+              <input
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="验证码"
+                maxLength={4}
+                style={{ height: cfg.loginBox.fieldHeight }}
+                className="flex-1 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+              />
+              <canvas ref={captchaRef} width={90} height={34} className="cursor-pointer rounded-md" onClick={refreshCaptcha} />
+              <button onClick={refreshCaptcha} className="text-gray-400 hover:text-gray-600" title="刷新验证码">
+                <RefreshCw size={16} />
+              </button>
+            </div>
+          </div>
+
+          {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</div>}
 
           <button
             onClick={doLogin}
@@ -218,7 +222,7 @@ export default function LoginPage() {
             {loading ? '登录中…' : '登录'}
           </button>
 
-          <div className="mt-6 text-center text-[11px] text-gray-300">© 店牛预警平台 · 零售终端数据预警与通知</div>
+          <div className="text-center text-[11px] text-gray-300">© 店牛预警平台 · 零售终端数据预警与通知</div>
         </div>
       </div>
 

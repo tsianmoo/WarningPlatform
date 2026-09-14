@@ -30,13 +30,47 @@ type TextPatch = Partial<TextCfg>;
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="w-12 shrink-0 text-right text-xs text-gray-500">{label}</span>
+      <span className="w-16 shrink-0 text-right text-xs font-medium text-gray-500">{label}</span>
       {children}
     </div>
   );
 }
 
 const inputCls = 'h-7 min-w-[120px] rounded-lg border border-gray-200 px-2 text-sm outline-none focus:border-blue-400';
+
+function NumBox({
+  value,
+  onChange,
+  min,
+  max,
+  step = 1,
+  unit,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  min: number;
+  max: number;
+  step?: number;
+  unit: string;
+}) {
+  return (
+    <div className="flex h-7 w-[74px] shrink-0 items-center rounded-lg border border-gray-200 bg-white pl-1 transition focus-within:border-blue-400">
+      <input
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          if (!Number.isNaN(v)) onChange(Math.min(max, Math.max(min, v)));
+        }}
+        className="w-12 border-none px-0 text-center text-xs text-gray-700 outline-none"
+      />
+      <span className="pr-1.5 text-[10px] text-gray-400">{unit}</span>
+    </div>
+  );
+}
 
 function NumberInput({
   value,
@@ -62,12 +96,9 @@ function NumberInput({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-32 accent-blue-600"
+        className="w-28 accent-blue-600"
       />
-      <span className="w-12 shrink-0 text-xs text-gray-500">
-        {value}
-        {unit}
-      </span>
+      <NumBox value={value} min={min} max={max} step={step} unit={unit} onChange={onChange} />
     </div>
   );
 }
@@ -91,9 +122,9 @@ function OpacityPick({ value, onChange }: { value: number; onChange: (v: number)
         step={0.05}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-24 accent-blue-600"
+        className="w-20 accent-blue-600"
       />
-      <span className="w-9 text-xs text-gray-500">{Math.round(value * 100)}%</span>
+      <NumBox value={Math.round(value * 100)} min={0} max={100} step={5} unit="%" onChange={(v) => onChange(v / 100)} />
     </div>
   );
 }
@@ -569,11 +600,14 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
             onPointerDown={(e) => startDrag('login', e)}
             title="点击选中登录框"
           >
-            <div className="text-sm font-semibold text-white/95">登录</div>
-            <div className="mt-2 rounded bg-white/30" style={{ height: cfg.loginBox.fieldHeight }} />
-            <div className="mt-2 rounded bg-white/30" style={{ height: cfg.loginBox.fieldHeight }} />
-            <div className="mt-2 rounded bg-white/30" style={{ height: cfg.loginBox.fieldHeight }} />
-            <div className="mt-3 rounded-lg bg-blue-500/90" style={{ height: cfg.loginBox.fieldHeight }} />
+            <div className="flex h-full flex-col justify-evenly">
+              <div className="text-sm font-semibold text-gray-800">店牛预警平台</div>
+              <div className="w-full rounded bg-gray-500/25" style={{ height: cfg.loginBox.fieldHeight }} />
+              <div className="w-full rounded bg-gray-500/25" style={{ height: cfg.loginBox.fieldHeight }} />
+              <div className="w-full rounded bg-gray-500/25" style={{ height: cfg.loginBox.fieldHeight }} />
+              <div className="w-full rounded-lg bg-blue-500/90" style={{ height: cfg.loginBox.fieldHeight }} />
+              <div className="text-center text-[10px] text-gray-400">© 店牛预警平台</div>
+            </div>
           </div>
           {editBtn('login')}
         </div>
@@ -790,11 +824,9 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
                 <X size={18} />
               </button>
             </div>
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+            <div className="grid grid-cols-2 items-end gap-x-6 gap-y-4">
               {fields(editing)}
-              {editingElem && (
-                <span className="text-xs text-gray-400">位置可在画布上拖拽调整</span>
-              )}
+              {editingElem && <span className="col-span-2 text-xs text-gray-400">位置可在画布上拖拽调整</span>}
             </div>
           </div>
         </div>
