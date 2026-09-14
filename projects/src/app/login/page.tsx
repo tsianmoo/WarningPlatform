@@ -216,6 +216,46 @@ export default function LoginPage() {
           <div className="mt-6 text-center text-[11px] text-gray-300">© 店牛预警平台 · 零售终端数据预警与通知</div>
         </div>
       </div>
+
+      {/* 画布添加的组件元素（文本 / 图片） */}
+      {(cfg.elements || []).map((el) =>
+        el.type === 'text' ? (
+          <div
+            key={el.id}
+            className="absolute max-w-full select-none leading-tight"
+            style={{
+              left: `${el.x}%`,
+              top: `${el.y}%`,
+              transform: 'translate(-50%,-50%)',
+              whiteSpace: 'nowrap',
+              fontFamily: el.font,
+              fontSize: el.size,
+              fontWeight: el.weight,
+              letterSpacing: `${el.letterSpacing}px`,
+              color: el.color,
+              opacity: el.opacity,
+            }}
+          >
+            {el.text}
+          </div>
+        ) : (
+          <img
+            key={el.id}
+            src={el.src}
+            alt=""
+            className="pointer-events-none absolute max-w-none select-none object-cover"
+            style={{
+              left: `${el.x}%`,
+              top: `${el.y}%`,
+              transform: 'translate(-50%,-50%)',
+              width: el.width,
+              height: el.height,
+              borderRadius: el.borderRadius,
+              opacity: el.opacity,
+            }}
+          />
+        ),
+      )}
     </div>
   );
 }

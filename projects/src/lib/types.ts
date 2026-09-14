@@ -1084,6 +1084,34 @@ export interface LoginBoxStyle {
   blur: number;          // 毛玻璃（backdrop blur，px）
   radius: number;        // 圆角
 }
+/** 画布可添加的文本组件 */
+export interface HomeTextElement {
+  id: string;
+  type: 'text';
+  text: string;
+  font: string;
+  size: number;
+  weight: number;
+  letterSpacing: number; // 字宽（px）
+  color: string;
+  opacity: number;
+  x: number;             // 水平百分比
+  y: number;             // 垂直百分比
+}
+/** 画布可添加的图片组件 */
+export interface HomeImageElement {
+  id: string;
+  type: 'image';
+  src: string;
+  x: number;
+  y: number;
+  width: number;         // px
+  height: number;        // px
+  borderRadius: number;  // px
+  opacity: number;
+}
+export type HomeElement = HomeTextElement | HomeImageElement;
+
 export interface HomeConfig {
   bgMode: 'color' | 'image';
   bgColor: string;
@@ -1092,6 +1120,7 @@ export interface HomeConfig {
   title: HomeTitleStyle;
   subtitle: HomeTitleStyle;
   loginBox: LoginBoxStyle;
+  elements: HomeElement[]; // 通过「组件」添加的画布元素（文本 / 图片）
 }
 
 export const DEFAULT_HOME_CONFIG: HomeConfig = {
@@ -1110,6 +1139,7 @@ export const DEFAULT_HOME_CONFIG: HomeConfig = {
   loginBox: {
     x: 66, y: 26, width: 320, height: 340, bgColor: '#ffffff', bgOpacity: 0.12, blur: 12, radius: 16,
   },
+  elements: [],
 };
 
 export function normalizeHomeConfig(c?: Partial<HomeConfig> | null): HomeConfig {
@@ -1119,6 +1149,7 @@ export function normalizeHomeConfig(c?: Partial<HomeConfig> | null): HomeConfig 
     title: { ...DEFAULT_HOME_CONFIG.title, ...(c?.title || {}) },
     subtitle: { ...DEFAULT_HOME_CONFIG.subtitle, ...(c?.subtitle || {}) },
     loginBox: { ...DEFAULT_HOME_CONFIG.loginBox, ...(c?.loginBox || {}) },
+    elements: Array.isArray(c?.elements) ? c.elements : [],
   };
 }
 
