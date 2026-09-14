@@ -16,6 +16,17 @@ export function HrArch() {
 
   const orgMap = useMemo(() => new Map(orgs.map((o) => [o.id, o])), [orgs]);
   const sortedOrgs = [...orgs].sort((a, b) => a.sort - b.sort || a.createdAt - b.createdAt);
+  const childrenByParent = useMemo(() => {
+    const m = new Map<string | undefined, Organization[]>();
+    for (const o of sortedOrgs) {
+      const key = o.parentId || undefined;
+      if (!m.has(key)) m.set(key, []);
+      m.get(key)!.push(o);
+    }
+    return m;
+  }, [sortedOrgs]);
+  const rootOrgs = childrenByParent.get(undefined) ?? [];
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   return (
     <div className="flex h-full flex-col overflow-y-auto px-8 pb-10 pt-6">
@@ -46,31 +57,30 @@ export function HrArch() {
         <div className="rounded-xl border border-gray-200 bg-white p-2">
           <div className="flex items-center gap-1 px-2 py-2 text-xs font-semibold text-gray-400">
             <BuildingIcon />
-            组织（{orgs.length}）
+            组织树（{orgs.length}）
           </div>
-          {sortedOrgs.map((o) => {
-            const active = activeOrg === o.id;
-            return (
-              <button
-                key={o.id}
-                onClick={() => setActiveOrg(active ? null : o.id)}
-                className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left transition-colors ${
-                  active ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                <span className="flex items-center gap-1.5 text-sm font-medium">
-                  {active ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  {o.name}
-                </span>
-                <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-400'}`}>
-                  {persons.filter((p) => p.orgId === o.id).length}
-                </span>
-              </button>
-            );
-          })}
-          {sortedOrgs.length === 0 && (
+          {rootOrgs.length === 0 && (
             <div className="px-2 py-6 text-center text-xs text-gray-400">暂无组织，请先在「组织架构」维护</div>
           )}
+          {rootOrgs.map((o) => (
+            <OrgTreeNode
+              key={o.id}
+              org={o}
+              depth={0}
+              childrenByParent={childrenByParent}
+              activeOrg={activeOrg}
+              collapsed={collapsed}
+              toggle={(id) =>
+                setCollapsed((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(id)) next.delete(id);
+                  else next.add(id);
+                  return next;
+                })
+              }
+              onSelect={(id) => setActiveOrg((cur) => (cur === id ? null : id))}
+            />
+          ))}
         </div>
 
         {/* 右侧：人员列表 */}
@@ -381,6 +391,71 @@ function PersonEditor({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function OrgTreeNode({
+  org,
+  depth,
+  childrenByParent,
+  activeOrg,
+  collapsed,
+  toggle,
+  onSelect,
+}: {
+  org: Organization;
+  depth: number;
+  childrenByParent: Map<string | undefined, Organization[]>;
+  activeOrg: string | null;
+  collapsed: Set<string>;
+  toggle: (id: string) => void;
+  onSelect: (id: string) => void;
+}) {
+  const kids = childrenByParent.get(org.id) ?? [];
+  const hasKids = kids.length > 0;
+  const isCollapsed = collapsed.has(org.id);
+  return (
+    <div>
+      <button
+        onClick={() => onSelect(org.id)}
+        className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
+          activeOrg === org.id ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100'
+        }`}
+        style={{ paddingLeft: 8 + depth * 14 }}
+      >
+        {hasKids ? (
+          <span
+            onClick={(e) => {
+              e.stopPropagation();
+              toggle(org.id);
+            }}
+            className="flex h-4 w-4 items-center justify-center rounded text-gray-400 hover:bg-gray-200"
+          >
+            {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+          </span>
+        ) : (
+          <span className="w-4" />
+        )}
+        <span className="truncate">{org.name}</span>
+        <span className="ml-auto text-[10px] text-gray-400">{org.kind}</span>
+      </button>
+      {hasKids && !isCollapsed && (
+        <div>
+          {kids.map((k) => (
+            <OrgTreeNode
+              key={k.id}
+              org={k}
+              depth={depth + 1}
+              childrenByParent={childrenByParent}
+              activeOrg={activeOrg}
+              collapsed={collapsed}
+              toggle={toggle}
+              onSelect={onSelect}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

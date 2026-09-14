@@ -52,6 +52,7 @@ export function OrgArch() {
 
       {(creating || editing) && (
         <OrgEditor
+          orgs={orgs}
           initial={editing}
           onCancel={() => {
             setCreating(false);
@@ -148,15 +149,18 @@ export function OrgArch() {
 
 function OrgEditor({
   initial,
+  orgs,
   onCancel,
   onSave,
 }: {
   initial: Organization | null;
+  orgs: Organization[];
   onCancel: () => void;
   onSave: (o: Organization) => void;
 }) {
   const [name, setName] = useState(initial?.name || '');
   const [kind, setKind] = useState<string>(initial?.kind || '分公司');
+  const [parentId, setParentId] = useState(initial?.parentId || '');
   const valid = name.trim().length > 0;
 
   return (
@@ -189,6 +193,23 @@ function OrgEditor({
             ))}
           </div>
         </div>
+      <div>
+          <label className="mb-1.5 block text-xs font-medium text-gray-500">上级组织</label>
+          <select
+            value={parentId}
+            onChange={(e) => setParentId(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900"
+          >
+            <option value="">（无 / 顶级）</option>
+            {orgs
+              .filter((o) => o.id !== initial?.id)
+              .map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
+          </select>
+        </div>
       </div>
       <div className="mt-5 flex justify-end gap-2">
         <button onClick={onCancel} className="rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm text-gray-600 hover:bg-gray-100">
@@ -201,7 +222,7 @@ function OrgEditor({
               id: initial?.id || 'org_' + Math.random().toString(36).slice(2, 10),
               name: name.trim(),
               kind: kind as Organization['kind'],
-              parentId: initial?.parentId,
+              parentId: parentId || undefined,
               sort: initial?.sort ?? Date.now(),
               createdAt: initial?.createdAt ?? Date.now(),
             })
