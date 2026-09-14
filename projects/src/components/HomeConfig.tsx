@@ -199,6 +199,7 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
   const [selected, setSelected] = useState<SelKey | null>(null);
   const [editing, setEditing] = useState<SelKey | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [hover, setHover] = useState<SelKey | null>(null);
 
   const bgFileRef = useRef<HTMLInputElement | null>(null);
   const addImageFileRef = useRef<HTMLInputElement | null>(null);
@@ -505,9 +506,25 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
       ? { backgroundImage: `url(${cfg.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
       : { backgroundColor: cfg.bgColor };
 
-  const selPos = selected && selected !== 'bg' ? getPos(selected) : null;
   const editingElem =
     editing && editing.startsWith(ELEM_PREFIX) ? elemById(editing.slice(ELEM_PREFIX.length)) : undefined;
+  // 悬停或选中时的活动组件（bg 不是可编辑组件）
+  const activeKey: SelKey | null =
+    (hover && hover !== 'bg' ? hover : null) || (selected && selected !== 'bg' ? selected : null);
+  const editBtn = (gkey: SelKey) =>
+    activeKey === gkey ? (
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setSelected(gkey);
+          setEditing(gkey);
+        }}
+        className="absolute z-30 flex cursor-pointer items-center gap-1 rounded-full bg-blue-600 px-2.5 py-1 text-xs text-white shadow-md hover:bg-blue-700"
+        style={{ left: '100%', top: '50%', transform: 'translate(6px,-50%)' }}
+      >
+        <Pencil size={12} /> 编辑
+      </button>
+    ) : null;
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-black">
@@ -525,78 +542,108 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
 
         {/* 登录框 */}
         <div
-          className="absolute cursor-move select-none"
+          className="absolute select-none"
           style={{
             left: `${cfg.loginBox.x}%`,
             top: `${cfg.loginBox.y}%`,
-            width: cfg.loginBox.width,
-            height: cfg.loginBox.height,
             transform: 'translate(-50%, -50%)',
-            borderRadius: cfg.loginBox.radius,
-            background: toRgba(cfg.loginBox.bgColor, cfg.loginBox.bgOpacity),
-            backdropFilter: `blur(${cfg.loginBox.blur}px)`,
-            WebkitBackdropFilter: `blur(${cfg.loginBox.blur}px)`,
-            boxShadow: '0 8px 30px rgba(0,0,0,0.18)',
-            padding: `${cfg.loginBox.padY}px ${cfg.loginBox.padX}px`,
-            outline: selected === 'login' ? '2px dashed rgba(59,130,246,0.9)' : 'none',
+            outline: activeKey === 'login' ? '2px dashed rgba(59,130,246,0.9)' : 'none',
             outlineOffset: '2px',
           }}
-          onPointerDown={(e) => startDrag('login', e)}
-          title="点击选中登录框"
+          onMouseEnter={() => setHover('login')}
+          onMouseLeave={() => setHover((k) => (k === 'login' ? null : k))}
+          onClick={(e) => e.stopPropagation()}
         >
-          <div className="text-sm font-semibold text-white/95">登录</div>
-          <div className="mt-2 rounded bg-white/30" style={{ height: cfg.loginBox.fieldHeight }} />
-          <div className="mt-2 rounded bg-white/30" style={{ height: cfg.loginBox.fieldHeight }} />
-          <div className="mt-2 rounded bg-white/30" style={{ height: cfg.loginBox.fieldHeight }} />
-          <div className="mt-3 rounded-lg bg-blue-500/90" style={{ height: cfg.loginBox.fieldHeight }} />
+          <div
+            className="cursor-move"
+            style={{
+              width: cfg.loginBox.width,
+              height: cfg.loginBox.height,
+              borderRadius: cfg.loginBox.radius,
+              background: toRgba(cfg.loginBox.bgColor, cfg.loginBox.bgOpacity),
+              backdropFilter: `blur(${cfg.loginBox.blur}px)`,
+              WebkitBackdropFilter: `blur(${cfg.loginBox.blur}px)`,
+              boxShadow: '0 8px 30px rgba(0,0,0,0.18)',
+              padding: `${cfg.loginBox.padY}px ${cfg.loginBox.padX}px`,
+            }}
+            onPointerDown={(e) => startDrag('login', e)}
+            title="点击选中登录框"
+          >
+            <div className="text-sm font-semibold text-white/95">登录</div>
+            <div className="mt-2 rounded bg-white/30" style={{ height: cfg.loginBox.fieldHeight }} />
+            <div className="mt-2 rounded bg-white/30" style={{ height: cfg.loginBox.fieldHeight }} />
+            <div className="mt-2 rounded bg-white/30" style={{ height: cfg.loginBox.fieldHeight }} />
+            <div className="mt-3 rounded-lg bg-blue-500/90" style={{ height: cfg.loginBox.fieldHeight }} />
+          </div>
+          {editBtn('login')}
         </div>
 
         {/* 主标题 */}
         <div
-          className="absolute cursor-move select-none leading-tight"
+          className="absolute select-none"
           style={{
             left: `${cfg.title.x}%`,
             top: `${cfg.title.y}%`,
             transform: 'translateY(-50%)',
-            whiteSpace: 'nowrap',
-            fontFamily: cfg.title.font,
-            fontSize: cfg.title.size,
-            fontWeight: cfg.title.weight,
-            letterSpacing: `${cfg.title.letterSpacing}px`,
-            color: cfg.title.color,
-            opacity: cfg.title.opacity,
             marginLeft: cfg.title.marginLeft,
-            outline: selected === 'title' ? '2px dashed rgba(59,130,246,0.9)' : 'none',
+            outline: activeKey === 'title' ? '2px dashed rgba(59,130,246,0.9)' : 'none',
             outlineOffset: '3px',
           }}
-          onPointerDown={(e) => startDrag('title', e)}
-          title="点击选中主标题"
+          onMouseEnter={() => setHover('title')}
+          onMouseLeave={() => setHover((k) => (k === 'title' ? null : k))}
+          onClick={(e) => e.stopPropagation()}
         >
-          {cfg.title.text}
+          <div
+            className="cursor-move leading-tight"
+            style={{
+              whiteSpace: 'nowrap',
+              fontFamily: cfg.title.font,
+              fontSize: cfg.title.size,
+              fontWeight: cfg.title.weight,
+              letterSpacing: `${cfg.title.letterSpacing}px`,
+              color: cfg.title.color,
+              opacity: cfg.title.opacity,
+            }}
+            onPointerDown={(e) => startDrag('title', e)}
+            title="点击选中主标题"
+          >
+            {cfg.title.text}
+          </div>
+          {editBtn('title')}
         </div>
 
         {/* 副标题 */}
         <div
-          className="absolute cursor-move select-none mt-2"
+          className="absolute select-none"
           style={{
             left: `${cfg.subtitle.x}%`,
             top: `${cfg.subtitle.y}%`,
             transform: 'translateY(-50%)',
-            whiteSpace: 'nowrap',
-            fontFamily: cfg.subtitle.font,
-            fontSize: cfg.subtitle.size,
-            fontWeight: cfg.subtitle.weight,
-            letterSpacing: `${cfg.subtitle.letterSpacing}px`,
-            color: cfg.subtitle.color,
-            opacity: cfg.subtitle.opacity,
             marginLeft: cfg.subtitle.marginLeft,
-            outline: selected === 'subtitle' ? '2px dashed rgba(59,130,246,0.9)' : 'none',
+            outline: activeKey === 'subtitle' ? '2px dashed rgba(59,130,246,0.9)' : 'none',
             outlineOffset: '3px',
           }}
-          onPointerDown={(e) => startDrag('subtitle', e)}
-          title="点击选中副标题"
+          onMouseEnter={() => setHover('subtitle')}
+          onMouseLeave={() => setHover((k) => (k === 'subtitle' ? null : k))}
+          onClick={(e) => e.stopPropagation()}
         >
-          {cfg.subtitle.text}
+          <div
+            className="cursor-move mt-2"
+            style={{
+              whiteSpace: 'nowrap',
+              fontFamily: cfg.subtitle.font,
+              fontSize: cfg.subtitle.size,
+              fontWeight: cfg.subtitle.weight,
+              letterSpacing: `${cfg.subtitle.letterSpacing}px`,
+              color: cfg.subtitle.color,
+              opacity: cfg.subtitle.opacity,
+            }}
+            onPointerDown={(e) => startDrag('subtitle', e)}
+            title="点击选中副标题"
+          >
+            {cfg.subtitle.text}
+          </div>
+          {editBtn('subtitle')}
         </div>
 
         {/* 添加的画布元素 */}
@@ -604,61 +651,68 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
           el.type === 'text' ? (
             <div
               key={el.id}
-              className="absolute cursor-move select-none leading-tight"
+              className="absolute select-none"
               style={{
                 left: `${el.x}%`,
                 top: `${el.y}%`,
                 transform: 'translate(-50%,-50%)',
-                whiteSpace: 'nowrap',
-                fontFamily: el.font,
-                fontSize: el.size,
-                fontWeight: el.weight,
-                letterSpacing: `${el.letterSpacing}px`,
-                color: el.color,
-                opacity: el.opacity,
-                outline: selected === `elem:${el.id}` ? '2px dashed rgba(59,130,246,0.9)' : 'none',
+                outline: activeKey === `elem:${el.id}` ? '2px dashed rgba(59,130,246,0.9)' : 'none',
                 outlineOffset: '3px',
               }}
-              onPointerDown={(e) => startDrag(`elem:${el.id}`, e)}
-              title="点击选中文本"
+              onMouseEnter={() => setHover(`elem:${el.id}`)}
+              onMouseLeave={() => setHover((k) => (k === `elem:${el.id}` ? null : k))}
+              onClick={(e) => e.stopPropagation()}
             >
-              {el.text}
+              <div
+                className="cursor-move leading-tight"
+                style={{
+                  whiteSpace: 'nowrap',
+                  fontFamily: el.font,
+                  fontSize: el.size,
+                  fontWeight: el.weight,
+                  letterSpacing: `${el.letterSpacing}px`,
+                  color: el.color,
+                  opacity: el.opacity,
+                }}
+                onPointerDown={(e) => startDrag(`elem:${el.id}`, e)}
+                title="点击选中文本"
+              >
+                {el.text}
+              </div>
+              {editBtn(`elem:${el.id}`)}
             </div>
           ) : (
-            <img
+            <div
               key={el.id}
-              src={el.src}
-              alt=""
-              className="absolute cursor-move select-none object-cover"
+              className="absolute select-none"
               style={{
                 left: `${el.x}%`,
                 top: `${el.y}%`,
                 transform: 'translate(-50%,-50%)',
-                width: el.width,
-                height: el.height,
-                borderRadius: el.borderRadius,
-                opacity: el.opacity,
-                outline: selected === `elem:${el.id}` ? '2px dashed rgba(59,130,246,0.9)' : 'none',
+                outline: activeKey === `elem:${el.id}` ? '2px dashed rgba(59,130,246,0.9)' : 'none',
                 outlineOffset: '2px',
+                lineHeight: 0,
               }}
-              onPointerDown={(e) => startDrag(`elem:${el.id}`, e)}
-              title="点击选中图片"
-            />
+              onMouseEnter={() => setHover(`elem:${el.id}`)}
+              onMouseLeave={() => setHover((k) => (k === `elem:${el.id}` ? null : k))}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                src={el.src}
+                alt=""
+                className="cursor-move object-cover"
+                style={{
+                  width: el.width,
+                  height: el.height,
+                  borderRadius: el.borderRadius,
+                  opacity: el.opacity,
+                }}
+                onPointerDown={(e) => startDrag(`elem:${el.id}`, e)}
+                title="点击选中图片"
+              />
+              {editBtn(`elem:${el.id}`)}
+            </div>
           ),
-        )}
-
-        {/* 选中状态：组件右侧的编辑按钮 */}
-        {selPos && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setEditing(selected);
-            }}
-            className="absolute z-30 flex cursor-pointer items-center gap-1 rounded-full bg-blue-600 px-2.5 py-1 text-xs text-white shadow-md hover:bg-blue-700"
-            style={{ left: `${selPos.x}%`, top: `${selPos.y}%`, transform: 'translate(14px,-50%)' }}
-          >
-            <Pencil size={12} /> 编辑
-          </button>
         )}
 
         {/* 顶部浮动工具条 */}
@@ -712,7 +766,7 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
 
         {/* 提示 */}
         <div className="pointer-events-none absolute left-3 top-3 z-20 rounded-full bg-black/30 px-3 py-1 text-[11px] text-white/80 backdrop-blur">
-          点击组件选中，点右侧「编辑」配置
+          悬停组件显示「编辑」，点击配置；可直接拖拽移动组件
         </div>
       </div>
 
