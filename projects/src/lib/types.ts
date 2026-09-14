@@ -639,7 +639,7 @@ export interface ActionNodeData {
   /** 提醒文案（预警描述），支持 {字段名} 模板占位，触发时替换为命中行实际值 */
   content?: string;
   /** 本动作独立的通知对象（部门/人员），不随其它动作联动 */
-  notify?: { departments: string[]; personnel: string[] };
+  notify?: TargetSetting;
   /** 命中数据来源（上游节点）：预览与触发时从此节点取命中的行/列 */
   sourceNode?: NodeResultRef;
   /** 是否启用本动作：false 表示关闭，激活时不生成对应预警（默认 true） */
@@ -734,6 +734,10 @@ export interface TargetSetting {
   departments: string[];
   /** 适用人员 */
   personnel: string[];
+  /** 适用组织（组织架构 id 列表） */
+  orgIds?: string[];
+  /** 适用人员（人事架构人员 id 列表） */
+  personIds?: string[];
 }
 
 // ============ 执行跟踪 ============
@@ -944,3 +948,60 @@ export const ELAPSED_SCOPE_OPTIONS: { value: ElapsedScope; label: string }[] = [
   { value: 'year', label: '本年已过天数' },
   { value: 'custom', label: '时间区间内已过天数' },
 ];
+
+// ============ 组织架构 ============
+
+/** 组织节点分类（平级标签，供建用户时选择归属） */
+export type OrgKind = '总部' | '分公司' | '部门' | '区域' | '门店' | '其他';
+
+export const ORG_KIND_OPTIONS: { value: OrgKind; label: string }[] = [
+  { value: '总部', label: '总部' },
+  { value: '分公司', label: '分公司' },
+  { value: '部门', label: '部门' },
+  { value: '区域', label: '区域' },
+  { value: '门店', label: '门店' },
+  { value: '其他', label: '其他' },
+];
+
+/** 组织节点（结构平级；保留 parentId 以支持未来树形扩展） */
+export interface Organization {
+  id: string;
+  name: string;
+  kind: OrgKind;
+  parentId?: string;
+  sort: number;
+  createdAt: number;
+}
+
+// ============ 人事架构 ============
+
+/** 管理范围：关联数据表字段 + 该字段下某个分类值（表示"管理该分类下的人员/门店"） */
+export interface ManageScope {
+  /** 数据表 id（可选，字段可能来自任意已上传表） */
+  tableId?: string;
+  /** 数据表字段名（如 大区 / 所属门店 / 店铺） */
+  field?: string;
+  /** 该字段下的分类值（如 华东大区 / 门店A） */
+  value?: string;
+  /** 冗余展示说明（如 "华东大区 门店人员"） */
+  desc?: string;
+}
+
+/** 人员（挂到组织节点下，可设上级/职位/管理范围） */
+export interface Person {
+  id: string;
+  name: string;
+  /** 所属组织 id */
+  orgId: string;
+  /** 职位 */
+  title?: string;
+  /** 上级人员 id（空 = 该组织最高层） */
+  supervisorId?: string;
+  /** 管理范围（关联数据字段 + 分类值） */
+  manageScope?: ManageScope;
+  phone?: string;
+  email?: string;
+  enabled: boolean;
+  sort: number;
+  createdAt: number;
+}

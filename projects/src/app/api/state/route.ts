@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getAllTables, getAllRules, getAllAlerts, getAllRuleGroups, syncTables, syncRules, syncAlerts, syncRuleGroups } from '@/lib/server/repo';
-import type { AlertRule, AlertTask, DataTable, RuleGroup } from '@/lib/types';
+import { getAllTables, getAllRules, getAllAlerts, getAllRuleGroups, getAllOrganizations, getAllPersons, syncTables, syncRules, syncAlerts, syncRuleGroups, syncOrganizations, syncPersons } from '@/lib/server/repo';
+import type { AlertRule, AlertTask, DataTable, Organization, Person, RuleGroup } from '@/lib/types';
 
-// 读取持久化的全部业务数据（数据表 + 规则 + 预警 + 规则分组）
+// 读取持久化的全部业务数据（数据表 + 规则 + 预警 + 规则分组 + 组织架构 + 人事架构）
 export async function GET() {
   try {
-    const [tables, rules, alerts, groups] = await Promise.all([
-      getAllTables(), getAllRules(), getAllAlerts(), getAllRuleGroups(),
+    const [tables, rules, alerts, groups, orgs, persons] = await Promise.all([
+      getAllTables(), getAllRules(), getAllAlerts(), getAllRuleGroups(), getAllOrganizations(), getAllPersons(),
     ]);
-    return NextResponse.json({ tables, rules, alerts, groups });
+    return NextResponse.json({ tables, rules, alerts, groups, orgs, persons });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });
@@ -20,13 +20,16 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json()) as {
       tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[];
+      orgs?: Organization[]; persons?: Person[];
     };
     const tables = Array.isArray(body.tables) ? body.tables : [];
     const rules = Array.isArray(body.rules) ? body.rules : [];
     const alerts = Array.isArray(body.alerts) ? body.alerts : [];
     const groups = Array.isArray(body.groups) ? body.groups : [];
-    await Promise.all([syncTables(tables), syncRules(rules), syncAlerts(alerts), syncRuleGroups(groups)]);
-    return NextResponse.json({ success: true, tableCount: tables.length, ruleCount: rules.length, alertCount: alerts.length, groupCount: groups.length });
+    const orgs = Array.isArray(body.orgs) ? body.orgs : [];
+    const persons = Array.isArray(body.persons) ? body.persons : [];
+    await Promise.all([syncTables(tables), syncRules(rules), syncAlerts(alerts), syncRuleGroups(groups), syncOrganizations(orgs), syncPersons(persons)]);
+    return NextResponse.json({ success: true, tableCount: tables.length, ruleCount: rules.length, alertCount: alerts.length, groupCount: groups.length, orgCount: orgs.length, personCount: persons.length });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -12,6 +12,7 @@
 - **预警列表列结构**（`src/components/AlertList.tsx`）：序号 / 预警规则(`ruleName`) / 预警标题(`title`) / 预警分组(`groupOf`) / 预警条数 / 级别 / 部门 / 接收人 / 创建人 / 时间 / 已耗时 / 状态 / 操作。列表上方有「快捷日期标签（今天/昨天/本周/上周/本月/上月/全部，经 `quickRange` 生成 start/end 驱动 `filter.start/end`）+ 自定义日期区间 + 四项统计卡片（预警条数=总数、已完成=`done`、未完成=总数-完成-失败、无法完成=`failed`）」，统计基于当前筛选结果 `filtered` 动态计算，与列表同步联动。
 - **预警动作独立开关**：动作节点数据含 `enabled?: boolean`，`buildAlertsForRule` 过滤 `enabled !== false`；配置页激活与列表页启用（`activateRule`）均会生成本规则预警。
 - **全量覆盖同步风险**：`/api/state` POST 会全量覆盖数据库（upsert 传入 + 删除不在传入集合的旧预警）。`syncAlerts`（`src/lib/server/repo.ts`）已加**空集合守卫**：本次提交 alerts 为空数组时不执行 stale 删除（return），避免前端某次空同步误删全部业务预警。任何调整预警同步逻辑或新增前端触发源时，务必注意"若某次 push 的 alerts 集合不完整，会静默删掉库中其它预警"。
+- **组织架构 / 人事架构**：承载预警通知对象（最终通知到"用户和人员"）。组织 `Organization`（表 `organizations`：`id/name/kind/parent_id/sort/created_at`）——用户明确"是平级标签"（总部/分公司/部门/区域/门店/其他，`kind` 分类，`parentId` 预留但默认不同）。人员 `Person`（表 `persons`：`id/name/org_id/title/supervisor_id/manage_scope(JSONB)/phone/email/enabled/sort/created_at`），**挂在组织节点下**（`orgId`）；`manageScope` 用 `ManageScope{tableId,field,value,desc}` 表达"管理范围＝某数据表某字段=某分类值"（如 该店长管理"大区=华东大区"下的门店/人员）。`supervisorId` 为上级人员（空=最高层），可构成人事层级树。经 `/api/state` 的 `orgs`/`persons` 全量同步（repo `getAllOrgs/syncOrgs/getAllPersons/syncPersons`）。页面：`OrgArch.tsx`（组织平级列表+分类）、`HrArch.tsx`（组织→人员树，职位/上级/管理范围），挂载于 `page.tsx` 的 `View='org'/'hrs'`。通知动作面板（`nodes.tsx` TargetPanel）通知对象已改为从 `state.persons`/`state.organizations` 动态选择（`notify.orgIds`/`personIds`），不再用写死常量 `PERSONNEL`/`DEPARTMENTS`（import 已移除）。
 
 ## 项目结构（多层导入）
 

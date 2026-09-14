@@ -46,7 +46,6 @@ import {
   type RankNodeData,
   type RankItem,
   DEPARTMENTS,
-  PERSONNEL,
 } from '@/lib/types';
 import { useStore } from '@/lib/store';
 import TimeComponent from './TimeComponent';
@@ -2586,12 +2585,60 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
     onChange({
       ...targets,
       personnel: targets.personnel.includes(p) ? targets.personnel.filter((x) => x !== p) : [...targets.personnel, p],
+      personIds: targets.personIds?.includes(p) ? targets.personIds.filter((x) => x !== p) : [...(targets.personIds ?? []), p],
     });
+  const toggleOrg = (orgId: string, orgName: string, memberNames: string[]) => {
+    const orgOn = targets.orgIds?.includes(orgId) ?? false;
+    if (orgOn) {
+      // 移除此组织及其成员
+      onChange({
+        ...targets,
+        orgIds: (targets.orgIds ?? []).filter((x) => x !== orgId),
+        personIds: (targets.personIds ?? []).filter((x) => !memberNames.includes(x)),
+        personnel: targets.personnel.filter((x) => !memberNames.includes(x)),
+      });
+    } else {
+      // 加入此组织及其成员
+      const merged = new Set([...(targets.personnel ?? []), ...memberNames]);
+      onChange({
+        ...targets,
+        orgIds: [...(targets.orgIds ?? []), orgId],
+        personIds: [...(targets.personIds ?? []), ...memberNames],
+        personnel: Array.from(merged),
+      });
+    }
+    void orgName;
+  };
+  const { state } = useStore();
+  const orgs = state.orgs ?? [];
+  const persons = state.persons ?? [];
+  const orgMember = (orgId: string) => persons.filter((p) => p.orgId === orgId && p.enabled !== false).map((p) => p.name);
   const groupLabel = 'mb-1 text-[10px] text-gray-400';
   return (
     <div className="mt-1.5 rounded-lg border border-amber-200/70 bg-amber-50/50 p-1.5">
       <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-amber-700">
         <Users size={11} /> 通知对象
+      </div>
+      <div className="mb-1.5">
+        <div className={groupLabel}>按组织选择（组织架构）</div>
+        <div className="flex flex-wrap gap-1">
+          {orgs.length === 0 && <span className="text-[10px] text-gray-400">暂未配置组织架构</span>}
+          {orgs.map((o) => {
+            const on = targets.orgIds?.includes(o.id) ?? false;
+            return (
+              <button
+                key={o.id}
+                type="button"
+                onClick={() => toggleOrg(o.id, o.name, orgMember(o.id))}
+                className={`rounded px-1.5 py-0.5 text-[10px] transition ${
+                  on ? 'bg-sky-500 text-white' : 'bg-white text-gray-500 hover:bg-sky-100'
+                }`}
+              >
+                {o.name}
+              </button>
+            );
+          })}
+        </div>
       </div>
       <div className="mb-1.5">
         <div className={groupLabel}>适用部门</div>
@@ -2611,11 +2658,14 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
         </div>
       </div>
       <div>
-        <div className={groupLabel}>适用人员</div>
+        <div className={groupLabel}>适用人员（人事架构）</div>
         <div className="flex flex-wrap gap-1">
-          {PERSONNEL.map((p) => (
+          {persons.length === 0 && (
+            <span className="text-[10px] text-gray-400">暂无人员，请先到「人事架构」新增</span>
+          )}
+          {persons.filter((p) => p.enabled !== false).map((p) => (
             <button
-              key={p.name}
+              key={p.id}
               type="button"
               onClick={() => togglePerson(p.name)}
               className={`rounded px-1.5 py-0.5 text-[10px] transition ${

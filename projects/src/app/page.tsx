@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Table2, BellRing, ShieldAlert, LayoutDashboard, Activity } from 'lucide-react';
+import { Table2, BellRing, ShieldAlert, LayoutDashboard, Activity, Building2, Users, Briefcase } from 'lucide-react';
 import { StoreProvider, useStore } from '@/lib/store';
 import { DataTableManager } from '@/components/DataTableManager';
 import { RuleList } from '@/components/RuleList';
@@ -9,8 +9,10 @@ import { NewRule, RuleConfigurator } from '@/components/RuleConfigurator';
 import { Dashboard } from '@/components/Dashboard';
 import { Toaster } from 'sonner';
 import { AlertList } from '@/components/AlertList';
+import { OrgArch } from '@/components/OrgArch';
+import { HrArch } from '@/components/HrArch';
 
-type View = 'home' | 'tables' | 'rules' | 'new' | 'edit' | 'alerts';
+type View = 'home' | 'tables' | 'rules' | 'new' | 'edit' | 'alerts' | 'org' | 'hrs';
 
 function Shell() {
   const { state } = useStore();
@@ -52,12 +54,16 @@ function Shell() {
     );
   } else if (view === 'alerts') {
     content = <AlertList onBack={goHome} />;
+  } else if (view === 'org') {
+    content = <OrgArch />;
+  } else if (view === 'hrs') {
+    content = <HrArch />;
   } else {
     content = <RuleList onNew={startNew} onEdit={startEdit} onHome={goHome} />;
   }
 
   // 预警配置页（new / edit）隐藏左侧导航栏，聚焦画布编辑
-  const withSidebar = view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts';
+  const withSidebar = view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts' || view === 'org' || view === 'hrs';
   const currentView = view;
   const pendingAlerts = state.alerts.filter((a) => a.status === 'new' || a.status === 'processing').length;
 
@@ -92,6 +98,8 @@ function Shell() {
               badge={pendingAlerts}
               onClick={() => setView('alerts')}
             />
+            <NavItem active={currentView === 'org'} icon={<Briefcase size={17} />} label="组织架构" onClick={() => setView('org')} />
+            <NavItem active={currentView === 'hrs'} icon={<Users size={17} />} label="人事架构" onClick={() => setView('hrs')} />
           </nav>
           <div className="border-t p-3 text-[10px] leading-relaxed text-gray-400">
             将数据表标签化字段，拖拽构建可视化规则，自定义触发调度与通知对象，并跟踪每次执行。

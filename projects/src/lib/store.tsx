@@ -6,6 +6,8 @@ import type {
   AlertTask,
   DataTable,
   ExecutionRecord,
+  Organization,
+  Person,
   RuleGroup,
   Schedule,
   TargetSetting,
@@ -154,10 +156,10 @@ async function fetchRemoteState(): Promise<Partial<AppState> | null> {
   try {
     const res = await fetch(STATE_API, { cache: 'no-store' });
     if (!res.ok) return null;
-    const json = (await res.json()) as { tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[]; error?: string };
+    const json = (await res.json()) as { tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[]; orgs?: Organization[]; persons?: Person[]; error?: string };
     if (json.error) return null;
     remoteAvailable = true;
-    return { tables: json.tables ?? [], rules: json.rules ?? [], alerts: json.alerts ?? [], ruleGroups: json.groups ?? [] };
+    return { tables: json.tables ?? [], rules: json.rules ?? [], alerts: json.alerts ?? [], ruleGroups: json.groups ?? [], orgs: json.orgs ?? [], persons: json.persons ?? [] };
   } catch {
     return null;
   }
@@ -194,7 +196,7 @@ async function pushRemoteState(state: AppState) {
     await fetch(STATE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [] }),
+      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [] }),
     });
   } catch {
     /* 网络异常时忽略，localStorage 仍有兜底 */
@@ -211,6 +213,10 @@ export interface AppState {
   alerts: AlertTask[];
   /** 规则分组 */
   ruleGroups: RuleGroup[];
+  /** 组织架构（平级分类组织） */
+  orgs: Organization[];
+  /** 人事架构（挂载在组织下的人员） */
+  persons: Person[];
 }
 
 type StoreApi = {
@@ -240,6 +246,14 @@ type StoreApi = {
   // groups
   addRuleGroup: (name: string) => RuleGroup;
   removeRuleGroup: (id: string) => void;
+  // organizations
+  addOrg: (o: Omit<Organization, 'id' | 'createdAt'>) => Organization;
+  updateOrg: (o: Organization) => void;
+  removeOrg: (id: string) => void;
+  // persons
+  addPerson: (p: Omit<Person, 'id' | 'createdAt'>) => Person;
+  updatePerson: (p: Person) => void;
+  removePerson: (id: string) => void;
   resetAll: () => void;
 };
 
@@ -260,7 +274,7 @@ function migrateState(raw: AppState | null): AppState {
           : [];
     return { ...r, tableIds };
   });
-  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [] };
+  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [] };
 }
 
 function loadInitial(): AppState {
@@ -449,6 +463,47 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
     }
     case 'REPLACE_GROUPS':
       return { ...state, ruleGroups: Array.isArray(action.payload) ? (action.payload as RuleGroup[]) : state.ruleGroups };
+    // 组织架构
+    case 'ADD_ORG': {
+      const o = action.payload as Organization;
+      if (state.orgs.some((x) => x.id === o.id)) return state;
+      return { ...state, orgs: [...state.orgs, o] };
+    }
+    case 'UPDATE_ORG': {
+      const { id, patch } = action.payload as { id: string; patch: Partial<Organization> };
+      return { ...state, orgs: state.orgs.map((o) => (o.id === id ? { ...o, ...patch } : o)) };
+    }
+    case 'REMOVE_ORG': {
+      const id = action.payload as string;
+      return {
+        ...state,
+        orgs: state.orgs.filter((o) => o.id !== id),
+        persons: state.persons.map((p) => (p.orgId === id ? { ...p, orgId: '' } : p)),
+      };
+    }
+    case 'REPLACE_ORGS':
+      return { ...state, orgs: Array.isArray(action.payload) ? (action.payload as Organization[]) : state.orgs };
+    // 人事架构
+    case 'ADD_PERSON': {
+      const p = action.payload as Person;
+      if (state.persons.some((x) => x.id === p.id)) return state;
+      return { ...state, persons: [...state.persons, p] };
+    }
+    case 'UPDATE_PERSON': {
+      const { id, patch } = action.payload as { id: string; patch: Partial<Person> };
+      return { ...state, persons: state.persons.map((p) => (p.id === id ? { ...p, ...patch } : p)) };
+    }
+    case 'REMOVE_PERSON': {
+      const id = action.payload as string;
+      return {
+        ...state,
+        persons: state.persons
+          .filter((p) => p.id !== id)
+          .map((p) => (p.supervisorId === id ? { ...p, supervisorId: undefined } : p)),
+      };
+    }
+    case 'REPLACE_PERSONS':
+      return { ...state, persons: Array.isArray(action.payload) ? (action.payload as Person[]) : state.persons };
     case 'RESET':
       return loadInitialState();
     default:
@@ -468,10 +523,10 @@ function loadInitialState(): AppState {
     previewRows: sample.previewRows,
     rows: sample.rows,
   };
-  return { tables: [t], rules: [], activeTableId: t.id, builderTableIds: [t.id], alerts: [], ruleGroups: [] };
+  return { tables: [t], rules: [], activeTableId: t.id, builderTableIds: [t.id], alerts: [], ruleGroups: [], orgs: [], persons: [] };
 }
 
-const EMPTY_STATE: AppState = { tables: [], rules: [], activeTableId: '', builderTableIds: [], alerts: [], ruleGroups: [] };
+const EMPTY_STATE: AppState = { tables: [], rules: [], activeTableId: '', builderTableIds: [], alerts: [], ruleGroups: [], orgs: [], persons: [] };
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   // 初始统一为空，避免 SSR 与客户端首帧不一致导致 Hydration 报错；
@@ -501,6 +556,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               rules,
               alerts: state.alerts ?? [],
               ruleGroups: state.ruleGroups ?? [],
+              orgs: state.orgs ?? [],
+              persons: state.persons ?? [],
               activeTableId: tables[0]?.id ?? '',
               builderTableIds: tables.map((t) => t.id),
             });
@@ -512,6 +569,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           rules,
           ruleGroups: remote.ruleGroups ?? [],
           alerts: (remote.alerts ?? []).filter((a) => !isBlankAlert(a)),
+          orgs: remote.orgs ?? [],
+          persons: remote.persons ?? [],
           activeTableId: tables[0]?.id ?? '',
           builderTableIds: tables.map((t) => t.id),
         }));
@@ -590,6 +649,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       removeRuleGroup: (id) => dispatch('REMOVE_RULE_GROUP', id),
       addAlert: (alert) => dispatch('ADD_ALERT', { alert }),
       updateAlertStatus: (alertId, patch) => dispatch('UPDATE_ALERT', { alertId, patch }),
+      addOrg: (o) => {
+        const org: Organization = { ...o, id: uid('org'), createdAt: Date.now() };
+        dispatch('ADD_ORG', org);
+        return org;
+      },
+      updateOrg: (o) => dispatch('UPDATE_ORG', { id: o.id, patch: o }),
+      removeOrg: (id) => dispatch('REMOVE_ORG', id),
+      addPerson: (p) => {
+        const person: Person = { ...p, id: uid('person'), createdAt: Date.now() };
+        dispatch('ADD_PERSON', person);
+        return person;
+      },
+      updatePerson: (p) => dispatch('UPDATE_PERSON', { id: p.id, patch: p }),
+      removePerson: (id) => dispatch('REMOVE_PERSON', id),
       resetAll: () => dispatch('RESET'),
     };
   }, [state, ready, remotePersist]);

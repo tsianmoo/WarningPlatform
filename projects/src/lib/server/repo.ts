@@ -1,5 +1,5 @@
 import { getSupabaseClient } from '@/storage/database/supabase-client';
-import type { AlertRule, AlertStatus, AlertTask, DataTable, RuleGroup } from '@/lib/types';
+import type { AlertRule, AlertStatus, AlertTask, DataTable, Organization, Person, RuleGroup } from '@/lib/types';
 
 interface TableRow {
   id: string;
@@ -232,5 +232,134 @@ export async function syncRuleGroups(groups: RuleGroup[]): Promise<void> {
   if (staleIds.length > 0) {
     const { error: delErr } = await client.from('rule_groups').delete().in('id', staleIds);
     if (delErr) throw new Error(`删除分组失败: ${delErr.message}`);
+  }
+}
+
+interface OrgRow {
+  id: string;
+  name: string;
+  kind: string;
+  parent_id: string | null;
+  sort: number;
+  created_at: number;
+}
+
+function toOrg(r: OrgRow): Organization {
+  return {
+    id: r.id,
+    name: r.name,
+    kind: (r.kind as Organization['kind']) ?? '其他',
+    parentId: r.parent_id ?? undefined,
+    sort: r.sort ?? 0,
+    createdAt: r.created_at ?? Date.now(),
+  };
+}
+
+export async function getAllOrganizations(): Promise<Organization[]> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('organizations')
+    .select('*')
+    .order('sort', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(`读取组织架构失败: ${error.message}`);
+  return ((data as OrgRow[] | null) ?? []).map(toOrg);
+}
+
+export async function syncOrganizations(orgs: Organization[]): Promise<void> {
+  const client = getSupabaseClient();
+  const rows = orgs.map((o) => ({
+    id: o.id,
+    name: o.name,
+    kind: o.kind,
+    parent_id: o.parentId ?? null,
+    sort: o.sort ?? 0,
+    created_at: o.createdAt ?? Date.now(),
+  }));
+  if (rows.length > 0) {
+    const { error } = await client.from('organizations').upsert(rows, { onConflict: 'id' });
+    if (error) throw new Error(`保存组织架构失败: ${error.message}`);
+  }
+  const { data: existing, error: selErr } = await client.from('organizations').select('id');
+  if (selErr) throw new Error(`读取组织ID失败: ${selErr.message}`);
+  const keep = new Set(orgs.map((o) => o.id));
+  const staleIds = ((existing as { id: string }[] | null) ?? [])
+    .map((r) => r.id)
+    .filter((id) => !keep.has(id));
+  if (staleIds.length > 0) {
+    const { error: delErr } = await client.from('organizations').delete().in('id', staleIds);
+    if (delErr) throw new Error(`删除组织失败: ${delErr.message}`);
+  }
+}
+
+interface PersonRow {
+  id: string;
+  name: string;
+  org_id: string | null;
+  title: string | null;
+  supervisor_id: string | null;
+  manage_scope: Person['manageScope'] | null;
+  phone: string | null;
+  email: string | null;
+  enabled: boolean;
+  sort: number;
+  created_at: number;
+}
+
+function toPerson(r: PersonRow): Person {
+  return {
+    id: r.id,
+    name: r.name,
+    orgId: r.org_id ?? '',
+    title: r.title ?? undefined,
+    supervisorId: r.supervisor_id ?? undefined,
+    manageScope: r.manage_scope ?? undefined,
+    phone: r.phone ?? undefined,
+    email: r.email ?? undefined,
+    enabled: r.enabled ?? true,
+    sort: r.sort ?? 0,
+    createdAt: r.created_at ?? Date.now(),
+  };
+}
+
+export async function getAllPersons(): Promise<Person[]> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('persons')
+    .select('*')
+    .order('sort', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(`读取人事架构失败: ${error.message}`);
+  return ((data as PersonRow[] | null) ?? []).map(toPerson);
+}
+
+export async function syncPersons(persons: Person[]): Promise<void> {
+  const client = getSupabaseClient();
+  const rows = persons.map((p) => ({
+    id: p.id,
+    name: p.name,
+    org_id: p.orgId ?? '',
+    title: p.title ?? null,
+    supervisor_id: p.supervisorId ?? null,
+    manage_scope: p.manageScope ?? null,
+    phone: p.phone ?? null,
+    email: p.email ?? null,
+    enabled: p.enabled ?? true,
+    sort: p.sort ?? 0,
+    created_at: p.createdAt ?? Date.now(),
+  }));
+  if (rows.length > 0) {
+    const { error } = await client.from('persons').upsert(rows, { onConflict: 'id' });
+    if (error) throw new Error(`保存人事架构失败: ${error.message}`);
+  }
+  const { data: existing, error: selErr } = await client.from('persons').select('id');
+  if (selErr) throw new Error(`读取人员ID失败: ${selErr.message}`);
+  const keep = new Set(persons.map((p) => p.id));
+  const staleIds = ((existing as { id: string }[] | null) ?? [])
+    .map((r) => r.id)
+    .filter((id) => !keep.has(id));
+  if (staleIds.length > 0) {
+    const { error: delErr } = await client.from('persons').delete().in('id', staleIds);
+    if (delErr) throw new Error(`删除人员失败: ${delErr.message}`);
   }
 }
