@@ -592,9 +592,10 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
 
   const editingElem =
     editing && editing.startsWith(ELEM_PREFIX) ? elemById(editing.slice(ELEM_PREFIX.length)) : undefined;
-  // 悬停或选中时的活动组件（bg 不是可编辑组件）
-  const activeKey: SelKey | null =
-    (hover && hover !== 'bg' ? hover : null) || (selected && selected !== 'bg' ? selected : null);
+  // 悬停或选中时的活动组件（bg 不是可编辑组件；弹窗打开时隐藏选中框，便于查看配置效果）
+  const activeKey: SelKey | null = editing
+    ? null
+    : (hover && hover !== 'bg' ? hover : null) || (selected && selected !== 'bg' ? selected : null);
   const editBtn = (gkey: SelKey) =>
     activeKey === gkey ? (
       <button
