@@ -118,11 +118,11 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
                       <td className="px-2 py-2">{s.code || '-'}</td>
                       <td className="px-2 py-2 font-medium">{s.name}</td>
                       <td className="px-2 py-2">{dealers.find((x) => x.id === s.dealerId)?.name ?? '-'}</td>
-                      <td className="px-2 py-2">{s.brand || '-'}</td>
-                      <td className="px-2 py-2">{s.company || '-'}</td>
-                      <td className="px-2 py-2">{s.department || '-'}</td>
-                      <td className="px-2 py-2">{s.salesArea || '-'}</td>
-                      <td className="px-2 py-2">{s.district || '-'}</td>
+                      <td className="px-2 py-2">{s.attrs?.['主营品牌'] || '-'}</td>
+                      <td className="px-2 py-2">{s.attrs?.['分公司'] || '-'}</td>
+                      <td className="px-2 py-2">{s.attrs?.['部门'] || '-'}</td>
+                      <td className="px-2 py-2">{s.attrs?.['销售区域'] || '-'}</td>
+                      <td className="px-2 py-2">{s.attrs?.['区部'] || '-'}</td>
                       <td className="px-2 py-2">{s.allowRetail === false ? '不允许' : '允许'}</td>
                       <td className="px-2 py-2">{s.enabled === false ? <span className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-500">停用</span> : <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-600">启用</span>}</td>
                       {editMode && (
@@ -277,11 +277,6 @@ function DictForm(props: {
   const [birthday, setBirthday] = useState(initial?.birthday ?? '');
   const [enabled, setEnabled] = useState(initial ? (initial.enabled !== false) : true);
   const [attrs, setAttrs] = useState<Record<string, string>>(initial?.attrs ?? {});
-  const [brand, setBrand] = useState(initial ? (initial as Store).brand ?? '' : '');
-  const [company, setCompany] = useState(initial ? (initial as Store).company ?? '' : '');
-  const [department, setDepartment] = useState(initial ? (initial as Store).department ?? '' : '');
-  const [salesArea, setSalesArea] = useState(initial ? (initial as Store).salesArea ?? '' : '');
-  const [district, setDistrict] = useState(initial ? (initial as Store).district ?? '' : '');
   const [allowRetail, setAllowRetail] = useState(initial ? (initial as Store).allowRetail === true : true);
 
   const save = () => {
@@ -292,11 +287,6 @@ function DictForm(props: {
       password: password || undefined, birthday: birthday || undefined,
       enabled, attrs, sort: initial?.sort ?? 0,
       dealerId: kind === 'store' ? (dealerId || undefined) : undefined,
-      brand: kind === 'store' ? (brand.trim() || undefined) : undefined,
-      company: kind === 'store' ? (company.trim() || undefined) : undefined,
-      department: kind === 'store' ? (department.trim() || undefined) : undefined,
-      salesArea: kind === 'store' ? (salesArea.trim() || undefined) : undefined,
-      district: kind === 'store' ? (district.trim() || undefined) : undefined,
       allowRetail: kind === 'store' ? allowRetail : undefined,
     } as Omit<Store, 'id' | 'createdAt'>);
     onClose();
@@ -327,26 +317,6 @@ function DictForm(props: {
           )}
           {kind === 'store' && (
             <>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-500">主营品牌</label>
-                <input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="如：NIKE / 自有品牌" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-500">分公司</label>
-                <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="所属分公司" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-500">部门</label>
-                <input value={department} onChange={(e) => setDepartment(e.target.value)} placeholder="所属部门" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-500">销售区域</label>
-                <input value={salesArea} onChange={(e) => setSalesArea(e.target.value)} placeholder="销售区域" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-500">区部</label>
-                <input value={district} onChange={(e) => setDistrict(e.target.value)} placeholder="区部" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
-              </div>
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-gray-500">允许零售</label>
                 <label className="flex h-9 items-center gap-2 text-sm text-gray-700">
