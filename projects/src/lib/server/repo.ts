@@ -1,5 +1,5 @@
 import { getSupabaseClient } from '@/storage/database/supabase-client';
-import type { AlertRule, AlertStatus, AlertTask, DataTable, HrAttribute, Organization, Person, RuleGroup } from '@/lib/types';
+import type { AlertRule, AlertStatus, AlertTask, AttrCategory, DataTable, Dealer, HrAttribute, Organization, Person, RuleGroup, Store } from '@/lib/types';
 
 interface TableRow {
   id: string;
@@ -307,6 +307,8 @@ interface PersonRow {
   birthday: string | null;
   password: string | null;
   post: string | null;
+  dealer_id: string | null;
+  store_id: string | null;
   enabled: boolean;
   sort: number;
   created_at: number;
@@ -319,6 +321,8 @@ function toPerson(r: PersonRow): Person {
     orgId: r.org_id ?? '',
     title: r.title ?? undefined,
     post: r.post ?? undefined,
+    dealerId: r.dealer_id ?? undefined,
+    storeId: r.store_id ?? undefined,
     supervisorId: r.supervisor_id ?? undefined,
     manageScope: r.manage_scope ?? undefined,
     phone: r.phone ?? undefined,
@@ -353,6 +357,8 @@ export async function syncPersons(persons: Person[]): Promise<void> {
     org_id: p.orgId ?? '',
     title: p.title ?? null,
     post: p.post ?? null,
+    dealer_id: p.dealerId ?? null,
+    store_id: p.storeId ?? null,
     supervisor_id: p.supervisorId ?? null,
     manage_scope: p.manageScope ?? null,
     phone: p.phone ?? null,
@@ -391,6 +397,7 @@ export async function getAllHrAttributes(): Promise<HrAttribute[]> {
     name: a.name,
     items: a.items ?? [],
     sort: a.sort ?? 0,
+    category: (a.category ?? 'person') as AttrCategory,
     createdAt: a.createdAt ?? 0,
   }));
 }
@@ -402,6 +409,7 @@ export async function syncHrAttributes(attributes: HrAttribute[]): Promise<void>
     name: a.name,
     items: a.items ?? [],
     sort: a.sort ?? 0,
+    category: a.category ?? 'person',
     created_at: a.createdAt ?? Date.now(),
   }));
   if (rows.length > 0) {
@@ -417,5 +425,60 @@ export async function syncHrAttributes(attributes: HrAttribute[]): Promise<void>
   if (staleIds.length > 0) {
     const { error: delErr } = await client.from('hr_attributes').delete().in('id', staleIds);
     if (delErr) throw new Error(`删除属性失败: ${delErr.message}`);
+  }
+}
+
+interface DictRow {
+  id: string;
+  name: string;
+  sort: number;
+  created_at: number;
+}
+
+export async function getAllDealers(): Promise<Dealer[]> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from('dealers').select('*').order('sort', { ascending: true });
+  if (error) throw new Error(`读取经销商失败: ${error.message}`);
+  return ((data as DictRow[] | null) ?? []).map((r) => ({ id: r.id, name: r.name, sort: r.sort ?? 0, createdAt: r.created_at ?? 0 }));
+}
+
+export async function syncDealers(dealers: Dealer[]): Promise<void> {
+  const client = getSupabaseClient();
+  const rows = dealers.map((d) => ({ id: d.id, name: d.name, sort: d.sort ?? 0, created_at: d.createdAt ?? Date.now() }));
+  if (rows.length > 0) {
+    const { error } = await client.from('dealers').upsert(rows, { onConflict: 'id' });
+    if (error) throw new Error(`保存经销商失败: ${error.message}`);
+  }
+  const { data: existing, error: selErr } = await client.from('dealers').select('id');
+  if (selErr) throw new Error(`读取经销商ID失败: ${selErr.message}`);
+  const keep = new Set(dealers.map((d) => d.id));
+  const staleIds = ((existing as { id: string }[] | null) ?? []).map((r) => r.id).filter((id) => !keep.has(id));
+  if (staleIds.length > 0) {
+    const { error: delErr } = await client.from('dealers').delete().in('id', staleIds);
+    if (delErr) throw new Error(`删除经销商失败: ${delErr.message}`);
+  }
+}
+
+export async function getAllStores(): Promise<Store[]> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from('stores').select('*').order('sort', { ascending: true });
+  if (error) throw new Error(`读取店仓失败: ${error.message}`);
+  return ((data as DictRow[] | null) ?? []).map((r) => ({ id: r.id, name: r.name, sort: r.sort ?? 0, createdAt: r.created_at ?? 0 }));
+}
+
+export async function syncStores(stores: Store[]): Promise<void> {
+  const client = getSupabaseClient();
+  const rows = stores.map((s) => ({ id: s.id, name: s.name, sort: s.sort ?? 0, created_at: s.createdAt ?? Date.now() }));
+  if (rows.length > 0) {
+    const { error } = await client.from('stores').upsert(rows, { onConflict: 'id' });
+    if (error) throw new Error(`保存店仓失败: ${error.message}`);
+  }
+  const { data: existing, error: selErr } = await client.from('stores').select('id');
+  if (selErr) throw new Error(`读取店仓ID失败: ${selErr.message}`);
+  const keep = new Set(stores.map((s) => s.id));
+  const staleIds = ((existing as { id: string }[] | null) ?? []).map((r) => r.id).filter((id) => !keep.has(id));
+  if (staleIds.length > 0) {
+    const { error: delErr } = await client.from('stores').delete().in('id', staleIds);
+    if (delErr) throw new Error(`删除店仓失败: ${delErr.message}`);
   }
 }

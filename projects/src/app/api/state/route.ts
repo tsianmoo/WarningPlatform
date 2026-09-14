@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getAllTables, getAllRules, getAllAlerts, getAllRuleGroups, getAllOrganizations, getAllPersons, getAllHrAttributes, syncTables, syncRules, syncAlerts, syncRuleGroups, syncOrganizations, syncPersons, syncHrAttributes } from '@/lib/server/repo';
-import type { AlertRule, AlertTask, DataTable, HrAttribute, Organization, Person, RuleGroup } from '@/lib/types';
+import { getAllTables, getAllRules, getAllAlerts, getAllRuleGroups, getAllOrganizations, getAllPersons, getAllHrAttributes, getAllDealers, getAllStores, syncTables, syncRules, syncAlerts, syncRuleGroups, syncOrganizations, syncPersons, syncHrAttributes, syncDealers, syncStores } from '@/lib/server/repo';
+import type { AlertRule, AlertTask, DataTable, Dealer, HrAttribute, Organization, Person, RuleGroup, Store } from '@/lib/types';
 
-// 读取持久化的全部业务数据（数据表 + 规则 + 预警 + 规则分组 + 组织架构 + 人事架构）
+// 读取持久化的全部业务数据（数据表 + 规则 + 预警 + 规则分组 + 组织架构 + 人事架构 + 经销商/店仓）
 export async function GET() {
   try {
-    const [tables, rules, alerts, groups, orgs, persons, hrAttributes] = await Promise.all([
-      getAllTables(), getAllRules(), getAllAlerts(), getAllRuleGroups(), getAllOrganizations(), getAllPersons(), getAllHrAttributes(),
+    const [tables, rules, alerts, groups, orgs, persons, hrAttributes, dealers, stores] = await Promise.all([
+      getAllTables(), getAllRules(), getAllAlerts(), getAllRuleGroups(), getAllOrganizations(), getAllPersons(), getAllHrAttributes(), getAllDealers(), getAllStores(),
     ]);
-    return NextResponse.json({ tables, rules, alerts, groups, orgs, persons, hrAttributes });
+    return NextResponse.json({ tables, rules, alerts, groups, orgs, persons, hrAttributes, dealers, stores });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json()) as {
       tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[];
-      orgs?: Organization[]; persons?: Person[]; hrAttributes?: HrAttribute[];
+      orgs?: Organization[]; persons?: Person[]; hrAttributes?: HrAttribute[]; dealers?: Dealer[]; stores?: Store[];
     };
     const tables = Array.isArray(body.tables) ? body.tables : [];
     const rules = Array.isArray(body.rules) ? body.rules : [];
@@ -29,8 +29,10 @@ export async function POST(req: Request) {
     const orgs = Array.isArray(body.orgs) ? body.orgs : [];
     const persons = Array.isArray(body.persons) ? body.persons : [];
     const hrAttributes = Array.isArray(body.hrAttributes) ? body.hrAttributes : [];
-    await Promise.all([syncTables(tables), syncRules(rules), syncAlerts(alerts), syncRuleGroups(groups), syncOrganizations(orgs), syncPersons(persons), syncHrAttributes(hrAttributes)]);
-    return NextResponse.json({ success: true, tableCount: tables.length, ruleCount: rules.length, alertCount: alerts.length, groupCount: groups.length, orgCount: orgs.length, personCount: persons.length, attrCount: hrAttributes.length });
+    const dealers = Array.isArray(body.dealers) ? body.dealers : [];
+    const stores = Array.isArray(body.stores) ? body.stores : [];
+    await Promise.all([syncTables(tables), syncRules(rules), syncAlerts(alerts), syncRuleGroups(groups), syncOrganizations(orgs), syncPersons(persons), syncHrAttributes(hrAttributes), syncDealers(dealers), syncStores(stores)]);
+    return NextResponse.json({ success: true, tableCount: tables.length, ruleCount: rules.length, alertCount: alerts.length, groupCount: groups.length, orgCount: orgs.length, personCount: persons.length, attrCount: hrAttributes.length, dealerCount: dealers.length, storeCount: stores.length });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });

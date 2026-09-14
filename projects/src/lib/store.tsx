@@ -7,6 +7,8 @@ import type {
   DataTable,
   ExecutionRecord,
   HrAttribute,
+  Dealer,
+  Store,
   Organization,
   Person,
   RuleGroup,
@@ -157,10 +159,10 @@ async function fetchRemoteState(): Promise<Partial<AppState> | null> {
   try {
     const res = await fetch(STATE_API, { cache: 'no-store' });
     if (!res.ok) return null;
-    const json = (await res.json()) as { tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[]; orgs?: Organization[]; persons?: Person[]; hrAttributes?: HrAttribute[]; error?: string };
+    const json = (await res.json()) as { tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[]; orgs?: Organization[]; persons?: Person[]; hrAttributes?: HrAttribute[]; dealers?: Dealer[]; stores?: Store[]; error?: string };
     if (json.error) return null;
     remoteAvailable = true;
-    return { tables: json.tables ?? [], rules: json.rules ?? [], alerts: json.alerts ?? [], ruleGroups: json.groups ?? [], orgs: json.orgs ?? [], persons: json.persons ?? [], hrAttributes: json.hrAttributes ?? [] };
+    return { tables: json.tables ?? [], rules: json.rules ?? [], alerts: json.alerts ?? [], ruleGroups: json.groups ?? [], orgs: json.orgs ?? [], persons: json.persons ?? [], hrAttributes: json.hrAttributes ?? [], dealers: json.dealers ?? [], stores: json.stores ?? [] };
   } catch {
     return null;
   }
@@ -197,7 +199,7 @@ async function pushRemoteState(state: AppState) {
     await fetch(STATE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], hrAttributes: state.hrAttributes ?? [] }),
+      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [] }),
     });
   } catch {
     /* 网络异常时忽略，localStorage 仍有兜底 */
@@ -220,6 +222,10 @@ export interface AppState {
   persons: Person[];
   /** 人事属性字典（部门管理/职位管理/岗位管理等，每属性含多条目） */
   hrAttributes: HrAttribute[];
+  /** 经销商字典 */
+  dealers: Dealer[];
+  /** 店仓字典 */
+  stores: Store[];
 }
 
 type StoreApi = {
@@ -262,6 +268,16 @@ type StoreApi = {
   addHrAttribute: (a: Omit<HrAttribute, 'id' | 'createdAt'>) => HrAttribute;
   updateHrAttribute: (a: HrAttribute) => void;
   removeHrAttribute: (id: string) => void;
+  // dealers
+  addDealer: (d: Omit<Dealer, 'id' | 'createdAt'>) => Dealer;
+  updateDealer: (d: Dealer) => void;
+  removeDealer: (id: string) => void;
+  moveDealer: (id: string, dir: -1 | 1) => void;
+  // stores
+  addStore: (s: Omit<Store, 'id' | 'createdAt'>) => Store;
+  updateStore: (s: Store) => void;
+  removeStore: (id: string) => void;
+  moveStore: (id: string, dir: -1 | 1) => void;
   resetAll: () => void;
 };
 
@@ -282,7 +298,7 @@ function migrateState(raw: AppState | null): AppState {
           : [];
     return { ...r, tableIds };
   });
-  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [], hrAttributes: Array.isArray(raw.hrAttributes) ? raw.hrAttributes : [] };
+  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [], hrAttributes: Array.isArray(raw.hrAttributes) ? raw.hrAttributes : [], dealers: Array.isArray(raw.dealers) ? raw.dealers : [], stores: Array.isArray(raw.stores) ? raw.stores : [] };
 }
 
 function loadInitial(): AppState {
@@ -528,6 +544,38 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
     }
     case 'REPLACE_HRATTRIBUTES':
       return { ...state, hrAttributes: Array.isArray(action.payload) ? (action.payload as HrAttribute[]) : state.hrAttributes };
+    // 经销商字典
+    case 'ADD_DEALER': {
+      const d = action.payload as Dealer;
+      if (state.dealers.some((x) => x.id === d.id)) return state;
+      return { ...state, dealers: [...state.dealers, d] };
+    }
+    case 'UPDATE_DEALER': {
+      const { id, patch } = action.payload as { id: string; patch: Partial<Dealer> };
+      return { ...state, dealers: state.dealers.map((d) => (d.id === id ? { ...d, ...patch } : d)) };
+    }
+    case 'REMOVE_DEALER': {
+      const id = action.payload as string;
+      return { ...state, dealers: state.dealers.filter((d) => d.id !== id) };
+    }
+    case 'REPLACE_DEALERS':
+      return { ...state, dealers: Array.isArray(action.payload) ? (action.payload as Dealer[]) : state.dealers };
+    // 店仓字典
+    case 'ADD_STORE': {
+      const s = action.payload as Store;
+      if (state.stores.some((x) => x.id === s.id)) return state;
+      return { ...state, stores: [...state.stores, s] };
+    }
+    case 'UPDATE_STORE': {
+      const { id, patch } = action.payload as { id: string; patch: Partial<Store> };
+      return { ...state, stores: state.stores.map((s) => (s.id === id ? { ...s, ...patch } : s)) };
+    }
+    case 'REMOVE_STORE': {
+      const id = action.payload as string;
+      return { ...state, stores: state.stores.filter((s) => s.id !== id) };
+    }
+    case 'REPLACE_STORES':
+      return { ...state, stores: Array.isArray(action.payload) ? (action.payload as Store[]) : state.stores };
     case 'RESET':
       return loadInitialState();
     default:
@@ -547,10 +595,10 @@ function loadInitialState(): AppState {
     previewRows: sample.previewRows,
     rows: sample.rows,
   };
-  return { tables: [t], rules: [], activeTableId: t.id, builderTableIds: [t.id], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [] };
+  return { tables: [t], rules: [], activeTableId: t.id, builderTableIds: [t.id], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [] };
 }
 
-const EMPTY_STATE: AppState = { tables: [], rules: [], activeTableId: '', builderTableIds: [], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [] };
+const EMPTY_STATE: AppState = { tables: [], rules: [], activeTableId: '', builderTableIds: [], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [] };
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   // 初始统一为空，避免 SSR 与客户端首帧不一致导致 Hydration 报错；
@@ -583,6 +631,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               orgs: state.orgs ?? [],
               persons: state.persons ?? [],
               hrAttributes: state.hrAttributes ?? [],
+              dealers: state.dealers ?? [],
+              stores: state.stores ?? [],
               activeTableId: tables[0]?.id ?? '',
               builderTableIds: tables.map((t) => t.id),
             });
@@ -597,6 +647,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           orgs: remote.orgs ?? [],
           persons: remote.persons ?? [],
           hrAttributes: remote.hrAttributes ?? [],
+          dealers: remote.dealers ?? [],
+          stores: remote.stores ?? [],
           activeTableId: tables[0]?.id ?? '',
           builderTableIds: tables.map((t) => t.id),
         }));
@@ -690,12 +742,42 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       updatePerson: (p) => dispatch('UPDATE_PERSON', { id: p.id, patch: p }),
       removePerson: (id) => dispatch('REMOVE_PERSON', id),
       addHrAttribute: (a) => {
-        const attr: HrAttribute = { id: uid('hrattr'), name: a.name, items: a.items ?? [], sort: a.sort ?? state.hrAttributes.length, createdAt: Date.now() };
+        const attr: HrAttribute = { id: uid('hrattr'), name: a.name, items: a.items ?? [], sort: a.sort ?? state.hrAttributes.length, category: a.category ?? 'person', createdAt: Date.now() };
         dispatch('ADD_HRATTR', attr);
         return attr;
       },
       updateHrAttribute: (a) => dispatch('UPDATE_HRATTR', { id: a.id, patch: a }),
       removeHrAttribute: (id) => dispatch('REMOVE_HRATTR', id),
+      addDealer: (d) => {
+        const dealer: Dealer = { id: uid('dealer'), name: d.name, sort: d.sort ?? state.dealers.length, createdAt: Date.now() };
+        dispatch('ADD_DEALER', dealer);
+        return dealer;
+      },
+      updateDealer: (d) => dispatch('UPDATE_DEALER', { id: d.id, patch: d }),
+      removeDealer: (id) => dispatch('REMOVE_DEALER', id),
+      moveDealer: (id, dir) => {
+        const arr = [...state.dealers].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+        const idx = arr.findIndex((d) => d.id === id);
+        const swapWith = arr[idx + dir];
+        if (idx < 0 || !swapWith) return;
+        dispatch('UPDATE_DEALER', { id, patch: { sort: swapWith.sort } });
+        dispatch('UPDATE_DEALER', { id: swapWith.id, patch: { sort: arr[idx].sort } });
+      },
+      addStore: (s) => {
+        const store: Store = { id: uid('store'), name: s.name, sort: s.sort ?? state.stores.length, createdAt: Date.now() };
+        dispatch('ADD_STORE', store);
+        return store;
+      },
+      updateStore: (s) => dispatch('UPDATE_STORE', { id: s.id, patch: s }),
+      removeStore: (id) => dispatch('REMOVE_STORE', id),
+      moveStore: (id, dir) => {
+        const arr = [...state.stores].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+        const idx = arr.findIndex((s) => s.id === id);
+        const swapWith = arr[idx + dir];
+        if (idx < 0 || !swapWith) return;
+        dispatch('UPDATE_STORE', { id, patch: { sort: swapWith.sort } });
+        dispatch('UPDATE_STORE', { id: swapWith.id, patch: { sort: arr[idx].sort } });
+      },
       moveOrg: (id, dir) => {
         const target = state.orgs.find((o) => o.id === id);
         if (!target) return;

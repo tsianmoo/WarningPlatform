@@ -993,6 +993,10 @@ export interface Person {
   name: string;
   /** 所属组织 id */
   orgId: string;
+  /** 归属经销商 id */
+  dealerId?: string;
+  /** 归属店仓 id */
+  storeId?: string;
   /** 职位 */
   title?: string;
   /** 岗位（来自「岗位管理」属性标签） */
@@ -1024,11 +1028,32 @@ export interface HrAttributeItem {
   name: string;
 }
 
+/** 属性字典分类：person=人事人员，dealer=经销商，store=店仓 */
+export type AttrCategory = 'person' | 'dealer' | 'store';
+
 /** 人事属性字典（如：部门管理 / 职位管理 / 岗位管理），每个属性下含多条条目 */
 export interface HrAttribute {
   id: string;
   name: string;
   items: HrAttributeItem[];
+  sort: number;
+  createdAt: number;
+  /** 属性归属分类，默认 person */
+  category?: AttrCategory;
+}
+
+/** 经销商字典条目 */
+export interface Dealer {
+  id: string;
+  name: string;
+  sort: number;
+  createdAt: number;
+}
+
+/** 店仓字典条目 */
+export interface Store {
+  id: string;
+  name: string;
   sort: number;
   createdAt: number;
 }

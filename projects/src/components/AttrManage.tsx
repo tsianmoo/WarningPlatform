@@ -3,23 +3,36 @@
 import { useState } from 'react';
 import { Plus, Trash2, Tags } from 'lucide-react';
 import { useStore } from '@/lib/store';
-import type { HrAttribute } from '@/lib/types';
+import type { AttrCategory, HrAttribute } from '@/lib/types';
 import { toast } from 'sonner';
 
 function genItemId() {
   return 'itm_' + Math.random().toString(36).slice(2, 10);
 }
 
-export function AttrManage() {
+type AttrManageProps = {
+  category?: AttrCategory;
+  title?: string;
+  parent?: string;
+  hint?: string;
+};
+
+export function AttrManage({
+  category = 'person',
+  title = '属性管理',
+  parent = '人事管理',
+  hint = '先给属性命名，再在属性下添加子标签（如 职位管理 → 职位标签）',
+}: AttrManageProps) {
   const { state, addHrAttribute, updateHrAttribute, removeHrAttribute } = useStore();
   const { hrAttributes } = state;
   const [filter, setFilter] = useState('');
-  const sorted = [...hrAttributes].sort((a, b) => a.sort - b.sort || a.createdAt - b.createdAt).filter((x) => !filter || x.name.includes(filter));
+  const attrs = hrAttributes.filter((a) => (a.category ?? 'person') === category);
+  const sorted = [...attrs].sort((a, b) => a.sort - b.sort || a.createdAt - b.createdAt).filter((x) => !filter || x.name.includes(filter));
 
   const addAttr = () => {
     const name = prompt('请输入属性名称（如：职位管理 / 岗位管理 / 部门管理）');
     if (!name?.trim()) return;
-    addHrAttribute({ name: name.trim(), items: [], sort: hrAttributes.length });
+    addHrAttribute({ name: name.trim(), items: [], sort: attrs.length, category });
     toast.success('已新增属性');
   };
 
@@ -56,12 +69,12 @@ export function AttrManage() {
           <div className="flex items-center gap-1.5 text-xs text-gray-400">
             <span className="text-gray-500">系统管理</span>
             <span>/</span>
-            <span className="text-gray-500">人事管理</span>
+            <span className="text-gray-500">{parent}</span>
             <span>/</span>
-            <span>属性管理</span>
+            <span>{title}</span>
           </div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-gray-900">属性管理</h1>
-          <p className="mt-1 text-sm text-gray-400">先给属性命名，再在属性下添加子标签（如 职位管理 → 职位标签）</p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-gray-900">{title}</h1>
+          <p className="mt-1 text-sm text-gray-400">{hint}</p>
         </div>
         <button
           onClick={addAttr}
