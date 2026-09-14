@@ -29,10 +29,13 @@ function Shell() {
   const [draft, setDraft] = useState<Person | null>(null);
   const openProfile = () => { setDraft(me ? { ...me } : null); setShowProfile(true); };
   const saveProfile = () => {
-    if (draft) { updatePerson(draft); localStorage.setItem('dn_auth', draft.name); setShowProfile(false); setDraft(null); }
+    if (draft) { updatePerson(draft); localStorage.setItem('dn_auth', draft.name); setMeName(draft.name); setShowProfile(false); setDraft(null); }
   };
 
-  const meName = (typeof window !== 'undefined' ? localStorage.getItem('dn_auth') : '') || '';
+  const [meName, setMeName] = useState('');
+  useEffect(() => {
+    if (typeof window !== 'undefined') setMeName(localStorage.getItem('dn_auth') || '');
+  }, []);
   const me = state.persons.find((p) => p.name === meName) ?? null;
   const toggleFs = () => {
     if (!document.fullscreenElement) {
