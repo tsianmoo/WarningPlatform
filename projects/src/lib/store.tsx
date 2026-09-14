@@ -15,6 +15,12 @@ import { evaluateFlow } from './evaluate';
 import type { NodePreview } from './evaluate';
 import type { ActionNodeData, ConditionItem, ConditionNodeData, FlowNode } from './types';
 
+/** 判断预警是否为残缺脏数据（标题与规则名均为空且无预览，仅基础字段的残留记录） */
+export function isBlankAlert(a: Partial<AlertTask> | null | undefined): boolean {
+  if (!a) return true;
+  return !(a.title?.trim() || a.ruleName?.trim());
+}
+
 /** 拼接“为什么预警”的判断规则描述，如：如果未开单天数大于平均未开单天数，提醒 */
 function buildConditionDesc(nodes: FlowNode[]): string {
   const opLabel = (op: string | undefined) => OPERATOR_OPTIONS.find((o) => o.value === op)?.label ?? String(op ?? '');
@@ -399,6 +405,7 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
     }
     case 'ADD_ALERT': {
       const raw = action.payload as Partial<AlertTask>;
+      if (isBlankAlert(raw)) return state;
       const now = Date.now();
       const alert: AlertTask = {
         id: raw.id ?? `alert_${now}_${Math.random().toString(36).slice(2, 7)}`,
@@ -479,7 +486,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           ...s,
           tables: (tables ?? []).map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })),
           rules,
-          alerts: remote.alerts ?? [],
+          alerts: (remote.alerts ?? []).filter((a) => !isBlankAlert(a)),
           activeTableId: tables[0]?.id ?? '',
           builderTableIds: tables.map((t) => t.id),
         }));
