@@ -1,5 +1,5 @@
 import { getSupabaseClient } from '@/storage/database/supabase-client';
-import type { AlertRule, AlertStatus, AlertTask, DataTable } from '@/lib/types';
+import type { AlertRule, AlertStatus, AlertTask, DataTable, RuleGroup } from '@/lib/types';
 
 interface TableRow {
   id: string;
@@ -186,5 +186,48 @@ export async function syncRules(rules: AlertRule[]): Promise<void> {
   if (staleIds.length > 0) {
     const { error: delErr } = await client.from('alert_rules').delete().in('id', staleIds);
     if (delErr) throw new Error(`删除规则失败: ${delErr.message}`);
+  }
+}
+
+interface RuleGroupRow {
+  id: string;
+  name: string;
+  created_at: number;
+}
+
+function toRuleGroup(row: RuleGroupRow): RuleGroup {
+  return { id: row.id, name: row.name, createdAt: row.created_at };
+}
+
+export async function getAllRuleGroups(): Promise<RuleGroup[]> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('rule_groups')
+    .select('id,name,created_at')
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(`读取分组失败: ${error.message}`);
+  return ((data as RuleGroupRow[] | null) ?? []).map(toRuleGroup);
+}
+
+export async function syncRuleGroups(groups: RuleGroup[]): Promise<void> {
+  const client = getSupabaseClient();
+  const rows = groups.map((g) => ({
+    id: g.id,
+    name: g.name,
+    created_at: g.createdAt ?? Date.now(),
+  }));
+  if (rows.length > 0) {
+    const { error } = await client.from('rule_groups').upsert(rows, { onConflict: 'id' });
+    if (error) throw new Error(`保存分组失败: ${error.message}`);
+  }
+  const { data: existing, error: selErr } = await client.from('rule_groups').select('id');
+  if (selErr) throw new Error(`读取分组ID失败: ${selErr.message}`);
+  const keep = new Set(groups.map((g) => g.id));
+  const staleIds = ((existing as { id: string }[] | null) ?? [])
+    .map((r) => r.id)
+    .filter((id) => !keep.has(id));
+  if (staleIds.length > 0) {
+    const { error: delErr } = await client.from('rule_groups').delete().in('id', staleIds);
+    if (delErr) throw new Error(`删除分组失败: ${delErr.message}`);
   }
 }

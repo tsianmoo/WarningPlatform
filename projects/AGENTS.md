@@ -137,7 +137,7 @@
 
 - 凭证由平台注入：`COZE_SUPABASE_URL` / `COZE_SUPABASE_ANON_KEY` / `COZE_SUPABASE_SERVICE_ROLE_KEY`；`supabase-client.ts` 按 dotenv → `coze_workload_identity`（python3，向平台拉取项目环境变量）→ 抛错的顺序加载。
 - **运行环境里 shell 不一定预置这些变量**，必须通过 `coze_workload_identity` 取；本地验证 node 侧读取用 `./node_modules/.bin/tsx` 跑 client。
-- 业务表（`src/storage/database/shared/schema.ts` 定义）：`data_tables`、`alert_rules`、`alert_tasks`（`health_check` 为系统表勿动）。
+- 业务表（`src/storage/database/shared/schema.ts` 定义）：`data_tables`、`alert_rules`、`alert_tasks`、`rule_groups`（`health_check` 为系统表勿动）。`rule_groups(id,name,created_at)` 存规则分组，`AlertRule.groupId` 引用其 id（`''`=未分组）；经 `/api/state` 的 `groups` 字段全量同步（`getAllRuleGroups`/`syncRuleGroups`，同样 upsert + stale 删除）。
 - 表结构迁移/建表：schema 改动用 `coze-coding-ai db upgrade`，或直接对 develop 库 exec_sql；已在线上建好三业务表并 `ENABLE ROW LEVEL SECURITY`。
 - RLS：项目无 Auth（场景 A），后端用 service_role_key 天然绕过 RLS，不建 policy（无 policy 时 anon 完全被阻断，更安全）。
 - `src/app/api/state`：GET 全量读、POST 全量覆盖同步；字段名 snake_case 与数据库列一致。

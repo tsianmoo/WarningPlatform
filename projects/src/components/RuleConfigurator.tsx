@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Save, Rocket, Table2 } from 'lucide-react';
+import { ArrowLeft, Save, Rocket, Table2, Folder } from 'lucide-react';
 
 const STEPS = [
   { key: 'flow', label: '流程搭建' },
@@ -38,7 +38,7 @@ const fmtSchedule = (s?: { repeatType?: string; timeOfDay?: string; nextTriggerA
   };
   return `${labels[m ?? 'once'] ?? m} ${time}${s.nextTriggerAt ? ` · ${s.nextTriggerAt} 触发` : ''}`;
 };
-import type { AlertRule, DataTable, FlowEdge, FlowNode } from '@/lib/types';
+import type { AlertRule, DataTable, FlowEdge, FlowNode, RuleGroup } from '@/lib/types';
 import { useStore, makeDefaultRule, createPendingExecution, computeNextTrigger, buildAlertsForRule } from '@/lib/store';
 import { PalettePanel, FlowEditor } from './flow/FlowCanvas';
 import { toast } from 'sonner';
@@ -343,11 +343,14 @@ export function RuleConfigurator({
 
 /** 新建规则的封装：mount 时生成一份全新草稿，key 保证每次进入都是干净的新规则 */
 export function NewRule({ onBack }: { onBack: () => void }) {
-  const { state } = useStore();
+  const { state, addRuleGroup } = useStore();
   const [draft] = useState<AlertRule>(() => makeDefaultRule());
   const [title, setTitle] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [started, setStarted] = useState(false);
+  const [groupId, setGroupId] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [groupName, setGroupName] = useState('');
 
   // 未通过引导前：必须先填写标题并选择数据表，才允许进入配置页
   if (!started) {
@@ -362,11 +365,26 @@ export function NewRule({ onBack }: { onBack: () => void }) {
         }
         canStart={title.trim().length > 0 && selected.length > 0}
         onStart={() => setStarted(true)}
+        groups={state.ruleGroups}
+        groupId={groupId}
+        setGroupId={setGroupId}
+        creating={creating}
+        setCreating={setCreating}
+        groupName={groupName}
+        setGroupName={setGroupName}
+        onCreateGroup={(name) => {
+          const g = addRuleGroup(name);
+          if (g) {
+            setGroupId(g.id);
+            setGroupName('');
+            setCreating(false);
+          }
+        }}
       />
     );
   }
 
-  const final: AlertRule = { ...draft, name: title.trim(), tableIds: selected };
+  const final: AlertRule = { ...draft, name: title.trim(), tableIds: selected, groupId };
   return <RuleConfigurator key={final.id} draft={final} onBack={onBack} />;
 }
 
@@ -379,6 +397,14 @@ function NewRuleGate({
   toggle,
   canStart,
   onStart,
+  groups,
+  groupId,
+  setGroupId,
+  creating,
+  setCreating,
+  groupName,
+  setGroupName,
+  onCreateGroup,
 }: {
   tables: DataTable[];
   title: string;
@@ -387,6 +413,14 @@ function NewRuleGate({
   toggle: (id: string) => void;
   canStart: boolean;
   onStart: () => void;
+  groups: RuleGroup[];
+  groupId: string;
+  setGroupId: (id: string) => void;
+  creating: boolean;
+  setCreating: (v: boolean) => void;
+  groupName: string;
+  setGroupName: (v: string) => void;
+  onCreateGroup: (name: string) => void;
 }) {
   return (
     <div className="flex h-full items-center justify-center bg-[#F7F8FA] p-6">
@@ -405,6 +439,59 @@ function NewRuleGate({
           className="mb-5 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none focus:border-blue-400"
           placeholder="例如：门店未开单天数监控"
         />
+
+        <div className="mb-1.5 block text-xs font-medium text-gray-600">规则分组</div>
+        <div className="mb-5 flex items-center gap-2">
+          <span className="relative flex-1">
+            <Folder
+              size={14}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
+            />
+            <select
+              value={groupId}
+              onChange={(e) => setGroupId(e.target.value)}
+              className="w-full appearance-none rounded-lg border border-gray-200 bg-white py-2 pl-8 pr-8 text-sm text-gray-800 outline-none focus:border-blue-400"
+            >
+              <option value="">未分组</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </span>
+          {creating ? (
+            <button
+              type="button"
+              onClick={() => onCreateGroup(groupName.trim())}
+              disabled={!groupName.trim()}
+              className="shrink-0 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+            >
+              新建
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="shrink-0 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            >
+              + 新建分组
+            </button>
+          )}
+        </div>
+        {creating ? (
+          <div className="mb-5 -mt-3 flex items-center gap-2 rounded-lg border border-dashed border-emerald-200 bg-emerald-50/60 px-3 py-2.5">
+            <span className="text-xs font-medium text-emerald-700">新分组名称</span>
+            <input
+              autoFocus
+              value={groupName}
+              onChange={(e) => setGroupName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && groupName.trim()) onCreateGroup(groupName.trim()); }}
+              placeholder="输入分组名称后点击「新建」"
+              className="min-w-0 flex-1 rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-sm text-gray-800 outline-none focus:border-emerald-400"
+            />
+          </div>
+        ) : null}
 
         <div className="mb-1.5 flex items-center justify-between">
           <span className="text-xs font-medium text-gray-600">

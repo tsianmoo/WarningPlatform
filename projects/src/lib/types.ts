@@ -757,9 +757,18 @@ export interface ExecutionRecord {
 
 export type RuleStatus = 'draft' | 'active' | 'paused' | 'ended';
 
+/** 规则分组 */
+export interface RuleGroup {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
 export interface AlertRule {
   id: string;
   name: string;
+  /** 所属规则分组 id（空串表示未分组） */
+  groupId?: string;
   description: string;
   /** 本规则使用到的数据表 id 列表（支持多表） */
   tableIds: string[];

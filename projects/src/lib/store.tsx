@@ -6,6 +6,7 @@ import type {
   AlertTask,
   DataTable,
   ExecutionRecord,
+  RuleGroup,
   Schedule,
   TargetSetting,
 } from './types';
@@ -153,10 +154,10 @@ async function fetchRemoteState(): Promise<Partial<AppState> | null> {
   try {
     const res = await fetch(STATE_API, { cache: 'no-store' });
     if (!res.ok) return null;
-    const json = (await res.json()) as { tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; error?: string };
+    const json = (await res.json()) as { tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[]; error?: string };
     if (json.error) return null;
     remoteAvailable = true;
-    return { tables: json.tables ?? [], rules: json.rules ?? [], alerts: json.alerts ?? [] };
+    return { tables: json.tables ?? [], rules: json.rules ?? [], alerts: json.alerts ?? [], ruleGroups: json.groups ?? [] };
   } catch {
     return null;
   }
@@ -193,7 +194,7 @@ async function pushRemoteState(state: AppState) {
     await fetch(STATE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts }),
+      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [] }),
     });
   } catch {
     /* 网络异常时忽略，localStorage 仍有兜底 */
@@ -208,6 +209,8 @@ export interface AppState {
   builderTableIds: string[];
   /** 预警（由规则触发的待处理告警实例） */
   alerts: AlertTask[];
+  /** 规则分组 */
+  ruleGroups: RuleGroup[];
 }
 
 type StoreApi = {
@@ -233,6 +236,9 @@ type StoreApi = {
   // alerts
   addAlert: (a: Omit<AlertTask, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateAlertStatus: (id: string, patch: Partial<AlertTask>) => void;
+  // groups
+  addRuleGroup: (name: string) => RuleGroup;
+  removeRuleGroup: (id: string) => void;
   resetAll: () => void;
 };
 
@@ -426,6 +432,22 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
       };
       return { ...state, alerts: [alert, ...state.alerts] };
     }
+    case 'ADD_RULE_GROUP': {
+      const g = action.payload as RuleGroup;
+      if (!g || !g.id || !String(g.name ?? '').trim()) return state;
+      if (state.ruleGroups.some((x) => x.id === g.id || x.name === g.name)) return state;
+      return { ...state, ruleGroups: [g, ...state.ruleGroups] };
+    }
+    case 'REMOVE_RULE_GROUP': {
+      const id = action.payload as string;
+      return {
+        ...state,
+        ruleGroups: state.ruleGroups.filter((g) => g.id !== id),
+        rules: state.rules.map((r) => (r.groupId === id ? { ...r, groupId: '' } : r)),
+      };
+    }
+    case 'REPLACE_GROUPS':
+      return { ...state, ruleGroups: Array.isArray(action.payload) ? (action.payload as RuleGroup[]) : state.ruleGroups };
     case 'RESET':
       return loadInitialState();
     default:
@@ -445,10 +467,10 @@ function loadInitialState(): AppState {
     previewRows: sample.previewRows,
     rows: sample.rows,
   };
-  return { tables: [t], rules: [], activeTableId: t.id, builderTableIds: [t.id], alerts: [] };
+  return { tables: [t], rules: [], activeTableId: t.id, builderTableIds: [t.id], alerts: [], ruleGroups: [] };
 }
 
-const EMPTY_STATE: AppState = { tables: [], rules: [], activeTableId: '', builderTableIds: [], alerts: [] };
+const EMPTY_STATE: AppState = { tables: [], rules: [], activeTableId: '', builderTableIds: [], alerts: [], ruleGroups: [] };
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   // 初始统一为空，避免 SSR 与客户端首帧不一致导致 Hydration 报错；
@@ -477,6 +499,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               tables,
               rules,
               alerts: state.alerts ?? [],
+              ruleGroups: state.ruleGroups ?? [],
               activeTableId: tables[0]?.id ?? '',
               builderTableIds: tables.map((t) => t.id),
             });
@@ -486,6 +509,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           ...s,
           tables: (tables ?? []).map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })),
           rules,
+          ruleGroups: remote.ruleGroups ?? [],
           alerts: (remote.alerts ?? []).filter((a) => !isBlankAlert(a)),
           activeTableId: tables[0]?.id ?? '',
           builderTableIds: tables.map((t) => t.id),
@@ -539,6 +563,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       updateRule: (id, patch) => dispatch('UPDATE_RULE', { id, patch }),
       removeRule: (id) => dispatch('REMOVE_RULE', id),
       updateExecution: (ruleId, execId, patch) => dispatch('UPDATE_EXECUTION', { ruleId, execId, patch }),
+      addRuleGroup: (name) => {
+        const n = String(name ?? '').trim();
+        const g: RuleGroup = { id: uid('group'), name: n, createdAt: Date.now() };
+        dispatch('ADD_RULE_GROUP', g);
+        return g;
+      },
+      removeRuleGroup: (id) => dispatch('REMOVE_RULE_GROUP', id),
       addAlert: (alert) => dispatch('ADD_ALERT', { alert }),
       updateAlertStatus: (alertId, patch) => dispatch('UPDATE_ALERT', { alertId, patch }),
       resetAll: () => dispatch('RESET'),
