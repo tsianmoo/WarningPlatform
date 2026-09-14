@@ -2503,11 +2503,15 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
             </span>
           </div>
         )}
+        <div className="mt-2 flex items-center justify-between">
+          <span className="text-xs text-gray-400">预警标题</span>
+          <span className="text-[10px] text-amber-500/80">将显示在预警列表的「标题」列</span>
+        </div>
         <input
           value={d.title}
           onChange={(e) => update({ title: e.target.value })}
           placeholder="预警标题，如：店仓超期未开单预警"
-          className="mt-1.5 w-full rounded-md border px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
+          className="mt-1 w-full rounded-md border px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
         />
         <div className="mt-1.5 flex items-start gap-1.5">
           <textarea
