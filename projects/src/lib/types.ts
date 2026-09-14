@@ -995,6 +995,8 @@ export interface Person {
   orgId: string;
   /** 职位 */
   title?: string;
+  /** 岗位（来自「岗位管理」属性标签） */
+  post?: string;
   /** 上级人员 id（空 = 该组织最高层） */
   supervisorId?: string;
   /** 管理范围（关联数据字段 + 分类值） */

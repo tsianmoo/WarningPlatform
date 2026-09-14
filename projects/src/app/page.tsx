@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Table2, BellRing, ShieldAlert, LayoutDashboard, Activity, Building2, Users, Briefcase } from 'lucide-react';
+import { Table2, BellRing, ShieldAlert, LayoutDashboard, Activity, Briefcase, Users } from 'lucide-react';
 import { StoreProvider, useStore } from '@/lib/store';
 import { DataTableManager } from '@/components/DataTableManager';
 import { RuleList } from '@/components/RuleList';
@@ -10,9 +10,10 @@ import { Dashboard } from '@/components/Dashboard';
 import { Toaster } from 'sonner';
 import { AlertList } from '@/components/AlertList';
 import { OrgArch } from '@/components/OrgArch';
-import { HrArch } from '@/components/HrArch';
+import { PeopleManage } from '@/components/PeopleManage';
+import { AttrManage } from '@/components/AttrManage';
 
-type View = 'home' | 'tables' | 'rules' | 'new' | 'edit' | 'alerts' | 'org' | 'hrs';
+type View = 'home' | 'tables' | 'rules' | 'new' | 'edit' | 'alerts' | 'org' | 'people' | 'attrs';
 
 function Shell() {
   const { state } = useStore();
@@ -56,14 +57,16 @@ function Shell() {
     content = <AlertList onBack={goHome} />;
   } else if (view === 'org') {
     content = <OrgArch />;
-  } else if (view === 'hrs') {
-    content = <HrArch />;
+  } else if (view === 'people') {
+    content = <PeopleManage />;
+  } else if (view === 'attrs') {
+    content = <AttrManage />;
   } else {
     content = <RuleList onNew={startNew} onEdit={startEdit} onHome={goHome} />;
   }
 
   // 预警配置页（new / edit）隐藏左侧导航栏，聚焦画布编辑
-  const withSidebar = view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts' || view === 'org' || view === 'hrs';
+  const withSidebar = view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts' || view === 'org' || view === 'people' || view === 'attrs';
   const currentView = view;
   const pendingAlerts = state.alerts.filter((a) => a.status === 'new' || a.status === 'processing').length;
 
@@ -99,7 +102,26 @@ function Shell() {
               onClick={() => setView('alerts')}
             />
             <NavItem active={currentView === 'org'} icon={<Briefcase size={17} />} label="组织架构" onClick={() => setView('org')} />
-            <NavItem active={currentView === 'hrs'} icon={<Users size={17} />} label="人事架构" onClick={() => setView('hrs')} />
+            <div className="pt-1">
+              <div className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-800">
+                <Users size={17} className="text-gray-400" />
+                <span className="flex-1">人事管理</span>
+              </div>
+              <NavItem
+                nested
+                active={currentView === 'people'}
+                icon={<span className="text-gray-400">·</span>}
+                label="人员管理"
+                onClick={() => setView('people')}
+              />
+              <NavItem
+                nested
+                active={currentView === 'attrs'}
+                icon={<span className="text-gray-400">·</span>}
+                label="属性管理"
+                onClick={() => setView('attrs')}
+              />
+            </div>
           </nav>
           <div className="border-t p-3 text-[10px] leading-relaxed text-gray-400">
             将数据表标签化字段，拖拽构建可视化规则，自定义触发调度与通知对象，并跟踪每次执行。
@@ -119,19 +141,21 @@ function NavItem({
   label,
   badge,
   onClick,
+  nested,
 }: {
   active: boolean;
   icon: React.ReactNode;
   label: string;
   badge?: number;
   onClick: () => void;
+  nested?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${
-        active ? 'bg-blue-50 font-medium text-blue-700' : 'text-gray-600 hover:bg-gray-50'
-      }`}
+      className={`flex w-full items-center gap-2.5 rounded-lg py-2 text-sm transition ${
+        nested ? 'pl-8 pr-3' : 'px-3'
+      } ${active ? 'bg-blue-50 font-medium text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
     >
       <span className={active ? 'text-blue-600' : 'text-gray-400'}>{icon}</span>
       <span className="flex-1 text-left">{label}</span>
