@@ -188,13 +188,22 @@ export function RuleConfigurator({
           placeholder="未命名规则（点击命名）"
         />
         <div className="mx-0.5 hidden h-5 w-px bg-gray-200 md:block" />
-        <input
-          value={rule.description}
-          onChange={(e) => set({ description: e.target.value })}
-          className="hidden min-w-0 max-w-[30rem] flex-1 rounded-md border border-transparent bg-gray-50/70 px-2 py-1 text-xs text-gray-500 outline-none focus:border-blue-300 md:block"
-          placeholder="规则描述：简要说明用途…"
-        />
-        <div className="mx-3 flex shrink-0 items-center gap-0.5 border-l border-gray-200 pl-3">
+        {/* 标题右侧：再次配置规则分组 */}
+        <label className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50/70 px-2.5 py-1 text-xs font-medium text-gray-600">
+          <Folder size={14} className="text-gray-400" />
+          <select
+            value={rule.groupId ?? ''}
+            onChange={(e) => set({ groupId: e.target.value })}
+            className="bg-transparent pr-1 text-xs font-medium text-gray-700 outline-none"
+          >
+            <option value="">未分组</option>
+            {state.ruleGroups.map((g) => (
+              <option key={g.id} value={g.id}>{g.name}</option>
+            ))}
+          </select>
+        </label>
+        <div className="ml-auto flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-0.5">
           {STEPS.map((s, i) => {
             const done = i < step;
             const cur = i === step;
@@ -223,8 +232,8 @@ export function RuleConfigurator({
               </button>
             );
           })}
-        </div>
-        <div className="flex items-center gap-2">
+          </div>
+          <div className="flex items-center gap-2">
           <button
             onClick={() => persist('save')}
             disabled={saving}
@@ -239,6 +248,7 @@ export function RuleConfigurator({
           >
             <Rocket size={15} /> {saving ? '提交中…' : '激活规则'}
           </button>
+        </div>
         </div>
       </div>
 
@@ -256,9 +266,6 @@ export function RuleConfigurator({
               onSchedule={setSchedule}
               onTargets={setTargets}
             />
-            <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full border bg-white/90 px-3 py-1 text-[11px] text-gray-500 shadow-sm">
-              拖动节点调整布局 · 右键节点删除
-            </div>
           </div>
         </div>
       )}

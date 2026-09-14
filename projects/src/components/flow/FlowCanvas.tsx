@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from 'react';
 import {
   ReactFlow,
   Background,
@@ -14,7 +14,27 @@ import {
   type Edge,
   type Node as RFNode,
 } from '@xyflow/react';
-import { Trash2, Table2 } from 'lucide-react';
+import {
+  Table2,
+  Trash2,
+  Play,
+  Database,
+  Link,
+  Search,
+  CalendarDays,
+  Hourglass,
+  TrendingUp,
+  ListOrdered,
+  Filter,
+  GitCompareArrows,
+  Combine,
+  Calculator,
+  Layers,
+  BarChart3,
+  GitBranch,
+  Waypoints,
+  Bell,
+} from 'lucide-react';
 import type { FlowEdge, FlowNode, Schedule, TargetSetting } from '@/lib/types';
 import { KIND_COLOR, uid } from '@/lib/types';
 import { useStore } from '@/lib/store';
@@ -391,10 +411,37 @@ export function PalettePanel({
     { kind: 'action', label: '预警动作', desc: '终点·通知', payload: { kind: 'action' }, color: KIND_COLOR.action.border, dot: KIND_COLOR.action.dot },
   ];
 
+  // 按功能分组（kinds 引用 flowItems），便于直观选择
+  const NODE_GROUPS: { title: string; kinds: FlowNode['kind'][] }[] = [
+    { title: '数据与窗口', kinds: ['trigger', 'base', 'relation', 'lookup', 'time', 'elapsed'] },
+    { title: '筛选与排名', kinds: ['topn', 'rank', 'filter', 'diff', 'filljoin'] },
+    { title: '计算与统计', kinds: ['compute', 'groupby', 'baseline'] },
+    { title: '条件与输出', kinds: ['condition', 'logic', 'action'] },
+  ];
+
+  const NODE_ICON: Record<string, ComponentType<{ size?: number; className?: string; style?: CSSProperties }>> = {
+    trigger: Play,
+    base: Database,
+    relation: Link,
+    lookup: Search,
+    time: CalendarDays,
+    elapsed: Hourglass,
+    topn: TrendingUp,
+    rank: ListOrdered,
+    filter: Filter,
+    diff: GitCompareArrows,
+    filljoin: Combine,
+    compute: Calculator,
+    groupby: Layers,
+    baseline: BarChart3,
+    condition: GitBranch,
+    logic: Waypoints,
+    action: Bell,
+  };
+  const flowByKind = new Map(flowItems.map((it) => [it.kind, it]));
+
   return (
     <div className="w-60 shrink-0 overflow-y-auto border-r bg-white p-3">
-      <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">拖拽构建规则</div>
-
       {/* 规则使用数据表：仅显示已选，可通过「添加数据表」加入 */}
       <div className="mb-4">
         <div className="mb-1.5 flex items-center justify-between text-xs font-semibold text-gray-600">
@@ -459,38 +506,44 @@ export function PalettePanel({
             ))}
           </div>
         )}
-        <div className="mt-1.5 rounded-md bg-gray-50 px-2 py-1.5 text-[10px] leading-relaxed text-gray-500">
-          此处仅展示规则已使用的数据表；需要更多时点「添加数据表」勾选加入，画布节点内即可按「表 + 字段」跨表选择。
         </div>
-      </div>
 
       <div className="mb-1.5 text-xs font-semibold text-gray-600">流程节点</div>
-      <div className="mb-3 flex flex-wrap gap-1.5">
-        {flowItems.map((it) => (
-          <div
-            key={it.label}
-            {...draggable(it.payload as DragPayload)}
-            className="group flex cursor-grab items-center gap-1.5 rounded-lg border bg-white px-2.5 py-1.5 text-xs text-gray-700 shadow-sm transition hover:shadow-md active:cursor-grabbing"
-            style={{ borderColor: it.color }}
-            title={it.desc}
-          >
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: it.dot }} />
-            {it.label}
+      <div className="space-y-3">
+        {NODE_GROUPS.map((g) => (
+          <div key={g.title}>
+            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-gray-500">
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: flowByKind.get(g.kinds[0])?.dot ?? '#94A3B8' }}
+              />
+              {g.title}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {g.kinds.map((kind) => {
+                const it = flowByKind.get(kind);
+                if (!it) return null;
+                const Icon = NODE_ICON[kind];
+                return (
+                  <div
+                    key={it.kind}
+                    {...draggable(it.payload as DragPayload)}
+                    className="group flex cursor-grab items-center gap-1.5 rounded-lg border bg-white px-2.5 py-1.5 text-xs text-gray-700 shadow-sm transition hover:-translate-y-px hover:shadow-md active:cursor-grabbing"
+                    style={{ borderColor: it.color }}
+                    title={it.desc}
+                  >
+                    {Icon ? (
+                      <Icon size={13} className="shrink-0" style={{ color: it.dot }} />
+                    ) : (
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: it.dot }} />
+                    )}
+                    {it.label}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         ))}
-      </div>
-
-      <div className="mt-4 rounded-lg border border-dashed bg-gray-50 p-3 text-[11px] leading-relaxed text-gray-400">
-        <div className="mb-1 flex items-center gap-1 font-semibold text-gray-500">
-          <Trash2 size={12} /> 操作提示
-        </div>
-        用线条把节点按「基础数据/字段 → 查找/过滤/分组聚合 → 基准统计 → 判断 → 预警动作」串联。
-        <br />
-        <br />
-        判断比较符（大于/小于/区间等）直接在「判断」节点里选择，无需拖运算符。
-        <br />
-        <br />
-        右键节点删除；点中连线后按 Delete 或用顶部按钮删除，拖连线手柄可改接其他节点。
       </div>
     </div>
   );
