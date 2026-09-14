@@ -4,15 +4,18 @@ import { useMemo, useState } from 'react';
 import { Users, Phone, Plus, Pencil, Trash2, Crosshair } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import type { Organization, Person } from '@/lib/types';
+import { ORG_KIND_OPTIONS } from '@/lib/types';
 import { toast } from 'sonner';
 
 export function PeopleManage() {
-  const { state, addPerson, updatePerson, removePerson } = useStore();
+  const { state, addPerson, updatePerson, removePerson, addOrg, updateOrg, removeOrg, moveOrg } = useStore();
   const { orgs, persons, tables, hrAttributes } = state;
   const [activeOrg, setActiveOrg] = useState<string | null>(null);
   const [editing, setEditing] = useState<Person | null>(null);
   const [showEditor, setShowEditor] = useState(false);
   const [confirmDel, setConfirmDel] = useState<Person | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [orgModal, setOrgModal] = useState<Organization | null>(null);
 
   const sortedOrgs = [...orgs].sort((a, b) => a.sort - b.sort || a.createdAt - b.createdAt);
   const childrenByParent = useMemo(() => {
@@ -72,22 +75,71 @@ export function PeopleManage() {
       <div className="grid gap-6 grid-cols-[280px_1fr]">
         {/* 左侧：部门（组织）列表 */}
         <div className="rounded-xl border border-gray-200 bg-white p-2">
-          <div className="px-2 py-2 text-xs font-semibold text-gray-400">部门列表（{orgs.length}）</div>
-          {rootOrgs.length === 0 && <div className="px-2 py-6 text-center text-xs text-gray-400">暂无部门，请先在「组织架构」维护</div>}
+          <div className="flex items-center justify-between px-2 py-2">
+            <div className="text-xs font-semibold text-gray-400">部门列表（{orgs.length}）</div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setOrgModal({ id: '__new', name: '', kind: '部门', parentId: undefined, sort: orgs.length, createdAt: 0 })}
+                className="rounded-md border border-gray-200 px-1.5 py-0.5 text-[11px] text-gray-500 hover:bg-gray-50"
+              >
+                + 新增
+              </button>
+              <button
+                onClick={() => setEditMode(!editMode)}
+                className={`rounded-md border px-1.5 py-0.5 text-[11px] transition ${editMode ? 'border-blue-200 bg-blue-50 text-blue-600' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+              >
+                编辑
+              </button>
+            </div>
+          </div>
+          {rootOrgs.length === 0 && <div className="px-2 py-6 text-center text-xs text-gray-400">暂无部门，点击「+ 新增」添加</div>}
           <div className="space-y-0.5">
             {orgList.map((o) => (
-              <button
+              <div
                 key={o.id}
                 onClick={() => setActiveOrg((cur) => (cur === o.id ? null : o.id))}
-                style={{ paddingLeft: `${(o.parentId ? 1 : 0) * 10 + 8}px` }}
-                className={`flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-xs transition ${
+                style={{ paddingLeft: `${(o.parentId ? 1 : 0) * 10 + 8}px`, paddingRight: '6px' }}
+                className={`flex w-full cursor-pointer items-center gap-1.5 rounded-lg py-1.5 text-left text-xs transition ${
                   activeOrg === o.id ? 'bg-blue-50 font-medium text-blue-700' : 'text-gray-600 hover:bg-gray-50'
                 }`}
               >
                 <span className="text-gray-300">{o.parentId ? '└' : '⊞'}</span>
                 <span className="flex-1 truncate">{o.name}</span>
-                <span className="text-[10px] text-gray-300">{persons.filter((p) => p.orgId === o.id).length}</span>
-              </button>
+                {editMode ? (
+                  <span className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => moveOrg(o.id, -1)} className="rounded px-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="上移">
+                      ↑
+                    </button>
+                    <button onClick={() => moveOrg(o.id, 1)} className="rounded px-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="下移">
+                      ↓
+                    </button>
+                    <button
+                      onClick={() => {
+                        const n = prompt('重命名部门', o.name);
+                        if (n?.trim()) updateOrg({ ...o, name: n.trim() });
+                      }}
+                      className="rounded px-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                      title="重命名"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm(`确定删除部门「${o.name}」？`)) {
+                          removeOrg(o.id);
+                          if (activeOrg === o.id) setActiveOrg(null);
+                        }
+                      }}
+                      className="rounded px-0.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                      title="删除"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-gray-300">{persons.filter((p) => p.orgId === o.id).length}</span>
+                )}
+              </div>
             ))}
           </div>
         </div>
@@ -139,6 +191,25 @@ export function PeopleManage() {
           </div>
         </div>
       </div>
+
+      {orgModal && (
+        <OrgModal
+          key={orgModal.id}
+          initial={orgModal}
+          orgs={orgList}
+          onCancel={() => setOrgModal(null)}
+          onSave={(o) => {
+            if (orgModal.id === '__new') {
+              addOrg({ name: o.name, kind: o.kind, parentId: o.parentId, sort: o.sort });
+              toast.success('已新增部门');
+            } else {
+              updateOrg(o);
+              toast.success('已更新部门');
+            }
+            setOrgModal(null);
+          }}
+        />
+      )}
 
       {showEditor && (
         <PersonEditor
@@ -326,6 +397,79 @@ function PersonEditor({
                 createdAt: initial?.createdAt ?? Date.now(),
               })
             }
+            className="rounded-lg bg-gray-900 px-3.5 py-2 text-sm text-white transition-colors hover:bg-gray-700 disabled:opacity-40"
+          >
+            保存
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrgModal({
+  initial,
+  orgs,
+  onCancel,
+  onSave,
+}: {
+  initial: Organization;
+  orgs: Organization[];
+  onCancel: () => void;
+  onSave: (o: Organization) => void;
+}) {
+  const isNew = initial.id === '__new';
+  const [name, setName] = useState(initial.name || '');
+  const [kind, setKind] = useState<Organization['kind']>(initial.kind || '部门');
+  const [parentId, setParentId] = useState<string>(initial.parentId || '');
+  const valid = name.trim().length > 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onCancel}>
+      <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-base font-semibold text-gray-900">{isNew ? '新增部门' : '编辑部门'}</h3>
+        <div className="mt-5 grid grid-cols-1 gap-4">
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">部门名称 *</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoFocus
+              placeholder="如 直联营事业部"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">上级部门</label>
+            <select
+              value={parentId}
+              onChange={(e) => setParentId(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900"
+            >
+              <option value="">（无上级，作为一层部门）</option>
+              {orgs.filter((o) => o.id !== initial.id).map((o) => (
+                <option key={o.id} value={o.id}>{o.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">分类</label>
+            <select
+              value={kind}
+              onChange={(e) => setKind(e.target.value as Organization['kind'])}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900"
+            >
+              {ORG_KIND_OPTIONS.map((k) => (
+                <option key={k.value} value={k.value}>{k.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="mt-6 flex justify-end gap-2">
+          <button onClick={onCancel} className="rounded-lg border border-gray-200 px-3.5 py-2 text-sm text-gray-600 hover:bg-gray-50">取消</button>
+          <button
+            disabled={!valid}
+            onClick={() => onSave({ ...initial, name: name.trim(), kind, parentId: parentId || undefined })}
             className="rounded-lg bg-gray-900 px-3.5 py-2 text-sm text-white transition-colors hover:bg-gray-700 disabled:opacity-40"
           >
             保存
