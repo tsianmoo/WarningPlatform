@@ -1135,8 +1135,9 @@ function evalNode(
           { key: '开始日期', label: '开始日期', value: fmtD(twrAll.start) },
           { key: '结束日期', label: '结束日期', value: fmtD(twrAll.end) },
           { key: '已过天数', label: '已过天数', value: String(calcElapsedDays(twrAll)) },
-          { key: '本周天数', label: '本周天数', value: String(((day.getDay() + 6) % 7) + 1) },
-          { key: '本月天数', label: '本月天数', value: String(day.getDate()) },
+          { key: '本周天数', label: '本周天数', value: '7' },
+          { key: '本月天数', label: '本月天数', value: String(new Date(day.getFullYear(), day.getMonth() + 1, 0).getDate()) },
+          { key: '本年天数', label: '本年天数', value: String(new Date(day.getFullYear(), 1, 29).getMonth() === 1 ? 366 : 365) },
         );
       }
       const cmpValByKey = new Map<string, number[]>();
