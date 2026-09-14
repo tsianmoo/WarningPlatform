@@ -115,11 +115,10 @@ export function PeopleManage() {
                     </button>
                     <button
                       onClick={() => {
-                        const n = prompt('重命名部门', o.name);
-                        if (n?.trim()) updateOrg({ ...o, name: n.trim() });
+                        setOrgModal(o);
                       }}
                       className="rounded px-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                      title="重命名"
+                      title="编辑部门"
                     >
                       ✎
                     </button>

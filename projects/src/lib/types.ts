@@ -1061,32 +1061,55 @@ export interface Store {
 export type AlignX = 'left' | 'center' | 'right';
 export type AlignY = 'top' | 'middle' | 'bottom';
 
-/** 登录页 / 首页展示配置（大标题、小标题、背景） */
+/** 登录页 / 首页展示配置（大标题、小标题、登录框、背景） */
 export interface HomeTitleStyle {
   text: string;
   font: string;
   size: number;
+  weight: number;        // 字重
+  letterSpacing: number; // 字宽（字间距，px）
+  marginLeft: number;    // 左边距（px）
   color: string;
   opacity: number;
+  x: number;             // 位置：水平百分比
+  y: number;             // 位置：垂直百分比
+}
+export interface LoginBoxStyle {
+  x: number;             // 位置：水平百分比（相对预览/登录页区域）
+  y: number;             // 位置：垂直百分比
+  width: number;         // 宽度（px）
+  height: number;        // 高度（px）
+  bgColor: string;
+  bgOpacity: number;     // 0-1 背景透明度
+  blur: number;          // 毛玻璃（backdrop blur，px）
+  radius: number;        // 圆角
 }
 export interface HomeConfig {
   bgMode: 'color' | 'image';
   bgColor: string;
   bgImage: string;
+  bgBlur: number;        // 背景毛玻璃（px）
   title: HomeTitleStyle;
   subtitle: HomeTitleStyle;
-  titleX: AlignX;
-  titleY: AlignY;
+  loginBox: LoginBoxStyle;
 }
 
 export const DEFAULT_HOME_CONFIG: HomeConfig = {
   bgMode: 'color',
   bgColor: '#1e293b',
   bgImage: '',
-  title: { text: '店牛预警平台', font: 'system-ui', size: 40, color: '#ffffff', opacity: 1 },
-  subtitle: { text: '零售终端数据预警与通知助手', font: 'system-ui', size: 16, color: '#cbd5e1', opacity: 0.9 },
-  titleX: 'left',
-  titleY: 'middle',
+  bgBlur: 0,
+  title: {
+    text: '店牛预警平台', font: 'system-ui', size: 44, weight: 700, letterSpacing: 4, marginLeft: 56,
+    color: '#ffffff', opacity: 1, x: 8, y: 35,
+  },
+  subtitle: {
+    text: '零售终端数据预警与通知助手', font: 'system-ui', size: 16, weight: 500, letterSpacing: 2, marginLeft: 58,
+    color: '#cbd5e1', opacity: 0.9, x: 8, y: 50,
+  },
+  loginBox: {
+    x: 66, y: 26, width: 320, height: 340, bgColor: '#ffffff', bgOpacity: 0.12, blur: 12, radius: 16,
+  },
 };
 
 export const FONT_OPTIONS = [

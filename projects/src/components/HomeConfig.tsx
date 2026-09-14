@@ -1,9 +1,13 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ImagePlus, RotateCcw } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { DEFAULT_HOME_CONFIG, FONT_OPTIONS, type HomeConfig } from '@/lib/types';
+
+function Range({ value, min, max, step, onChange }: { value: number; min?: number; max: number; step?: number; onChange: (n: number) => void }) {
+  return <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-blue-600" />;
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -44,6 +48,61 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
     updateHomeConfig((c) => c);
     setSaved(true);
     window.setTimeout(() => setSaved(false), 1500);
+  };
+
+  const previewRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ which: 'title' | 'subtitle' | 'login'; startX: number; startY: number; originX: number; originY: number } | null>(null);
+
+  const toRgba = (hex: string, a: number) => {
+    let h = hex.replace('#', '').trim();
+    if (h.length === 3) h = h.split('').map((x) => x + x).join('');
+    if (h.length !== 6 || /[^0-9a-fA-F]/.test(h)) return 'transparent';
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    const al = Number.isFinite(a) ? a : 1;
+    return `rgba(${r}, ${g}, ${b}, ${al})`;
+  };
+
+  const startDrag = (which: 'title' | 'subtitle' | 'login', e: React.PointerEvent) => {
+    e.preventDefault();
+    const o = which === 'login' ? cfg.loginBox : which === 'title' ? cfg.title : cfg.subtitle;
+    dragRef.current = { which, startX: e.clientX, startY: e.clientY, originX: o.x, originY: o.y };
+  };
+
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      const d = dragRef.current;
+      const box = previewRef.current;
+      if (!d || !box) return;
+      const rect = box.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      const nx = Math.max(0, Math.min(100, d.originX + ((e.clientX - d.startX) / rect.width) * 100));
+      const ny = Math.max(0, Math.min(100, d.originY + ((e.clientY - d.startY) / rect.height) * 100));
+      if (d.which === 'login') {
+        updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, x: nx, y: ny } }));
+      } else if (d.which === 'title') {
+        updateHomeConfig((c) => ({ ...c, title: { ...c.title, x: nx, y: ny } }));
+      } else if (d.which === 'subtitle') {
+        updateHomeConfig((c) => ({ ...c, subtitle: { ...c.subtitle, x: nx, y: ny } }));
+      }
+    };
+    const up = () => {
+      dragRef.current = null;
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+  }, [updateHomeConfig]);
+
+  const hexA = (hex: string, a: number) => {
+    const m = (hex || '').replace('#', '');
+    const full = m.length === 3 ? m.split('').map((x) => x + x).join('') : m;
+    const n = parseInt(full || 'ffffff', 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
   };
 
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -170,6 +229,28 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
             <Field label="字号">
               <NumberInput value={cfg.title.size} onChange={(n) => setTitle('title', { size: n })} />
             </Field>
+            <Field label="字重">
+              <select
+                value={cfg.title.weight}
+                onChange={(e) => setTitle('title', { weight: Number(e.target.value) })}
+                className="h-8 w-full rounded-lg border border-gray-200 px-2 text-sm outline-none"
+              >
+                {[400, 500, 600, 700, 800, 900].map((w) => (
+                  <option key={w} value={w}>
+                    {w}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="字宽(px)">
+              <NumberInput value={cfg.title.letterSpacing} onChange={(n) => setTitle('title', { letterSpacing: n })} />
+            </Field>
+            <Field label="左边距(px)">
+              <NumberInput value={cfg.title.marginLeft} onChange={(n) => setTitle('title', { marginLeft: n })} />
+            </Field>
+            <Field label="不换行">
+              <div className="h-8 flex items-center text-xs text-gray-400">标题默认单行显示（不换行）</div>
+            </Field>
             <Field label="颜色">
               <label className="flex items-center gap-2 text-xs text-gray-500">
                 <input
@@ -253,42 +334,35 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
           </div>
         </div>
 
-        {/* 标题位置（极简对齐） */}
+        {/* 登录框设置 */}
         <div className="rounded-xl border border-gray-100 p-4">
-          <div className="mb-3 text-sm font-medium text-gray-700">标题位置</div>
-          <div className="space-y-3">
-            <Field label="水平">
-              <div className="flex gap-1">
-                {(['left', 'center', 'right'] as const).map((x) => (
-                  <button
-                    key={x}
-                    onClick={() => set({ titleX: x })}
-                    className={`flex-1 rounded-lg py-1.5 text-xs transition ${
-                      cfg.titleX === x ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                    }`}
-                  >
-                    {x === 'left' ? '左对齐' : x === 'center' ? '居中' : '右对齐'}
-                  </button>
-                ))}
-              </div>
+          <div className="mb-3 text-sm font-medium text-gray-700">登录框</div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="宽度">
+              <NumberInput value={cfg.loginBox.width} onChange={(n) => set({ loginBox: { ...cfg.loginBox, width: n } })} />
             </Field>
-            <Field label="垂直">
-              <div className="flex gap-1">
-                {(['top', 'middle', 'bottom'] as const).map((y) => (
-                  <button
-                    key={y}
-                    onClick={() => set({ titleY: y })}
-                    className={`flex-1 rounded-lg py-1.5 text-xs transition ${
-                      cfg.titleY === y ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                    }`}
-                  >
-                    {y === 'top' ? '置顶' : y === 'middle' ? '居中' : '置底'}
-                  </button>
-                ))}
-              </div>
+            <Field label="高度">
+              <NumberInput value={cfg.loginBox.height} onChange={(n) => set({ loginBox: { ...cfg.loginBox, height: n } })} />
+            </Field>
+            <Field label="背景颜色">
+              <input type="color" value={cfg.loginBox.bgColor} onChange={(e) => set({ loginBox: { ...cfg.loginBox, bgColor: e.target.value } })} className="h-8 w-full rounded-lg border p-0.5" />
+            </Field>
+            <Field label="透明度">
+              <Range value={cfg.loginBox.bgOpacity} min={0} max={1} step={0.05} onChange={(n) => set({ loginBox: { ...cfg.loginBox, bgOpacity: n } })} />
+            </Field>
+            <Field label="毛玻璃(模糊)">
+              <NumberInput value={cfg.loginBox.blur} onChange={(n) => set({ loginBox: { ...cfg.loginBox, blur: n } })} />
+            </Field>
+            <Field label="圆角">
+              <NumberInput value={cfg.loginBox.radius} onChange={(n) => set({ loginBox: { ...cfg.loginBox, radius: n } })} />
             </Field>
           </div>
-          <p className="mt-3 text-[11px] text-gray-400">调整标题与大标题在登录页左侧区域的位置，极简风格下自动生效。</p>
+          <div className="mt-2">
+            <Field label="背景毛玻璃(模糊)">
+              <Range value={cfg.bgBlur} min={0} max={24} step={1} onChange={(n) => set({ bgBlur: n })} />
+            </Field>
+          </div>
+          <p className="mt-3 text-[11px] text-gray-400">登录框位置可直接在右侧预览中拖拽；宽高、背景颜色、透明度与毛玻璃见上方设置。</p>
         </div>
       </div>
 
@@ -302,47 +376,82 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
             <span className="h-2 w-2 rounded-full bg-green-400" />
           </span>
         </div>
-        <div className="flex h-[calc(100%-2rem)]">
-          <div className="relative min-w-0 flex-1" style={bgStyle}>
+        <div className="flex h-[calc(100%-2rem)] rounded-b-2xl p-4">
+          <div ref={previewRef} className="relative min-w-0 flex-1 overflow-hidden rounded-xl" style={bgStyle}>
             <div
-              className="flex h-full w-full px-12"
+              className="pointer-events-none absolute inset-0"
+              style={{ backdropFilter: `blur(${cfg.bgBlur}px)`, WebkitBackdropFilter: `blur(${cfg.bgBlur}px)` }}
+            />
+            {/* 登录框 */}
+            <div
+              className="absolute cursor-move select-none"
               style={{
-                justifyContent: cfg.titleX === 'left' ? 'flex-start' : cfg.titleX === 'center' ? 'center' : 'flex-end',
-                alignItems: cfg.titleY === 'top' ? 'flex-start' : cfg.titleY === 'middle' ? 'center' : 'flex-end',
+                left: `${cfg.loginBox.x}%`,
+                top: `${cfg.loginBox.y}%`,
+                width: cfg.loginBox.width,
+                height: cfg.loginBox.height,
+                transform: 'translate(-50%, -50%)',
+                borderRadius: cfg.loginBox.radius,
+                background: toRgba(cfg.loginBox.bgColor, cfg.loginBox.bgOpacity),
+                backdropFilter: `blur(${cfg.loginBox.blur}px)`,
+                WebkitBackdropFilter: `blur(${cfg.loginBox.blur}px)`,
+                boxShadow: '0 8px 30px rgba(0,0,0,0.18)',
+                padding: '18px',
               }}
+              onPointerDown={(e) => startDrag('login', e)}
+              title="拖拽移动登录框"
             >
-              <div className="max-w-lg">
-                <div
-                  className="font-bold leading-tight"
-                  style={{
-                    fontFamily: cfg.title.font,
-                    fontSize: cfg.title.size,
-                    color: cfg.title.color,
-                    opacity: cfg.title.opacity,
-                  }}
-                >
-                  {cfg.title.text}
-                </div>
-                <div
-                  className="mt-3"
-                  style={{
-                    fontFamily: cfg.subtitle.font,
-                    fontSize: cfg.subtitle.size,
-                    color: cfg.subtitle.color,
-                    opacity: cfg.subtitle.opacity,
-                  }}
-                >
-                  {cfg.subtitle.text}
-                </div>
-              </div>
+              <div className="text-sm font-semibold text-white/95">登录</div>
+              <div className="mt-2 h-7 rounded bg-white/30" />
+              <div className="mt-2 h-7 rounded bg-white/30" />
+              <div className="mt-2 h-7 rounded bg-white/30" />
+              <div className="mt-3 h-8 rounded-lg bg-blue-500/90" />
             </div>
-          </div>
-          <div className="flex w-40 shrink-0 flex-col justify-center bg-white px-6">
-            <div className="text-sm font-bold text-gray-800">登录</div>
-            <div className="mt-1 h-8 rounded bg-gray-100" />
-            <div className="mt-2 h-8 rounded bg-gray-100" />
-            <div className="mt-2 h-8 rounded bg-gray-100" />
-            <div className="mt-3 h-9 rounded-lg bg-blue-600" />
+            {/* 主标题 */}
+            <div
+              className="absolute cursor-move select-none leading-tight"
+              style={{
+                left: `${cfg.title.x}%`,
+                top: `${cfg.title.y}%`,
+                whiteSpace: 'nowrap',
+                transform: 'translateY(-50%)',
+                fontFamily: cfg.title.font,
+                fontSize: cfg.title.size,
+                fontWeight: cfg.title.weight,
+                letterSpacing: `${cfg.title.letterSpacing}px`,
+                color: cfg.title.color,
+                opacity: cfg.title.opacity,
+                marginLeft: cfg.title.marginLeft,
+              }}
+              onPointerDown={(e) => startDrag('title', e)}
+              title="拖拽移动主标题"
+            >
+              {cfg.title.text}
+            </div>
+            {/* 副标题 */}
+            <div
+              className="absolute cursor-move select-none mt-2"
+              style={{
+                left: `${cfg.subtitle.x}%`,
+                top: `${cfg.subtitle.y}%`,
+                whiteSpace: 'nowrap',
+                transform: 'translateY(-50%)',
+                fontFamily: cfg.subtitle.font,
+                fontSize: cfg.subtitle.size,
+                fontWeight: cfg.subtitle.weight,
+                letterSpacing: `${cfg.subtitle.letterSpacing}px`,
+                color: cfg.subtitle.color,
+                opacity: cfg.subtitle.opacity,
+                marginLeft: cfg.subtitle.marginLeft,
+              }}
+              onPointerDown={(e) => startDrag('subtitle', e)}
+              title="拖拽移动副标题"
+            >
+              {cfg.subtitle.text}
+            </div>
+            <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-black/30 px-3 py-0.5 text-[10px] text-white/80">
+              拖拽登录框 / 主标题 / 副标题可调整位置
+            </div>
           </div>
         </div>
         </div>
