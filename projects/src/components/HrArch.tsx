@@ -2,14 +2,14 @@
 
 import React, { useMemo, useState } from 'react';
 import { Plus, Network, Pencil, Trash2, ChevronDown, ChevronRight, User, Crosshair, Mail, Phone, Search } from 'lucide-react';
-import type { Organization, Person, ManageScope } from '@/lib/types';
+import type { Organization, Person, ManageScope, HrAttribute } from '@/lib/types';
 import { ORG_KIND_OPTIONS } from '@/lib/types';
 import { useStore } from '@/lib/store';
 import { toast } from 'sonner';
 
 export function HrArch() {
-  const { state, addPerson, updatePerson, removePerson } = useStore();
-  const { orgs, persons, tables } = state;
+  const { state, addPerson, updatePerson, removePerson, addHrAttribute, updateHrAttribute, removeHrAttribute } = useStore();
+  const { orgs, persons, tables, hrAttributes } = state;
   const [activeOrg, setActiveOrg] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ kind: 'create' | 'edit'; orgId: string; person?: Person } | null>(null);
   const [confirmDel, setConfirmDel] = useState<Person | null>(null);
@@ -81,6 +81,7 @@ export function HrArch() {
               onSelect={(id) => setActiveOrg((cur) => (cur === id ? null : id))}
             />
           ))}
+          <HrAttributesPanel attrs={hrAttributes} onAdd={addHrAttribute} onUpdate={updateHrAttribute} onRemove={removeHrAttribute} />
         </div>
 
         {/* 右侧：人员列表 */}
@@ -145,6 +146,104 @@ export function HrArch() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function genItemId() {
+  return 'itm_' + Math.random().toString(36).slice(2, 10);
+}
+
+function HrAttributesPanel({
+  attrs,
+  onAdd,
+  onUpdate,
+  onRemove,
+}: {
+  attrs: HrAttribute[];
+  onAdd: (a: Omit<HrAttribute, 'id' | 'createdAt'>) => HrAttribute;
+  onUpdate: (a: HrAttribute) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const sorted = [...attrs].sort((a, b) => a.sort - b.sort || a.createdAt - b.createdAt);
+
+  const addItem = (attr: HrAttribute) => {
+    const name = prompt('请输入' + attr.name + '条目名称');
+    if (!name?.trim()) return;
+    onUpdate({ ...attr, items: [...attr.items, { id: genItemId(), name: name.trim() }] });
+  };
+  const removeItem = (attr: HrAttribute, id: string) => {
+    onUpdate({ ...attr, items: attr.items.filter((i) => i.id !== id) });
+  };
+
+  return (
+    <div className="mt-2 rounded-xl border border-gray-200 bg-white p-2">
+      <div
+        className="flex cursor-pointer items-center justify-between px-2 py-2"
+        onClick={() => setOpen(!open)}
+      >
+        <div className="flex items-center gap-1 text-xs font-semibold text-gray-400">
+          <span>⊞</span>人事属性（{attrs.length}）
+        </div>
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={() => {
+              const n = prompt('请输入属性名称（如：部门管理 / 职位管理 / 岗位管理）');
+              if (!n?.trim()) return;
+              onAdd({ name: n.trim(), items: [], sort: attrs.length });
+            }}
+            className="rounded-md border border-gray-200 px-1.5 py-0.5 text-[11px] text-gray-500 hover:bg-gray-50"
+          >
+            新增属性
+          </button>
+          <span className="text-gray-300">{open ? '▾' : '▸'}</span>
+        </div>
+      </div>
+
+      {open &&
+        sorted.map((attr) => (
+          <div key={attr.id} className="mb-1.5 rounded-lg bg-gray-50 p-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-700">{attr.name}</span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => addItem(attr)}
+                  className="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[11px] text-gray-500 hover:bg-gray-100"
+                >
+                  + 条目
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm(`确定删除人事属性「${attr.name}」？`)) onRemove(attr.id);
+                  }}
+                  className="rounded border border-red-100 bg-white px-1.5 py-0.5 text-[11px] text-red-400 hover:bg-red-50"
+                >
+                  删
+                </button>
+              </div>
+            </div>
+            <ul className="mt-1.5 space-y-1">
+              {attr.items.map((it) => (
+                <li key={it.id} className="flex items-center justify-between rounded bg-white px-2 py-1 text-xs text-gray-600">
+                  <span>{it.name}</span>
+                  <button
+                    onClick={() => removeItem(attr, it.id)}
+                    className="text-gray-300 hover:text-red-400"
+                    title="删除条目"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+              {attr.items.length === 0 && (
+                <li className="px-1 py-0.5 text-[11px] text-gray-300">暂无条目</li>
+              )}
+            </ul>
+          </div>
+        ))}
+
+      {open && sorted.length === 0 && <div className="px-2 py-2 text-center text-[11px] text-gray-300">暂无属性，点击「新增属性」</div>}
     </div>
   );
 }

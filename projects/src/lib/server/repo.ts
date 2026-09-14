@@ -1,5 +1,5 @@
 import { getSupabaseClient } from '@/storage/database/supabase-client';
-import type { AlertRule, AlertStatus, AlertTask, DataTable, Organization, Person, RuleGroup } from '@/lib/types';
+import type { AlertRule, AlertStatus, AlertTask, DataTable, HrAttribute, Organization, Person, RuleGroup } from '@/lib/types';
 
 interface TableRow {
   id: string;
@@ -361,5 +361,43 @@ export async function syncPersons(persons: Person[]): Promise<void> {
   if (staleIds.length > 0) {
     const { error: delErr } = await client.from('persons').delete().in('id', staleIds);
     if (delErr) throw new Error(`删除人员失败: ${delErr.message}`);
+  }
+}
+
+export async function getAllHrAttributes(): Promise<HrAttribute[]> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from('hr_attributes').select('*').order('sort', { ascending: true });
+  if (error) throw new Error(`读取人事属性失败: ${error.message}`);
+  return ((data as unknown as HrAttribute[]) ?? []).map((a) => ({
+    id: a.id,
+    name: a.name,
+    items: a.items ?? [],
+    sort: a.sort ?? 0,
+    createdAt: a.createdAt ?? 0,
+  }));
+}
+
+export async function syncHrAttributes(attributes: HrAttribute[]): Promise<void> {
+  const client = getSupabaseClient();
+  const rows = attributes.map((a) => ({
+    id: a.id,
+    name: a.name,
+    items: a.items ?? [],
+    sort: a.sort ?? 0,
+    created_at: a.createdAt ?? Date.now(),
+  }));
+  if (rows.length > 0) {
+    const { error } = await client.from('hr_attributes').upsert(rows, { onConflict: 'id' });
+    if (error) throw new Error(`保存人事属性失败: ${error.message}`);
+  }
+  const { data: existing, error: selErr } = await client.from('hr_attributes').select('id');
+  if (selErr) throw new Error(`读取属性ID失败: ${selErr.message}`);
+  const keep = new Set(attributes.map((a) => a.id));
+  const staleIds = ((existing as { id: string }[] | null) ?? [])
+    .map((r) => r.id)
+    .filter((id) => !keep.has(id));
+  if (staleIds.length > 0) {
+    const { error: delErr } = await client.from('hr_attributes').delete().in('id', staleIds);
+    if (delErr) throw new Error(`删除属性失败: ${delErr.message}`);
   }
 }

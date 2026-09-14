@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, Building2, Pencil, Trash2, Users } from 'lucide-react';
+import { Plus, Building2, Pencil, Trash2, Users, MoveUp, MoveDown } from 'lucide-react';
 import { ORG_KIND_OPTIONS, type Organization } from '@/lib/types';
 import { useStore } from '@/lib/store';
 import { toast } from 'sonner';
@@ -16,7 +16,7 @@ const KIND_CLS: Record<string, string> = {
 };
 
 export function OrgArch() {
-  const { state, addOrg, updateOrg, removeOrg } = useStore();
+  const { state, addOrg, updateOrg, removeOrg, moveOrg } = useStore();
   const { orgs, persons } = state;
   const [editing, setEditing] = useState<Organization | null>(null);
   const [creating, setCreating] = useState(false);
@@ -95,6 +95,20 @@ export function OrgArch() {
                   className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500"
                 >
                   <Trash2 size={14} />
+                </button>
+                <button
+                  onClick={() => moveOrg(o.id, -1)}
+                  title="上移"
+                  className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                >
+                  <MoveUp size={14} />
+                </button>
+                <button
+                  onClick={() => moveOrg(o.id, 1)}
+                  title="下移"
+                  className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                >
+                  <MoveDown size={14} />
                 </button>
               </div>
             </div>

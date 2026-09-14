@@ -1005,3 +1005,18 @@ export interface Person {
   sort: number;
   createdAt: number;
 }
+
+/** 人事属性下的单个条目 */
+export interface HrAttributeItem {
+  id: string;
+  name: string;
+}
+
+/** 人事属性字典（如：部门管理 / 职位管理 / 岗位管理），每个属性下含多条条目 */
+export interface HrAttribute {
+  id: string;
+  name: string;
+  items: HrAttributeItem[];
+  sort: number;
+  createdAt: number;
+}

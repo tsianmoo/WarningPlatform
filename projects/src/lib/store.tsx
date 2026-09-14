@@ -6,6 +6,7 @@ import type {
   AlertTask,
   DataTable,
   ExecutionRecord,
+  HrAttribute,
   Organization,
   Person,
   RuleGroup,
@@ -156,10 +157,10 @@ async function fetchRemoteState(): Promise<Partial<AppState> | null> {
   try {
     const res = await fetch(STATE_API, { cache: 'no-store' });
     if (!res.ok) return null;
-    const json = (await res.json()) as { tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[]; orgs?: Organization[]; persons?: Person[]; error?: string };
+    const json = (await res.json()) as { tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[]; orgs?: Organization[]; persons?: Person[]; hrAttributes?: HrAttribute[]; error?: string };
     if (json.error) return null;
     remoteAvailable = true;
-    return { tables: json.tables ?? [], rules: json.rules ?? [], alerts: json.alerts ?? [], ruleGroups: json.groups ?? [], orgs: json.orgs ?? [], persons: json.persons ?? [] };
+    return { tables: json.tables ?? [], rules: json.rules ?? [], alerts: json.alerts ?? [], ruleGroups: json.groups ?? [], orgs: json.orgs ?? [], persons: json.persons ?? [], hrAttributes: json.hrAttributes ?? [] };
   } catch {
     return null;
   }
@@ -196,7 +197,7 @@ async function pushRemoteState(state: AppState) {
     await fetch(STATE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [] }),
+      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], hrAttributes: state.hrAttributes ?? [] }),
     });
   } catch {
     /* 网络异常时忽略，localStorage 仍有兜底 */
@@ -217,6 +218,8 @@ export interface AppState {
   orgs: Organization[];
   /** 人事架构（挂载在组织下的人员） */
   persons: Person[];
+  /** 人事属性字典（部门管理/职位管理/岗位管理等，每属性含多条目） */
+  hrAttributes: HrAttribute[];
 }
 
 type StoreApi = {
@@ -250,10 +253,15 @@ type StoreApi = {
   addOrg: (o: Omit<Organization, 'id' | 'createdAt'>) => Organization;
   updateOrg: (o: Organization) => void;
   removeOrg: (id: string) => void;
+  moveOrg: (id: string, dir: -1 | 1) => void;
   // persons
   addPerson: (p: Omit<Person, 'id' | 'createdAt'>) => Person;
   updatePerson: (p: Person) => void;
   removePerson: (id: string) => void;
+  // hr attributes
+  addHrAttribute: (a: Omit<HrAttribute, 'id' | 'createdAt'>) => HrAttribute;
+  updateHrAttribute: (a: HrAttribute) => void;
+  removeHrAttribute: (id: string) => void;
   resetAll: () => void;
 };
 
@@ -274,7 +282,7 @@ function migrateState(raw: AppState | null): AppState {
           : [];
     return { ...r, tableIds };
   });
-  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [] };
+  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [], hrAttributes: Array.isArray(raw.hrAttributes) ? raw.hrAttributes : [] };
 }
 
 function loadInitial(): AppState {
@@ -504,6 +512,22 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
     }
     case 'REPLACE_PERSONS':
       return { ...state, persons: Array.isArray(action.payload) ? (action.payload as Person[]) : state.persons };
+    // 人事属性字典
+    case 'ADD_HRATTR': {
+      const a = action.payload as HrAttribute;
+      if (state.hrAttributes.some((x) => x.id === a.id)) return state;
+      return { ...state, hrAttributes: [...state.hrAttributes, a] };
+    }
+    case 'UPDATE_HRATTR': {
+      const { id, patch } = action.payload as { id: string; patch: Partial<HrAttribute> };
+      return { ...state, hrAttributes: state.hrAttributes.map((a) => (a.id === id ? { ...a, ...patch } : a)) };
+    }
+    case 'REMOVE_HRATTR': {
+      const id = action.payload as string;
+      return { ...state, hrAttributes: state.hrAttributes.filter((a) => a.id !== id) };
+    }
+    case 'REPLACE_HRATTRIBUTES':
+      return { ...state, hrAttributes: Array.isArray(action.payload) ? (action.payload as HrAttribute[]) : state.hrAttributes };
     case 'RESET':
       return loadInitialState();
     default:
@@ -523,10 +547,10 @@ function loadInitialState(): AppState {
     previewRows: sample.previewRows,
     rows: sample.rows,
   };
-  return { tables: [t], rules: [], activeTableId: t.id, builderTableIds: [t.id], alerts: [], ruleGroups: [], orgs: [], persons: [] };
+  return { tables: [t], rules: [], activeTableId: t.id, builderTableIds: [t.id], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [] };
 }
 
-const EMPTY_STATE: AppState = { tables: [], rules: [], activeTableId: '', builderTableIds: [], alerts: [], ruleGroups: [], orgs: [], persons: [] };
+const EMPTY_STATE: AppState = { tables: [], rules: [], activeTableId: '', builderTableIds: [], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [] };
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   // 初始统一为空，避免 SSR 与客户端首帧不一致导致 Hydration 报错；
@@ -558,6 +582,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               ruleGroups: state.ruleGroups ?? [],
               orgs: state.orgs ?? [],
               persons: state.persons ?? [],
+              hrAttributes: state.hrAttributes ?? [],
               activeTableId: tables[0]?.id ?? '',
               builderTableIds: tables.map((t) => t.id),
             });
@@ -571,6 +596,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           alerts: (remote.alerts ?? []).filter((a) => !isBlankAlert(a)),
           orgs: remote.orgs ?? [],
           persons: remote.persons ?? [],
+          hrAttributes: remote.hrAttributes ?? [],
           activeTableId: tables[0]?.id ?? '',
           builderTableIds: tables.map((t) => t.id),
         }));
@@ -663,6 +689,27 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       },
       updatePerson: (p) => dispatch('UPDATE_PERSON', { id: p.id, patch: p }),
       removePerson: (id) => dispatch('REMOVE_PERSON', id),
+      addHrAttribute: (a) => {
+        const attr: HrAttribute = { id: uid('hrattr'), name: a.name, items: a.items ?? [], sort: a.sort ?? state.hrAttributes.length, createdAt: Date.now() };
+        dispatch('ADD_HRATTR', attr);
+        return attr;
+      },
+      updateHrAttribute: (a) => dispatch('UPDATE_HRATTR', { id: a.id, patch: a }),
+      removeHrAttribute: (id) => dispatch('REMOVE_HRATTR', id),
+      moveOrg: (id, dir) => {
+        const target = state.orgs.find((o) => o.id === id);
+        if (!target) return;
+        const siblings = state.orgs
+          .filter((o) => (o.parentId ?? '') === (target.parentId ?? ''))
+          .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+        const idx = siblings.findIndex((o) => o.id === id);
+        const swapWith = siblings[idx + dir];
+        if (!swapWith || idx < 0) return;
+        const newTarget = { ...target, sort: swapWith.sort };
+        const newSwap = { ...swapWith, sort: target.sort };
+        dispatch('UPDATE_ORG', { id: target.id, patch: newTarget });
+        dispatch('UPDATE_ORG', { id: swapWith.id, patch: newSwap });
+      },
       resetAll: () => dispatch('RESET'),
     };
   }, [state, ready, remotePersist]);
