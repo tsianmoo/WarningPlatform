@@ -1276,9 +1276,14 @@ function evalNode(
       if ((bd.source ?? 'node') === 'node') {
         const src = pickColumnOutput(outputs, incoming, bd.refNode?.nodeId);
         if (!src) return { title: '基准统计', columns: [], rows: [], note: '请先添加「查找·聚合带回 / 分组聚合」节点并连到本节点。' };
-        valueKey = bd.refNode?.label || src.columns[src.columns.length - 1];
+        // 优先取选定的"统计列" col；未设时回退节点 label（兼容旧规则）
+        const statKey = bd.refNode?.col;
+        valueKey =
+          (statKey && src.columns.includes(statKey) ? statKey : null) ||
+          bd.refNode?.label ||
+          src.columns[src.columns.length - 1];
         rowset = src.rows;
-        basis = `节点结果「${valueKey}」的 ${rowset.length} 个取值`;
+        basis = `节点结果「${bd.refNode?.label || ''}${statKey ? `」的「${statKey}」列` : ''} 的 ${rowset.length} 个取值`;
       } else {
         const t = resolveTable(tables, bd.tableId);
         valueKey = bd.valueField || t?.fields.find((f) => f.type === 'number')?.key || '';

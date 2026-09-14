@@ -3630,7 +3630,18 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
   const isTailAvg = d.baselineFn === 'topAvg' || d.baselineFn === 'bottomAvg';
   const percent = typeof d.percent === 'number' && d.percent > 0 ? d.percent : 20;
   const pickedLabel = source === 'node' ? d.refNode?.label : d.valueFieldLabel;
-  const hasStatField = source === 'node' ? !!d.refNode?.nodeId : !!d.valueField;
+  const chosenNodeId = source === 'node' ? d.refNode?.nodeId || '' : '';
+  // 选定节点结果后，其 output 列即为可选"统计列"（与 evaluate 输出对齐）
+  const statCols =
+    source === 'node' && chosenNodeId
+      ? inferNodeCols(
+          allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>,
+          tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>,
+          chosenNodeId,
+        )
+      : [];
+  // 需先选定节点结果并选定其统计列，才可选择统计方式
+  const hasStatField = source === 'node' ? !!chosenNodeId && !!d.refNode?.col : !!d.valueField;
 
   return (
     <NodeShell fnode={fnode}>
@@ -3660,13 +3671,13 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
 
       {source === 'node' ? (
         <>
-          <div className={rowLabel}>① 统计字段（选择要统计的数值列）</div>
+          <div className={rowLabel}>① 统计字段（选择节点结果）</div>
           <select
-            value={d.refNode?.nodeId ?? ''}
+            value={chosenNodeId}
             onChange={(e) => {
               const o = columnOutputs.find((x) => x.ref.nodeId === e.target.value);
               update({
-                refNode: o?.ref,
+                refNode: o ? { ...o.ref, col: '', colLabel: '' } : undefined,
                 resultLabel: o
                   ? `${o.ref.label}${isTailAvg ? `前/后${percent}%` : ''}的平均值`
                   : d.resultLabel,
@@ -3674,13 +3685,40 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
             }}
             className={inputCls}
           >
-            <option value="">选择节点结果，如：8月份店仓成交金额…</option>
+            <option value="">选择节点结果，如：店仓售罄率…</option>
             {columnOutputs.map((o) => (
               <option key={o.ref.nodeId} value={o.ref.nodeId}>
                 {KIND_LABEL[o.ref.nodeKind]} · {o.ref.label}
               </option>
             ))}
           </select>
+
+          {chosenNodeId && statCols.length > 0 && (
+            <>
+              <div className={rowLabel}>② 统计列（选择要统计的数值列）</div>
+              <select
+                value={d.refNode?.col ?? ''}
+                onChange={(e) => {
+                  const c = statCols.find((x) => x.key === e.target.value);
+                  update({
+                    refNode: {
+                      ...(d.refNode as NonNullable<BaselineNodeData['refNode']>),
+                      col: c?.key ?? '',
+                      colLabel: c?.label ?? '',
+                    },
+                  });
+                }}
+                className={inputCls}
+              >
+                <option value="">选择统计列，如：售罄率…</option>
+                {statCols.map((c) => (
+                  <option key={c.key} value={c.key}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
           {columnOutputs.length === 0 && (
             <div className="mt-1.5 rounded-md bg-amber-50 px-2 py-1 text-[10px] leading-relaxed text-amber-700">
               画布上还没有&quot;逐组指标&quot;节点。请先添加「查找·聚合带回」或「分组聚合」，输出每个店仓的成交金额。
@@ -3725,7 +3763,7 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
         </>
       )}
 
-      <div className={rowLabel}>{source === 'node' ? '②' : '③'} 统计方式（对该列所有值求基准）</div>
+      <div className={rowLabel}>{source === 'node' ? '③' : '③'} 统计方式（对该统计列的所有值求基准）</div>
       <select
         value={d.baselineFn}
         disabled={!hasStatField}
