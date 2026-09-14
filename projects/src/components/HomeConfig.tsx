@@ -65,11 +65,32 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
       : { backgroundColor: cfg.bgColor };
 
   return (
-    <div className="flex h-full gap-6 p-6">
-      {/* 左侧：配置表单 */}
-      <div className="h-full w-[460px] shrink-0 space-y-5 overflow-y-auto rounded-2xl bg-white p-5 shadow-sm">
-        <div className="text-base font-semibold text-gray-800">首页管理</div>
-        <p className="text-xs text-gray-400">配置「店牛预警平台」登录页的展示效果，保存后即时生效。</p>
+    <div className="flex h-full flex-col gap-4 p-6">
+      {/* 顶部操作栏 */}
+      <div className="flex shrink-0 items-center justify-between rounded-2xl bg-white px-5 py-3 shadow-sm">
+        <div>
+          <div className="text-base font-semibold text-gray-800">首页管理</div>
+          <p className="text-xs text-gray-400">配置「店牛预警平台」登录页的展示效果，保存后即时生效。</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {saved && <span className="flex items-center gap-1 text-xs text-green-600">✓ 已保存</span>}
+          <button
+            onClick={onBack}
+            className="rounded-lg border border-gray-300 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+          >
+            ← 返回
+          </button>
+          <button
+            onClick={save}
+            className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700"
+          >
+            保存
+          </button>
+        </div>
+      </div>
+      <div className="flex min-h-0 flex-1 gap-6">
+        {/* 左侧：配置表单 */}
+        <div className="h-full w-[460px] shrink-0 space-y-5 overflow-y-auto rounded-2xl bg-white p-5 shadow-sm">
 
         {/* 背景 */}
         <div className="rounded-xl border border-gray-100 p-4">
@@ -324,22 +345,8 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
             <div className="mt-3 h-9 rounded-lg bg-blue-600" />
           </div>
         </div>
-        <div className="mt-4 flex items-center justify-end gap-2 border-t pt-4">
-          {saved && <span className="mr-auto flex items-center gap-1 text-xs text-green-600">✓ 已保存</span>}
-          <button
-            onClick={onBack}
-            className="rounded-lg border border-gray-300 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
-          >
-            返回
-          </button>
-          <button
-            onClick={save}
-            className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700"
-          >
-            保存
-          </button>
         </div>
-      </div>
+        </div>
     </div>
   );
 }
