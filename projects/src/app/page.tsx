@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { Person } from '@/lib/types';
 import { useRouter } from 'next/navigation';
-import { Table2, BellRing, ShieldAlert, LayoutDashboard, Activity, Briefcase, Users, Settings } from 'lucide-react';
+import { Table2, BellRing, ShieldAlert, LayoutDashboard, Activity, Briefcase, Users, Settings, Maximize, Minimize, LogOut } from 'lucide-react';
 import { StoreProvider, useStore } from '@/lib/store';
 import { DataTableManager } from '@/components/DataTableManager';
 import { RuleList } from '@/components/RuleList';
@@ -19,9 +20,34 @@ import { HomeConfig } from '@/components/HomeConfig';
 type View = 'home' | 'tables' | 'rules' | 'new' | 'edit' | 'alerts' | 'org' | 'people' | 'attrs' | 'dealer' | 'store' | 'dattrs' | 'sattrs' | 'homecfg';
 
 function Shell() {
-  const { state } = useStore();
+  const { state, updatePerson } = useStore();
   const [view, setView] = useState<View>('home');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const router = useRouter();
+  const [fsOn, setFsOn] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [draft, setDraft] = useState<Person | null>(null);
+  const openProfile = () => { setDraft(me ? { ...me } : null); setShowProfile(true); };
+  const saveProfile = () => {
+    if (draft) { updatePerson(draft); localStorage.setItem('dn_auth', draft.name); setShowProfile(false); setDraft(null); }
+  };
+
+  const meName = (typeof window !== 'undefined' ? localStorage.getItem('dn_auth') : '') || '';
+  const me = state.persons.find((p) => p.name === meName) ?? null;
+  const toggleFs = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.();
+      setFsOn(true);
+    } else {
+      document.exitFullscreen?.();
+      setFsOn(false);
+    }
+  };
+  const logout = () => {
+    localStorage.removeItem('dn_auth');
+    router.push('/login');
+  };
 
   const goHome = () => setView('home');
   const goRules = (t?: View) => {
@@ -198,7 +224,87 @@ function Shell() {
       )}
 
       {/* 主内容 */}
-      <main className="min-w-0 flex-1">{content}</main>
+      {withSidebar ? (
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="flex h-12 shrink-0 items-center justify-end gap-2 border-b bg-white px-4">
+            <button
+              onClick={toggleFs}
+              title={fsOn ? '退出全屏' : '全屏'}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
+            >
+              {fsOn ? <Minimize size={17} /> : <Maximize size={17} />}
+            </button>
+            <div className="relative">
+              <button
+                onClick={() => setMenuOpen((o) => !o)}
+                title="账号"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white hover:ring-2 hover:ring-blue-200"
+              >
+                {(me?.name ?? '用').slice(0, 1)}
+              </button>
+              {menuOpen && (
+                <div className="absolute right-0 top-10 z-30 w-44 rounded-lg border bg-white p-1 shadow-lg">
+                  <div className="border-b px-3 py-1.5 text-xs text-gray-400">
+                    {me ? `${me.name}${me.username ? ` · ${me.username}` : ''}` : '未登录'}
+                  </div>
+                  <button
+                    onClick={() => { setMenuOpen(false); openProfile(); }}
+                    className="block w-full rounded-md px-3 py-1.5 text-left text-sm hover:bg-gray-50"
+                  >
+                    修改资料
+                  </button>
+                  <button
+                    onClick={logout}
+                    className="flex w-full items-center gap-1.5 rounded-md px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
+                  >
+                    <LogOut size={14} /> 退出系统
+                  </button>
+                </div>
+              )}
+            </div>
+          </header>
+          <main className="min-w-0 flex-1 overflow-auto">{content}</main>
+        </div>
+      ) : (
+        <main className="min-w-0 flex-1">{content}</main>
+      )}
+
+      {showProfile && draft && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-96 rounded-xl bg-white p-5 shadow-xl">
+            <h3 className="mb-4 text-base font-semibold">修改资料</h3>
+            <div className="space-y-3">
+              {[
+                ['姓名', 'name'],
+                ['账号', 'username'],
+                ['职位', 'title'],
+                ['岗位', 'post'],
+                ['手机', 'phone'],
+                ['邮箱', 'email'],
+                ['地址', 'address'],
+                ['生日', 'birthday'],
+              ].map(([label, key]) => (
+                <label key={key} className="flex items-center gap-3 text-sm">
+                  <span className="w-12 shrink-0 text-gray-500">{label}</span>
+                  <input
+                    value={(draft as unknown as Record<string, string>)[key] ?? ''}
+                    onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
+                    className="flex-1 rounded-md border px-2 py-1.5 outline-none focus:border-blue-400"
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setShowProfile(false)} className="rounded-md px-4 py-1.5 text-sm text-gray-500 hover:bg-gray-100">
+                取消
+              </button>
+              <button onClick={saveProfile} className="rounded-md bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700">
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
