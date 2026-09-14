@@ -302,7 +302,7 @@ function migrateState(raw: AppState | null): AppState {
           : [];
     return { ...r, tableIds };
   });
-  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [], hrAttributes: Array.isArray(raw.hrAttributes) ? raw.hrAttributes : [], dealers: Array.isArray(raw.dealers) ? raw.dealers : [], stores: Array.isArray(raw.stores) ? raw.stores : [], config: normalizeHomeConfig(raw.config) };
+  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [], hrAttributes: (Array.isArray(raw.hrAttributes) ? raw.hrAttributes : []).filter((a) => (a.category ?? 'person') !== ('org' as never)), dealers: Array.isArray(raw.dealers) ? raw.dealers : [], stores: Array.isArray(raw.stores) ? raw.stores : [], config: normalizeHomeConfig(raw.config) };
 }
 
 function loadInitial(): AppState {
@@ -655,7 +655,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           alerts: (remote.alerts ?? []).filter((a) => !isBlankAlert(a)),
           orgs: remote.orgs ?? [],
           persons: remote.persons ?? [],
-          hrAttributes: remote.hrAttributes ?? [],
+          hrAttributes: (remote.hrAttributes ?? []).filter((a) => (a.category ?? 'person') !== ('org' as never)),
           dealers: remote.dealers ?? [],
           stores: remote.stores ?? [],
           config: normalizeHomeConfig(remote.config),

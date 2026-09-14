@@ -16,7 +16,7 @@ import { AttrManage } from '@/components/AttrManage';
 import { DealerStoreManage } from '@/components/DealerStoreManage';
 import { HomeConfig } from '@/components/HomeConfig';
 
-type View = 'home' | 'tables' | 'rules' | 'new' | 'edit' | 'alerts' | 'org' | 'people' | 'attrs' | 'dealer' | 'store' | 'dattrs' | 'sattrs' | 'homecfg';
+type View = 'home' | 'tables' | 'rules' | 'new' | 'edit' | 'alerts' | 'people' | 'attrs' | 'dealer' | 'store' | 'dattrs' | 'sattrs' | 'homecfg';
 
 function Shell() {
   const { state, updatePerson } = useStore();
@@ -86,8 +86,6 @@ function Shell() {
     );
   } else if (view === 'alerts') {
     content = <AlertList onBack={goHome} />;
-  } else if (view === 'org') {
-    content = <AttrManage category="org" title="组织属性" parent="组织架构" hint="先给属性命名，再在属性下添加子标签（如 组织类型 / 层级 → 标签）" />;
   } else if (view === 'dealer') {
     content = <DealerStoreManage kind="dealer" />;
   } else if (view === 'store') {
@@ -107,7 +105,7 @@ function Shell() {
   }
 
   // 预警配置页（new / edit）隐藏左侧导航栏，聚焦画布编辑
-  const withSidebar = view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts' || view === 'org' || view === 'people' || view === 'attrs' || view === 'dealer' || view === 'store' || view === 'dattrs' || view === 'sattrs';
+  const withSidebar = view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts' || view === 'people' || view === 'attrs' || view === 'dealer' || view === 'store' || view === 'dattrs' || view === 'sattrs';
   const currentView = view;
   const pendingAlerts = state.alerts.filter((a) => a.status === 'new' || a.status === 'processing').length;
 
@@ -147,13 +145,6 @@ function Shell() {
                 <Briefcase size={17} className="text-gray-400" />
                 <span className="flex-1">组织架构</span>
               </div>
-              <NavItem
-                nested
-                active={currentView === 'org'}
-                icon={<span className="text-gray-400">·</span>}
-                label="组织属性"
-                onClick={() => setView('org')}
-              />
               <NavItem
                 nested
                 active={currentView === 'dealer'}
