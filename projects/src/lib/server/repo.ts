@@ -433,18 +433,73 @@ interface DictRow {
   name: string;
   sort: number;
   created_at: number;
+  code?: string | null;
+  contact?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  password?: string | null;
+  birthday?: string | null;
+  enabled?: boolean | null;
+  attrs?: Record<string, string> | null;
+}
+
+function toDealer(r: DictRow): Dealer {
+  return {
+    id: r.id,
+    name: r.name,
+    sort: r.sort ?? 0,
+    createdAt: r.created_at ?? 0,
+    code: r.code ?? undefined,
+    contact: r.contact ?? undefined,
+    phone: r.phone ?? undefined,
+    address: r.address ?? undefined,
+    password: r.password ?? undefined,
+    birthday: r.birthday ?? undefined,
+    enabled: r.enabled ?? true,
+    attrs: r.attrs ?? undefined,
+  };
+}
+
+function toStore(r: DictRow): Store {
+  return {
+    id: r.id,
+    name: r.name,
+    sort: r.sort ?? 0,
+    createdAt: r.created_at ?? 0,
+    code: r.code ?? undefined,
+    contact: r.contact ?? undefined,
+    phone: r.phone ?? undefined,
+    address: r.address ?? undefined,
+    password: r.password ?? undefined,
+    birthday: r.birthday ?? undefined,
+    enabled: r.enabled ?? true,
+    attrs: r.attrs ?? undefined,
+  };
 }
 
 export async function getAllDealers(): Promise<Dealer[]> {
   const client = getSupabaseClient();
   const { data, error } = await client.from('dealers').select('*').order('sort', { ascending: true });
   if (error) throw new Error(`读取经销商失败: ${error.message}`);
-  return ((data as DictRow[] | null) ?? []).map((r) => ({ id: r.id, name: r.name, sort: r.sort ?? 0, createdAt: r.created_at ?? 0 }));
+  return ((data as DictRow[] | null) ?? []).map(toDealer);
 }
 
 export async function syncDealers(dealers: Dealer[]): Promise<void> {
   const client = getSupabaseClient();
-  const rows = dealers.map((d) => ({ id: d.id, name: d.name, sort: d.sort ?? 0, created_at: d.createdAt ?? Date.now() }));
+  const rows = dealers.map((d) => ({
+    id: d.id,
+    name: d.name,
+    sort: d.sort ?? 0,
+    created_at: d.createdAt ?? Date.now(),
+    code: d.code ?? null,
+    contact: d.contact ?? null,
+    phone: d.phone ?? null,
+    address: d.address ?? null,
+    password: d.password ?? null,
+    birthday: d.birthday ?? null,
+    enabled: d.enabled ?? true,
+    attrs: d.attrs ?? null,
+  }));
   if (rows.length > 0) {
     const { error } = await client.from('dealers').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存经销商失败: ${error.message}`);
@@ -463,12 +518,25 @@ export async function getAllStores(): Promise<Store[]> {
   const client = getSupabaseClient();
   const { data, error } = await client.from('stores').select('*').order('sort', { ascending: true });
   if (error) throw new Error(`读取店仓失败: ${error.message}`);
-  return ((data as DictRow[] | null) ?? []).map((r) => ({ id: r.id, name: r.name, sort: r.sort ?? 0, createdAt: r.created_at ?? 0 }));
+  return ((data as DictRow[] | null) ?? []).map(toStore);
 }
 
 export async function syncStores(stores: Store[]): Promise<void> {
   const client = getSupabaseClient();
-  const rows = stores.map((s) => ({ id: s.id, name: s.name, sort: s.sort ?? 0, created_at: s.createdAt ?? Date.now() }));
+  const rows = stores.map((s) => ({
+    id: s.id,
+    name: s.name,
+    sort: s.sort ?? 0,
+    created_at: s.createdAt ?? Date.now(),
+    code: s.code ?? null,
+    contact: s.contact ?? null,
+    phone: s.phone ?? null,
+    address: s.address ?? null,
+    password: s.password ?? null,
+    birthday: s.birthday ?? null,
+    enabled: s.enabled ?? true,
+    attrs: s.attrs ?? null,
+  }));
   if (rows.length > 0) {
     const { error } = await client.from('stores').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存店仓失败: ${error.message}`);

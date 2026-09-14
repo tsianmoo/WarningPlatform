@@ -1042,12 +1042,31 @@ export interface HrAttribute {
   category?: AttrCategory;
 }
 
+/** 字典属性值：属性名 -> 选中标签 */
+export type DictAttrs = Record<string, string>;
+
 /** 经销商字典条目 */
 export interface Dealer {
   id: string;
   name: string;
   sort: number;
   createdAt: number;
+  /** 经销商编号 */
+  code?: string;
+  /** 联系人 */
+  contact?: string;
+  /** 电话 */
+  phone?: string;
+  /** 地址 */
+  address?: string;
+  /** 初始密码 */
+  password?: string;
+  /** 生日 */
+  birthday?: string;
+  /** 是否启用 */
+  enabled?: boolean;
+  /** 经销商属性（挂分类标签值） */
+  attrs?: DictAttrs;
 }
 
 /** 店仓字典条目 */
@@ -1056,6 +1075,22 @@ export interface Store {
   name: string;
   sort: number;
   createdAt: number;
+  /** 店仓编号 */
+  code?: string;
+  /** 联系人 */
+  contact?: string;
+  /** 电话 */
+  phone?: string;
+  /** 地址 */
+  address?: string;
+  /** 初始密码 */
+  password?: string;
+  /** 生日 */
+  birthday?: string;
+  /** 是否启用 */
+  enabled?: boolean;
+  /** 店仓属性（挂分类标签值） */
+  attrs?: DictAttrs;
 }
 
 export type AlignX = 'left' | 'center' | 'right';
@@ -1083,6 +1118,9 @@ export interface LoginBoxStyle {
   bgOpacity: number;     // 0-1 背景透明度
   blur: number;          // 毛玻璃（backdrop blur，px）
   radius: number;        // 圆角
+  padX: number;          // 内边距：水平（px）
+  padY: number;          // 内边距：垂直（px）
+  fieldHeight: number;   // 登录框内输入框高度（px）
 }
 /** 画布可添加的文本组件 */
 export interface HomeTextElement {
@@ -1138,6 +1176,7 @@ export const DEFAULT_HOME_CONFIG: HomeConfig = {
   },
   loginBox: {
     x: 66, y: 26, width: 320, height: 340, bgColor: '#ffffff', bgOpacity: 0.12, blur: 12, radius: 16,
+    padX: 40, padY: 24, fieldHeight: 44,
   },
   elements: [],
 };

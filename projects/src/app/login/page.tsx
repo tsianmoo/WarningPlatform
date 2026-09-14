@@ -106,12 +106,13 @@ export default function LoginPage() {
       {/* 背景层（支持背景毛玻璃） */}
       <div className="absolute inset-0" style={{ ...bgStyle, backdropFilter: `blur(${cfg.bgBlur}px)`, WebkitBackdropFilter: `blur(${cfg.bgBlur}px)` }} />
 
-      {/* 主标题（不换行 + 字重/字宽/左边距 + 拖拽位置） */}
+      {/* 主标题（不换行 + 字重/字宽/左边距 + 拖拽位置，transform 与首页管理器预览一致） */}
       <div
         className="absolute max-w-full select-none leading-tight"
         style={{
           left: `${cfg.title.x}%`,
           top: `${cfg.title.y}%`,
+          transform: 'translateY(-50%)',
           marginLeft: cfg.title.marginLeft,
           whiteSpace: 'nowrap',
           fontFamily: cfg.title.font,
@@ -125,12 +126,13 @@ export default function LoginPage() {
         {cfg.title.text}
       </div>
 
-      {/* 副标题（不换行 + 位置） */}
+      {/* 副标题（不换行 + 位置，transform 与首页管理器预览一致） */}
       <div
         className="absolute max-w-full select-none"
         style={{
           left: `${cfg.subtitle.x}%`,
           top: `${cfg.subtitle.y}%`,
+          transform: 'translateY(-50%)',
           marginLeft: cfg.subtitle.marginLeft,
           whiteSpace: 'nowrap',
           fontFamily: cfg.subtitle.font,
@@ -160,7 +162,7 @@ export default function LoginPage() {
           boxShadow: '0 10px 40px rgba(0,0,0,.18)',
         }}
       >
-        <div className="flex h-full flex-col justify-center px-10 py-6">
+        <div className="flex h-full flex-col justify-center" style={{ padding: `${cfg.loginBox.padY}px ${cfg.loginBox.padX}px` }}>
           <div className="mb-6">
             <div className="flex items-center gap-2 text-blue-600">
               <ShieldCheck size={24} />
@@ -174,7 +176,8 @@ export default function LoginPage() {
             value={account}
             onChange={(e) => setAccount(e.target.value)}
             placeholder="请输入账号"
-            className="mb-4 h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+            style={{ height: cfg.loginBox.fieldHeight }}
+            className="mb-4 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
             autoFocus
           />
 
@@ -185,7 +188,8 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="请输入密码"
             onKeyDown={(e) => e.key === 'Enter' && doLogin()}
-            className="mb-4 h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+            style={{ height: cfg.loginBox.fieldHeight }}
+            className="mb-4 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
           />
 
           <label className="mb-1 text-xs text-gray-500">验证码</label>
@@ -195,7 +199,8 @@ export default function LoginPage() {
               onChange={(e) => setCode(e.target.value)}
               placeholder="验证码"
               maxLength={4}
-              className="h-11 flex-1 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+              style={{ height: cfg.loginBox.fieldHeight }}
+              className="flex-1 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
             />
             <canvas ref={captchaRef} width={90} height={34} className="cursor-pointer rounded-md" onClick={refreshCaptcha} />
             <button onClick={refreshCaptcha} className="text-gray-400 hover:text-gray-600" title="刷新验证码">

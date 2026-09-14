@@ -759,7 +759,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       updateHrAttribute: (a) => dispatch('UPDATE_HRATTR', { id: a.id, patch: a }),
       removeHrAttribute: (id) => dispatch('REMOVE_HRATTR', id),
       addDealer: (d) => {
-        const dealer: Dealer = { id: uid('dealer'), name: d.name, sort: d.sort ?? state.dealers.length, createdAt: Date.now() };
+        const dealer: Dealer = { ...d, id: uid('dealer'), sort: d.sort ?? state.dealers.length, createdAt: Date.now() };
         dispatch('ADD_DEALER', dealer);
         return dealer;
       },
@@ -774,7 +774,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         dispatch('UPDATE_DEALER', { id: swapWith.id, patch: { sort: arr[idx].sort } });
       },
       addStore: (s) => {
-        const store: Store = { id: uid('store'), name: s.name, sort: s.sort ?? state.stores.length, createdAt: Date.now() };
+        const store: Store = { ...s, id: uid('store'), sort: s.sort ?? state.stores.length, createdAt: Date.now() };
         dispatch('ADD_STORE', store);
         return store;
       },

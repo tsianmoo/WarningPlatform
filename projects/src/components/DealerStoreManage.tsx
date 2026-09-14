@@ -3,12 +3,14 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, KeyRound, Pencil, Phone, Plus, Trash2, User } from 'lucide-react';
 import { useStore } from '@/lib/store';
-import type { Dealer, ManageScope, Person, Store } from '@/lib/types';
+import type { AttrCategory, Dealer, HrAttribute, ManageScope, Person, Store } from '@/lib/types';
 import { toast } from 'sonner';
 
 const SCOPE_VALUES = ['华东大区', '华南大区', '总部直营', '河南分公司'];
 
 type Kind = 'dealer' | 'store';
+
+const KIND_CATEGORY: Record<Kind, AttrCategory> = { dealer: 'dealer', store: 'store' };
 
 const META: Record<Kind, { unit: string; leftLabel: string; rightLabel: string }> = {
   dealer: { unit: '经销商', leftLabel: '经销商列表', rightLabel: '经销商人员' },
@@ -25,26 +27,25 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
   const [editMode, setEditMode] = useState(false);
   const [editor, setEditor] = useState<Person | null>(null);
   const [showEditor, setShowEditor] = useState(false);
+  const [dictForm, setDictForm] = useState<{ item: (Dealer | Store) | null } | null>(null);
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
 
   const people = persons.filter((p) => (kind === 'dealer' ? p.dealerId === activeId : p.storeId === activeId));
+  const categoryAttrs = hrAttributes.filter((a) => (a.category ?? 'person') === KIND_CATEGORY[kind]);
 
   const field = (d: Dealer | Store) => (kind === 'dealer' ? updateDealer(d as Dealer) : updateStore(d as Store));
   const remove = (id: string) => (kind === 'dealer' ? removeDealer(id) : removeStore(id));
   const move = (id: string, dir: -1 | 1) => (kind === 'dealer' ? moveDealer(id, dir) : moveStore(id, dir));
 
-  const addUnit = () => {
-    const n = prompt(`请输入${unit}名称`);
-    if (!n?.trim()) return;
-    (kind === 'dealer' ? addDealer : addStore)({ name: n.trim(), sort: list.length });
-    toast.success(`已新增${unit}`);
-  };
-
-  const renameUnit = (d: { id: string; name: string }) => {
-    const it = list.find((x) => x.id === d.id);
-    const n = prompt(`重命名${unit}名称`, d.name);
-    if (!it || !n?.trim()) return;
-    field({ ...it, name: n.trim() });
+  const saveUnit = (draft: Omit<Dealer, 'id' | 'createdAt'> | Omit<Store, 'id' | 'createdAt'>) => {
+    const active: Dealer | Store | undefined = dictForm?.item ?? list.find((x) => x.id === activeId);
+    if (active) {
+      field({ ...(active as object), ...(draft as object) } as Dealer);
+      toast.success(`已更新${unit}`);
+    } else {
+      (kind === 'dealer' ? addDealer : addStore)(draft as never);
+      toast.success(`已新增${unit}`);
+    }
   };
 
   const resetPwd = (p: Person) => {
@@ -57,14 +58,14 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
   return (
     <div className="flex h-full overflow-hidden">
       {/* 左侧：经销商 / 店仓 列表 */}
-      <aside className="flex w-64 shrink-0 flex-col border-r border-gray-200 bg-white">
+      <aside className="flex w-72 shrink-0 flex-col border-r border-gray-200 bg-white">
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
           <div className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
             <span>{META[kind].leftLabel}</span>
             <span className="rounded-full bg-gray-100 px-1.5 text-[11px] text-gray-500">{list.length}</span>
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={addUnit} title={`新增${unit}`} className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-900"><Plus size={15} /></button>
+            <button onClick={() => setDictForm({ item: null })} title={`新增${unit}`} className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-900"><Plus size={15} /></button>
             <button title="编辑模式" onClick={() => setEditMode((v) => !v)} className={`rounded-md p-1.5 hover:bg-gray-100 ${editMode ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-900'}`}><Pencil size={14} /></button>
           </div>
         </div>
@@ -73,14 +74,15 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
           {list.map((d) => (
             <div key={d.id} className={`group flex items-center justify-between border-b border-gray-50 px-4 py-2.5 text-sm ${activeId === d.id ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-50'}`}>
               <button className="flex flex-1 items-center gap-2 text-left" onClick={() => setActiveId(d.id)}>
-                <span className={`h-1.5 w-1.5 rounded-full ${activeId === d.id ? 'bg-white' : 'bg-gray-300'}`} />
-                <span className="truncate">{d.name}</span>
+                <span className={`h-1.5 w-1.5 rounded-full ${activeId === d.id ? 'bg-white' : d.enabled === false ? 'bg-red-300' : 'bg-gray-300'}`} />
+                <span className="flex-1 truncate">{d.name}</span>
+                {d.enabled === false && <span className="rounded bg-red-50 px-1 text-[10px] text-red-500">停用</span>}
               </button>
               {editMode && (
                 <span className={`flex items-center gap-0.5 ${activeId === d.id ? 'text-white/80' : 'text-gray-400'}`}>
                   <button title="上移" onClick={() => move(d.id, -1)} className="rounded p-0.5 hover:text-gray-900 hover:bg-gray-200"><ChevronUp size={13} /></button>
                   <button title="下移" onClick={() => move(d.id, 1)} className="rounded p-0.5 hover:text-gray-900 hover:bg-gray-200"><ChevronDown size={13} /></button>
-                  <button title="重命名" onClick={() => renameUnit(d)} className="rounded p-0.5 hover:text-gray-900 hover:bg-gray-200"><Pencil size={12} /></button>
+                  <button title="编辑" onClick={() => setDictForm({ item: d })} className="rounded p-0.5 hover:text-gray-900 hover:bg-gray-200"><Pencil size={12} /></button>
                   <button title="删除" onClick={() => setConfirmDel(d.id)} className="rounded p-0.5 hover:text-red-600 hover:bg-red-50"><Trash2 size={12} /></button>
                 </span>
               )}
@@ -136,6 +138,17 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
         )}
       </section>
 
+      {dictForm && (
+        <DictForm
+          key={dictForm.item?.id ?? 'new'}
+          kind={kind}
+          initial={dictForm.item as (Dealer | Store) | null}
+          categoryAttrs={categoryAttrs}
+          onClose={() => setDictForm(null)}
+          onSave={saveUnit}
+        />
+      )}
+
       {showEditor && (
         <PersonForm
           key={editor?.id ?? 'new'}
@@ -183,6 +196,104 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** 经销商/店仓 新增或编辑弹窗 */
+function DictForm(props: {
+  kind: Kind;
+  initial: (Dealer | Store) | null;
+  categoryAttrs: HrAttribute[];
+  onClose: () => void;
+  onSave: (d: Omit<Dealer, 'id' | 'createdAt'> | Omit<Store, 'id' | 'createdAt'>) => void;
+}) {
+  const { kind, initial, categoryAttrs, onClose, onSave } = props;
+  const unit = META[kind].unit;
+  const [code, setCode] = useState(initial?.code ?? '');
+  const [name, setName] = useState(initial?.name ?? '');
+  const [contact, setContact] = useState(initial?.contact ?? '');
+  const [phone, setPhone] = useState(initial?.phone ?? '');
+  const [address, setAddress] = useState(initial?.address ?? '');
+  const [password, setPassword] = useState(initial?.password ?? '');
+  const [birthday, setBirthday] = useState(initial?.birthday ?? '');
+  const [enabled, setEnabled] = useState(initial ? (initial.enabled !== false) : true);
+  const [attrs, setAttrs] = useState<Record<string, string>>(initial?.attrs ?? {});
+
+  const save = () => {
+    if (!name.trim()) return toast.error('请填写名称');
+    onSave({
+      name: name.trim(), code: code.trim() || undefined, contact: contact.trim() || undefined,
+      phone: phone.trim() || undefined, address: address.trim() || undefined,
+      password: password || undefined, birthday: birthday || undefined,
+      enabled, attrs, sort: initial?.sort ?? 0,
+    });
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
+        <h3 className="text-base font-semibold text-gray-900">{initial ? `编辑${unit}` : `新增${unit}`}</h3>
+
+        <div className="mt-5 grid grid-cols-2 gap-4">
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">{unit}编号</label>
+            <input value={code} onChange={(e) => setCode(e.target.value)} placeholder={`请输入${unit}编号`} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">{unit}名称 *</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={`请输入${unit}名称`} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">联系人</label>
+            <input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="联系人姓名" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">电话</label>
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="联系电话" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+          </div>
+          <div className="col-span-2">
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">地址</label>
+            <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="详细地址" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">{initial ? '重置密码' : '初始密码'}</label>
+            <input value={password} onChange={(e) => setPassword(e.target.value)} type="text" placeholder={initial ? '留空保持原密码' : '设置初始登录密码'} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">生日</label>
+            <input value={birthday} onChange={(e) => setBirthday(e.target.value)} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">启用</label>
+            <label className="flex h-9 items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="h-4 w-4" />
+              是否启用
+            </label>
+          </div>
+        </div>
+
+        {categoryAttrs.length > 0 && (
+          <div className="mt-5">
+            <div className="mb-2 border-t border-gray-100 pt-4 text-xs font-medium text-gray-400">{unit}属性：{categoryAttrs.map((a) => a.name).join(' / ')}</div>
+            <div className="grid grid-cols-2 gap-4">
+              {categoryAttrs.map((a) => (
+                <div key={a.id}>
+                  <label className="mb-1.5 block text-xs font-medium text-gray-500">{a.name}</label>
+                  <input value={attrs[a.name] ?? ''} onChange={(e) => setAttrs((v) => ({ ...v, [a.name]: e.target.value }))} list={`f-${kind}-${a.id}`} placeholder={`请选择或输入${a.name}`} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+                  <datalist id={`f-${kind}-${a.id}`}>{a.items.map((x) => <option key={x.id} value={x.name} />)}</datalist>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-6 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm">取消</button>
+          <button onClick={save} className="rounded-lg bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700">保存</button>
+        </div>
+      </div>
     </div>
   );
 }

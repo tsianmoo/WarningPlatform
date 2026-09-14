@@ -510,6 +510,15 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
                   <Field label="圆角">
                     <NumberInput value={cfg.loginBox.radius} max={40} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, radius: n } }))} />
                   </Field>
+                  <Field label="内边距X">
+                    <NumberInput value={cfg.loginBox.padX} min={0} max={80} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, padX: n } }))} />
+                  </Field>
+                  <Field label="内边距Y">
+                    <NumberInput value={cfg.loginBox.padY} min={0} max={80} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, padY: n } }))} />
+                  </Field>
+                  <Field label="输入框高">
+                    <NumberInput value={cfg.loginBox.fieldHeight} min={24} max={72} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, fieldHeight: n } }))} />
+                  </Field>
                   <span className="text-xs text-gray-400">拖拽登录框可移动位置</span>
                 </>
               )}
@@ -589,7 +598,7 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
                   backdropFilter: `blur(${cfg.loginBox.blur}px)`,
                   WebkitBackdropFilter: `blur(${cfg.loginBox.blur}px)`,
                   boxShadow: '0 8px 30px rgba(0,0,0,0.18)',
-                  padding: '18px',
+                  padding: `${cfg.loginBox.padY}px ${cfg.loginBox.padX}px`,
                   outline: selected === 'login' ? '2px dashed #3b82f6' : 'none',
                   outlineOffset: '2px',
                 }}
@@ -597,10 +606,10 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
                 title="点击选中，拖拽移动登录框"
               >
                 <div className="text-sm font-semibold text-white/95">登录</div>
-                <div className="mt-2 h-7 rounded bg-white/30" />
-                <div className="mt-2 h-7 rounded bg-white/30" />
-                <div className="mt-2 h-7 rounded bg-white/30" />
-                <div className="mt-3 h-8 rounded-lg bg-blue-500/90" />
+                <div className="mt-2 rounded bg-white/30" style={{ height: cfg.loginBox.fieldHeight }} />
+                <div className="mt-2 rounded bg-white/30" style={{ height: cfg.loginBox.fieldHeight }} />
+                <div className="mt-2 rounded bg-white/30" style={{ height: cfg.loginBox.fieldHeight }} />
+                <div className="mt-3 rounded-lg bg-blue-500/90" style={{ height: cfg.loginBox.fieldHeight }} />
               </div>
               {/* 主标题 */}
               <div
