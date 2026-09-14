@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { ImagePlus, RotateCcw } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { DEFAULT_HOME_CONFIG, FONT_OPTIONS, type HomeConfig } from '@/lib/types';
@@ -30,14 +30,21 @@ function NumberInput({ value, onChange }: { value: number; onChange: (n: number)
   );
 }
 
-export function HomeConfig() {
+export function HomeConfig({ onBack }: { onBack?: () => void }) {
   const { state, updateHomeConfig } = useStore();
   const cfg = state.config ?? DEFAULT_HOME_CONFIG;
   const fileRef = useRef<HTMLInputElement>(null);
+  const [saved, setSaved] = useState(false);
 
   const set = (patch: Partial<HomeConfig>) => updateHomeConfig(patch);
   const setTitle = (k: 'title' | 'subtitle', patch: Partial<HomeConfig['title']>) =>
     updateHomeConfig((c) => ({ ...c, [k]: { ...c[k], ...patch } }));
+
+  const save = () => {
+    updateHomeConfig((c) => c);
+    setSaved(true);
+    window.setTimeout(() => setSaved(false), 1500);
+  };
 
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -316,6 +323,21 @@ export function HomeConfig() {
             <div className="mt-2 h-8 rounded bg-gray-100" />
             <div className="mt-3 h-9 rounded-lg bg-blue-600" />
           </div>
+        </div>
+        <div className="mt-4 flex items-center justify-end gap-2 border-t pt-4">
+          {saved && <span className="mr-auto flex items-center gap-1 text-xs text-green-600">✓ 已保存</span>}
+          <button
+            onClick={onBack}
+            className="rounded-lg border border-gray-300 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+          >
+            返回
+          </button>
+          <button
+            onClick={save}
+            className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700"
+          >
+            保存
+          </button>
         </div>
       </div>
     </div>

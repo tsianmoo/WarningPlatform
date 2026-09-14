@@ -99,7 +99,7 @@ function Shell() {
   } else if (view === 'attrs') {
     content = <AttrManage />;
   } else if (view === 'homecfg') {
-    content = <HomeConfig />;
+    content = <HomeConfig onBack={() => setView('home')} />;
   } else {
     content = <RuleList onNew={startNew} onEdit={startEdit} onHome={goHome} />;
   }
