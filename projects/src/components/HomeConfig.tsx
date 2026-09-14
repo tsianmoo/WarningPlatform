@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import LoginPage from '../app/login/page';
 import {
   ChevronDown,
   Image as ImageIcon,
@@ -225,7 +225,6 @@ type SelKey = 'bg' | 'login' | 'title' | 'subtitle' | (string & {});
 const ELEM_PREFIX = 'elem:';
 
 export function HomeConfig({ onBack }: { onBack?: () => void }) {
-  const router = useRouter();
   const { state, updateHomeConfig } = useStore();
   const cfg = state.config ?? DEFAULT_HOME_CONFIG;
   const [saved, setSaved] = useState(false);
@@ -233,6 +232,7 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
   const [editing, setEditing] = useState<SelKey | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [hover, setHover] = useState<SelKey | null>(null);
+  const [preview, setPreview] = useState(false);
 
   const bgFileRef = useRef<HTMLInputElement | null>(null);
   const addImageFileRef = useRef<HTMLInputElement | null>(null);
@@ -793,10 +793,10 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
           <button
             onClick={() => {
               save();
-              router.push('/login');
+              setPreview(true);
             }}
             className="rounded-full px-3 py-1 text-sm hover:bg-white/15"
-            title="跳转到登录页查看实际效果"
+            title="预览登录页实际效果"
           >
             预览
           </button>
@@ -841,6 +841,18 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
               {editingElem && <span className="col-span-2 text-xs text-gray-400">位置可在画布上拖拽调整</span>}
             </div>
           </div>
+        </div>
+      )}
+      {preview && (
+        <div className="fixed inset-0 z-[100] bg-white" data-preview="login">
+          <button
+            onClick={() => setPreview(false)}
+            className="absolute right-4 top-4 z-20 flex cursor-pointer items-center gap-2 rounded-full bg-gray-900/85 px-4 py-2 text-sm text-white shadow-lg backdrop-blur hover:bg-gray-900"
+            title="退出预览，返回配置"
+          >
+            退出预览 ← 返回配置
+          </button>
+          <LoginPage />
         </div>
       )}
     </div>
