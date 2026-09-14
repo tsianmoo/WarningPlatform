@@ -9,6 +9,7 @@ import {
   Pencil,
   Plus,
   RotateCcw,
+  ShieldCheck,
   Trash2,
   Type,
   X,
@@ -233,6 +234,8 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hover, setHover] = useState<SelKey | null>(null);
   const [preview, setPreview] = useState(false);
+  const [modalPos, setModalPos] = useState<{ x: number; y: number } | null>(null);
+  const modalDragRef = useRef<{ startX: number; startY: number; ox: number; oy: number } | null>(null);
 
   const bgFileRef = useRef<HTMLInputElement | null>(null);
   const addImageFileRef = useRef<HTMLInputElement | null>(null);
@@ -308,6 +311,39 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updateHomeConfig]);
+
+  // 打开配置弹窗时居中定位
+  useEffect(() => {
+    if (editing) {
+      const w = Math.min(580, window.innerWidth - 32);
+      const h = Math.min(window.innerHeight * 0.82, window.innerHeight - 48);
+      setModalPos({ x: (window.innerWidth - w) / 2, y: (window.innerHeight - h) / 2 });
+    }
+  }, [editing]);
+
+  // 支持拖动配置弹窗位置，便于边配置边看画布效果
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      const d = modalDragRef.current;
+      if (!d) return;
+      setModalPos((p) => {
+        if (!p) return p;
+        return {
+          x: Math.min(Math.max(0, d.ox + e.clientX - d.startX), window.innerWidth - 60),
+          y: Math.min(Math.max(0, d.oy + e.clientY - d.startY), window.innerHeight - 40),
+        };
+      });
+    };
+    const up = () => {
+      modalDragRef.current = null;
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+  }, []);
 
   const save = () => {
     updateHomeConfig((c) => c);
@@ -603,12 +639,55 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
             title="点击选中登录框"
           >
             <div className="flex h-full flex-col justify-evenly">
-              <div className="text-sm font-semibold text-gray-800">店牛预警平台</div>
-              <div className="w-full rounded bg-gray-500/25" style={{ height: cfg.loginBox.fieldHeight }} />
-              <div className="w-full rounded bg-gray-500/25" style={{ height: cfg.loginBox.fieldHeight }} />
-              <div className="w-full rounded bg-gray-500/25" style={{ height: cfg.loginBox.fieldHeight }} />
-              <div className="w-full rounded-lg bg-blue-500/90" style={{ height: cfg.loginBox.fieldHeight }} />
-              <div className="text-center text-[10px] text-gray-400">© 店牛预警平台</div>
+              <div className="flex items-center gap-2 text-blue-600">
+                <ShieldCheck size={24} />
+                <span className="text-lg font-bold text-gray-800">店牛预警平台</span>
+              </div>
+              <div className="text-xs text-gray-400">请登录您的账号</div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500">账号</label>
+                <input
+                  readOnly
+                  placeholder="请输入账号"
+                  style={{ height: cfg.loginBox.fieldHeight }}
+                  className="rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500">密码</label>
+                <input
+                  readOnly
+                  type="password"
+                  placeholder="请输入密码"
+                  style={{ height: cfg.loginBox.fieldHeight }}
+                  className="rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500">验证码</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    readOnly
+                    placeholder="验证码"
+                    maxLength={4}
+                    style={{ height: cfg.loginBox.fieldHeight }}
+                    className="flex-1 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+                  />
+                  <div
+                    className="rounded-md bg-gradient-to-br from-blue-100 to-gray-200 text-center text-xs font-semibold text-blue-600"
+                    style={{ width: 90, height: Math.max(30, cfg.loginBox.fieldHeight - 4) }}
+                  >
+                    验证码
+                  </div>
+                </div>
+              </div>
+              <button
+                disabled
+                className="h-11 w-full rounded-lg bg-blue-600 text-sm font-medium text-white"
+              >
+                登录
+              </button>
+              <div className="text-center text-[11px] text-gray-300">© 店牛预警平台 · 零售终端数据预警与通知</div>
             </div>
           </div>
           {editBtn('login')}
@@ -821,14 +900,22 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
       {/* 配置弹窗 */}
       {editing && (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-6"
+          className="fixed inset-0 z-[60] bg-black/50"
           onClick={() => setEditing(null)}
         >
           <div
-            className="max-h-[82vh] w-[580px] max-w-full overflow-auto rounded-2xl bg-white p-5 shadow-2xl"
+            className="absolute max-h-[82vh] w-[580px] max-w-full overflow-auto rounded-2xl bg-white p-5 shadow-2xl"
+            style={{ left: modalPos?.x ?? 0, top: modalPos?.y ?? 0 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-4 flex items-center justify-between">
+            <div
+              className="mb-4 flex cursor-move select-none items-center justify-between"
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                modalDragRef.current = { startX: e.clientX, startY: e.clientY, ox: modalPos?.x ?? 0, oy: modalPos?.y ?? 0 };
+              }}
+              title="拖动标题可移动弹窗"
+            >
               <h3 className="flex items-center gap-2 text-base font-semibold text-gray-800">
                 <Pencil size={16} className="text-blue-600" /> 配置 · {labelOf(editing)}
               </h3>
