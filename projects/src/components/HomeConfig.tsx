@@ -5,10 +5,12 @@ import {
   ChevronDown,
   Image as ImageIcon,
   ImagePlus,
+  Pencil,
   Plus,
   RotateCcw,
   Trash2,
   Type,
+  X,
 } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import {
@@ -194,7 +196,8 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
   const { state, updateHomeConfig } = useStore();
   const cfg = state.config ?? DEFAULT_HOME_CONFIG;
   const [saved, setSaved] = useState(false);
-  const [selected, setSelected] = useState<SelKey | null>('bg');
+  const [selected, setSelected] = useState<SelKey | null>(null);
+  const [editing, setEditing] = useState<SelKey | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const bgFileRef = useRef<HTMLInputElement | null>(null);
@@ -291,6 +294,49 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
     reader.readAsDataURL(f);
   };
 
+  const selectedElemId = selected?.startsWith(ELEM_PREFIX) ? selected.slice(ELEM_PREFIX.length) : null;
+
+  const updateElement = (id: string, patch: Partial<HomeElement>) =>
+    updateHomeConfig((c) => ({
+      ...c,
+      elements: c.elements.map((el) => (el.id === id ? ({ ...el, ...patch } as HomeElement) : el)),
+    }));
+
+  const removeElement = (id: string) => {
+    updateHomeConfig((c) => ({ ...c, elements: c.elements.filter((el) => el.id !== id) }));
+    setSelected(null);
+    setEditing(null);
+  };
+
+  const addTextElement = () => {
+    const id = uid('text');
+    const el: HomeElement = {
+      id,
+      type: 'text',
+      text: '双击编辑文案',
+      font: 'system-ui',
+      size: 22,
+      weight: 600,
+      letterSpacing: 0,
+      color: '#ffffff',
+      opacity: 1,
+      x: 40,
+      y: 55,
+    };
+    updateHomeConfig((c) => ({ ...c, elements: [...c.elements, el] }));
+    setSelected(`elem:${id}`);
+    setMenuOpen(false);
+    setEditing(`elem:${id}`);
+  };
+
+  const addImageElement = (src: string) => {
+    const id = uid('img');
+    const el: HomeElement = { id, type: 'image', src, x: 55, y: 50, width: 240, height: 150, borderRadius: 0, opacity: 1 };
+    updateHomeConfig((c) => ({ ...c, elements: [...c.elements, el] }));
+    setSelected(`elem:${id}`);
+    setEditing(`elem:${id}`);
+  };
+
   const onImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = '';
@@ -315,45 +361,143 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
     reader.readAsDataURL(f);
   };
 
-  const selectedElemId = selected?.startsWith(ELEM_PREFIX) ? selected.slice(ELEM_PREFIX.length) : null;
-  const selectedElem = selectedElemId ? elemById(selectedElemId) : undefined;
-
-  const updateElement = (id: string, patch: Partial<HomeElement>) =>
-    updateHomeConfig((c) => ({
-      ...c,
-      elements: c.elements.map((el) => (el.id === id ? ({ ...el, ...patch } as HomeElement) : el)),
-    }));
-
-  const removeElement = (id: string) => {
-    updateHomeConfig((c) => ({ ...c, elements: c.elements.filter((el) => el.id !== id) }));
-    setSelected('bg');
+  const labelOf = (t: SelKey): string => {
+    if (t === 'bg') return '背景';
+    if (t === 'login') return '登录框';
+    if (t === 'title') return '主标题';
+    if (t === 'subtitle') return '副标题';
+    if (t.startsWith(ELEM_PREFIX)) {
+      const el = elemById(t.slice(ELEM_PREFIX.length));
+      if (el) return el.type === 'text' ? '文本组件' : '图片组件';
+    }
+    return '组件';
   };
 
-  const addTextElement = () => {
-    const id = uid('text');
-    const el: HomeElement = {
-      id,
-      type: 'text',
-      text: '双击编辑文案',
-      font: 'system-ui',
-      size: 22,
-      weight: 600,
-      letterSpacing: 0,
-      color: '#ffffff',
-      opacity: 1,
-      x: 40,
-      y: 55,
-    };
-    updateHomeConfig((c) => ({ ...c, elements: [...c.elements, el] }));
-    setSelected(`elem:${id}`);
-    setMenuOpen(false);
-  };
-
-  const addImageElement = (src: string) => {
-    const id = uid('img');
-    const el: HomeElement = { id, type: 'image', src, x: 55, y: 50, width: 240, height: 150, borderRadius: 0, opacity: 1 };
-    updateHomeConfig((c) => ({ ...c, elements: [...c.elements, el] }));
-    setSelected(`elem:${id}`);
+  /** 弹窗内：按目标渲染对应配置控件 */
+  const fields = (t: SelKey): React.ReactNode => {
+    if (t === 'bg') {
+      return (
+        <>
+          <Field label="模式">
+            <div className="flex items-center gap-2 text-xs text-gray-600">
+              <label className="flex items-center gap-1">
+                <input type="radio" checked={cfg.bgMode === 'color'} onChange={() => setBg({ bgMode: 'color' })} /> 纯色
+              </label>
+              <label className="flex items-center gap-1">
+                <input type="radio" checked={cfg.bgMode === 'image'} onChange={() => setBg({ bgMode: 'image' })} /> 图片
+              </label>
+            </div>
+          </Field>
+          {cfg.bgMode === 'color' && (
+            <Field label="颜色">
+              <ColorPick value={cfg.bgColor} onChange={(v) => setBg({ bgColor: v })} />
+            </Field>
+          )}
+          {cfg.bgMode === 'image' && (
+            <>
+              <button
+                onClick={() => bgFileRef.current?.click()}
+                className="flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-100"
+              >
+                <ImagePlus size={13} /> {cfg.bgImage ? '更换图片' : '上传图片'}
+              </button>
+              {cfg.bgImage && (
+                <button onClick={() => setBg({ bgImage: '' })} className="text-xs text-red-500 hover:underline">
+                  移除图片
+                </button>
+              )}
+            </>
+          )}
+          <input ref={bgFileRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
+          <Field label="毛玻璃">
+            <NumberInput value={cfg.bgBlur} min={0} max={24} step={1} onChange={(n) => setBg({ bgBlur: n })} />
+          </Field>
+          <button
+            onClick={() => setBg({ bgMode: 'color', bgColor: DEFAULT_HOME_CONFIG.bgColor, bgImage: '' })}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-gray-400 hover:bg-gray-50"
+            title="恢复默认背景"
+          >
+            <RotateCcw size={12} /> 重置
+          </button>
+        </>
+      );
+    }
+    if (t === 'login') {
+      return (
+        <>
+          <Field label="宽度">
+            <NumberInput value={cfg.loginBox.width} min={200} max={600} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, width: n } }))} />
+          </Field>
+          <Field label="高度">
+            <NumberInput value={cfg.loginBox.height} min={200} max={600} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, height: n } }))} />
+          </Field>
+          <Field label="背景色">
+            <ColorPick value={cfg.loginBox.bgColor} onChange={(v) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, bgColor: v } }))} />
+          </Field>
+          <Field label="透明度">
+            <OpacityPick value={cfg.loginBox.bgOpacity} onChange={(v) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, bgOpacity: v } }))} />
+          </Field>
+          <Field label="毛玻璃">
+            <NumberInput value={cfg.loginBox.blur} max={40} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, blur: n } }))} />
+          </Field>
+          <Field label="圆角">
+            <NumberInput value={cfg.loginBox.radius} max={40} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, radius: n } }))} />
+          </Field>
+          <Field label="内边距X">
+            <NumberInput value={cfg.loginBox.padX} min={0} max={80} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, padX: n } }))} />
+          </Field>
+          <Field label="内边距Y">
+            <NumberInput value={cfg.loginBox.padY} min={0} max={80} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, padY: n } }))} />
+          </Field>
+          <Field label="输入框高">
+            <NumberInput value={cfg.loginBox.fieldHeight} min={24} max={72} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, fieldHeight: n } }))} />
+          </Field>
+        </>
+      );
+    }
+    if (t === 'title' || t === 'subtitle') {
+      return (
+        <TextFields
+          value={t === 'title' ? cfg.title : cfg.subtitle}
+          onChange={(p) => {
+            const k = t === 'subtitle' ? 'subtitle' : 'title';
+            updateHomeConfig((c) => ({ ...c, [k]: { ...c[k], ...p } }));
+          }}
+        />
+      );
+    }
+    if (t.startsWith(ELEM_PREFIX)) {
+      const el = elemById(t.slice(ELEM_PREFIX.length));
+      if (!el) return null;
+      return el.type === 'text' ? (
+        <>
+          <TextFields value={el} onChange={(p) => updateElement(el.id, p)} />
+          <button
+            onClick={() => removeElement(el.id)}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-red-500 hover:bg-red-50"
+          >
+            <Trash2 size={13} /> 删除该组件
+          </button>
+        </>
+      ) : (
+        <>
+          <ImageFields
+            value={el}
+            onChange={(p) => updateElement(el.id, p)}
+            fileRef={imageFileRef}
+            onPickFile={() => imageFileRef.current?.click()}
+            onInputChange={onImageFile}
+          />
+          <button
+            onClick={() => removeElement(el.id)}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-red-500 hover:bg-red-50"
+          >
+            <Trash2 size={13} /> 删除该组件
+          </button>
+        </>
+      );
+    }
+    return null;
   };
 
   const bgStyle =
@@ -361,359 +505,246 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
       ? { backgroundImage: `url(${cfg.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
       : { backgroundColor: cfg.bgColor };
 
-  // 元素选择条
-  const chips: { key: string; label: string; icon?: React.ReactNode }[] = [
-    { key: 'bg', label: '背景' },
-    { key: 'login', label: '登录框' },
-    { key: 'title', label: '主标题' },
-    { key: 'subtitle', label: '副标题' },
-    ...cfg.elements.map((el) =>
-      el.type === 'text'
-        ? { key: `elem:${el.id}`, label: `文本 · ${el.text.trim() ? el.text.trim() : '未命名'}` }
-        : { key: `elem:${el.id}`, label: '图片' },
-    ),
-  ];
+  const selPos = selected && selected !== 'bg' ? getPos(selected) : null;
+  const editingElem =
+    editing && editing.startsWith(ELEM_PREFIX) ? elemById(editing.slice(ELEM_PREFIX.length)) : undefined;
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-[#F7F8FA]">
-      {/* 顶部操作栏 */}
-      <div className="z-10 shrink-0 border-b border-gray-200 bg-white px-5 py-3 shadow-sm">
-        <div className="flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <div className="text-base font-semibold text-gray-800">首页管理</div>
-            <p className="truncate text-xs text-gray-400">点击画布组件进行配置，保存后即时生效。</p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {saved && <span className="flex items-center gap-1 text-xs text-green-600">✓ 已保存</span>}
-            {/* 组件按钮 */}
-            <div className="relative">
-              <button
-                onClick={() => setMenuOpen((v) => !v)}
-                className="flex items-center gap-1.5 rounded-lg bg-white border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-              >
-                <Plus size={15} /> 组件 <ChevronDown size={14} className="text-gray-400" />
-              </button>
-              {menuOpen && (
-                <div className="absolute right-0 top-full z-20 mt-1 w-40 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-                  <button
-                    onClick={addTextElement}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-                  >
-                    <Type size={15} /> 添加文本
-                  </button>
-                  <button
-                    onClick={() => {
-                      setMenuOpen(false);
-                      addImageFileRef.current?.click();
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-                  >
-                    <ImageIcon size={15} /> 添加图片
-                  </button>
-                </div>
-              )}
-              <input ref={addImageFileRef} type="file" accept="image/*" className="hidden" onChange={onAddImageFile} />
-            </div>
-            <button
-              onClick={onBack}
-              className="rounded-lg border border-gray-300 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+    <div className="relative h-full w-full overflow-hidden bg-black">
+      {/* 全屏画布 = 首页实际效果 */}
+      <div
+        ref={previewRef}
+        className="absolute inset-0 overflow-hidden"
+        style={bgStyle}
+        onClick={() => setSelected(null)}
+      >
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{ backdropFilter: `blur(${cfg.bgBlur}px)`, WebkitBackdropFilter: `blur(${cfg.bgBlur}px)` }}
+        />
+
+        {/* 登录框 */}
+        <div
+          className="absolute cursor-move select-none"
+          style={{
+            left: `${cfg.loginBox.x}%`,
+            top: `${cfg.loginBox.y}%`,
+            width: cfg.loginBox.width,
+            height: cfg.loginBox.height,
+            transform: 'translate(-50%, -50%)',
+            borderRadius: cfg.loginBox.radius,
+            background: toRgba(cfg.loginBox.bgColor, cfg.loginBox.bgOpacity),
+            backdropFilter: `blur(${cfg.loginBox.blur}px)`,
+            WebkitBackdropFilter: `blur(${cfg.loginBox.blur}px)`,
+            boxShadow: '0 8px 30px rgba(0,0,0,0.18)',
+            padding: `${cfg.loginBox.padY}px ${cfg.loginBox.padX}px`,
+            outline: selected === 'login' ? '2px dashed rgba(59,130,246,0.9)' : 'none',
+            outlineOffset: '2px',
+          }}
+          onPointerDown={(e) => startDrag('login', e)}
+          title="点击选中登录框"
+        >
+          <div className="text-sm font-semibold text-white/95">登录</div>
+          <div className="mt-2 rounded bg-white/30" style={{ height: cfg.loginBox.fieldHeight }} />
+          <div className="mt-2 rounded bg-white/30" style={{ height: cfg.loginBox.fieldHeight }} />
+          <div className="mt-2 rounded bg-white/30" style={{ height: cfg.loginBox.fieldHeight }} />
+          <div className="mt-3 rounded-lg bg-blue-500/90" style={{ height: cfg.loginBox.fieldHeight }} />
+        </div>
+
+        {/* 主标题 */}
+        <div
+          className="absolute cursor-move select-none leading-tight"
+          style={{
+            left: `${cfg.title.x}%`,
+            top: `${cfg.title.y}%`,
+            transform: 'translateY(-50%)',
+            whiteSpace: 'nowrap',
+            fontFamily: cfg.title.font,
+            fontSize: cfg.title.size,
+            fontWeight: cfg.title.weight,
+            letterSpacing: `${cfg.title.letterSpacing}px`,
+            color: cfg.title.color,
+            opacity: cfg.title.opacity,
+            marginLeft: cfg.title.marginLeft,
+            outline: selected === 'title' ? '2px dashed rgba(59,130,246,0.9)' : 'none',
+            outlineOffset: '3px',
+          }}
+          onPointerDown={(e) => startDrag('title', e)}
+          title="点击选中主标题"
+        >
+          {cfg.title.text}
+        </div>
+
+        {/* 副标题 */}
+        <div
+          className="absolute cursor-move select-none mt-2"
+          style={{
+            left: `${cfg.subtitle.x}%`,
+            top: `${cfg.subtitle.y}%`,
+            transform: 'translateY(-50%)',
+            whiteSpace: 'nowrap',
+            fontFamily: cfg.subtitle.font,
+            fontSize: cfg.subtitle.size,
+            fontWeight: cfg.subtitle.weight,
+            letterSpacing: `${cfg.subtitle.letterSpacing}px`,
+            color: cfg.subtitle.color,
+            opacity: cfg.subtitle.opacity,
+            marginLeft: cfg.subtitle.marginLeft,
+            outline: selected === 'subtitle' ? '2px dashed rgba(59,130,246,0.9)' : 'none',
+            outlineOffset: '3px',
+          }}
+          onPointerDown={(e) => startDrag('subtitle', e)}
+          title="点击选中副标题"
+        >
+          {cfg.subtitle.text}
+        </div>
+
+        {/* 添加的画布元素 */}
+        {cfg.elements.map((el) =>
+          el.type === 'text' ? (
+            <div
+              key={el.id}
+              className="absolute cursor-move select-none leading-tight"
+              style={{
+                left: `${el.x}%`,
+                top: `${el.y}%`,
+                transform: 'translate(-50%,-50%)',
+                whiteSpace: 'nowrap',
+                fontFamily: el.font,
+                fontSize: el.size,
+                fontWeight: el.weight,
+                letterSpacing: `${el.letterSpacing}px`,
+                color: el.color,
+                opacity: el.opacity,
+                outline: selected === `elem:${el.id}` ? '2px dashed rgba(59,130,246,0.9)' : 'none',
+                outlineOffset: '3px',
+              }}
+              onPointerDown={(e) => startDrag(`elem:${el.id}`, e)}
+              title="点击选中文本"
             >
+              {el.text}
+            </div>
+          ) : (
+            <img
+              key={el.id}
+              src={el.src}
+              alt=""
+              className="absolute cursor-move select-none object-cover"
+              style={{
+                left: `${el.x}%`,
+                top: `${el.y}%`,
+                transform: 'translate(-50%,-50%)',
+                width: el.width,
+                height: el.height,
+                borderRadius: el.borderRadius,
+                opacity: el.opacity,
+                outline: selected === `elem:${el.id}` ? '2px dashed rgba(59,130,246,0.9)' : 'none',
+                outlineOffset: '2px',
+              }}
+              onPointerDown={(e) => startDrag(`elem:${el.id}`, e)}
+              title="点击选中图片"
+            />
+          ),
+        )}
+
+        {/* 选中状态：组件右侧的编辑按钮 */}
+        {selPos && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditing(selected);
+            }}
+            className="absolute z-30 flex cursor-pointer items-center gap-1 rounded-full bg-blue-600 px-2.5 py-1 text-xs text-white shadow-md hover:bg-blue-700"
+            style={{ left: `${selPos.x}%`, top: `${selPos.y}%`, transform: 'translate(14px,-50%)' }}
+          >
+            <Pencil size={12} /> 编辑
+          </button>
+        )}
+
+        {/* 顶部浮动工具条 */}
+        <div className="absolute left-1/2 top-3 z-40 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/55 px-3 py-1.5 text-white shadow-lg backdrop-blur">
+          <div className="relative">
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              className="flex items-center gap-1 rounded-full px-2.5 py-1 text-sm hover:bg-white/15"
+            >
+              <Plus size={15} /> 组件 <ChevronDown size={14} className="opacity-70" />
+            </button>
+            {menuOpen && (
+              <div className="absolute left-0 top-full z-50 mt-1 w-36 overflow-hidden rounded-lg border border-white/10 bg-[#1f2937] py-1 shadow-2xl">
+                <button
+                  onClick={addTextElement}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-white/90 hover:bg-white/10"
+                >
+                  <Type size={15} /> 添加文本
+                </button>
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    addImageFileRef.current?.click();
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-white/90 hover:bg-white/10"
+                >
+                  <ImageIcon size={15} /> 添加图片
+                </button>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              setEditing('bg');
+            }}
+            className="rounded-full px-2.5 py-1 text-sm hover:bg-white/15"
+            title="设置背景"
+          >
+            背景
+          </button>
+          <button onClick={save} className="rounded-full px-3 py-1 text-sm text-white hover:bg-white/15">
+            {saved ? '✓ 已保存' : '保存'}
+          </button>
+          {onBack && (
+            <button onClick={onBack} className="rounded-full px-2.5 py-1 text-sm text-white/80 hover:bg-white/15">
               ← 返回
             </button>
-            <button onClick={save} className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700">
-              保存
-            </button>
-          </div>
+          )}
         </div>
 
-        {/* 元素选择 + 配置栏（所有配置按钮集中在此） */}
-        <div className="mt-3 flex items-start gap-3">
-          <div className="flex shrink-0 flex-wrap content-start gap-1.5">
-            {chips.map((c) => (
-              <button
-                key={c.key}
-                onClick={() => setSelected(c.key)}
-                className={`max-w-[140px] truncate rounded-md border px-2.5 py-1 text-xs ${
-                  selected === c.key
-                    ? 'border-blue-600 bg-blue-600 text-white'
-                    : 'border-gray-200 bg-white text-gray-600 hover:border-blue-300 hover:text-blue-600'
-                }`}
-                title={c.label}
-              >
-                {c.label}
+        {/* 提示 */}
+        <div className="pointer-events-none absolute left-3 top-3 z-20 rounded-full bg-black/30 px-3 py-1 text-[11px] text-white/80 backdrop-blur">
+          点击组件选中，点右侧「编辑」配置
+        </div>
+      </div>
+
+      <input ref={addImageFileRef} type="file" accept="image/*" className="hidden" onChange={onAddImageFile} />
+
+      {/* 配置弹窗 */}
+      {editing && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-6"
+          onClick={() => setEditing(null)}
+        >
+          <div
+            className="max-h-[82vh] w-[580px] max-w-full overflow-auto rounded-2xl bg-white p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="flex items-center gap-2 text-base font-semibold text-gray-800">
+                <Pencil size={16} className="text-blue-600" /> 配置 · {labelOf(editing)}
+              </h3>
+              <button onClick={() => setEditing(null)} className="text-gray-400 hover:text-gray-600" title="关闭">
+                <X size={18} />
               </button>
-            ))}
-          </div>
-
-          {/* 选中组件的配置控件 */}
-          <div className="min-w-0 flex-1 border-l border-gray-100 pl-3">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              {selected === 'bg' && (
-                <>
-                  <Field label="模式">
-                    <div className="flex items-center gap-2 text-xs text-gray-600">
-                      <label className="flex items-center gap-1">
-                        <input type="radio" checked={cfg.bgMode === 'color'} onChange={() => setBg({ bgMode: 'color' })} /> 纯色
-                      </label>
-                      <label className="flex items-center gap-1">
-                        <input type="radio" checked={cfg.bgMode === 'image'} onChange={() => setBg({ bgMode: 'image' })} /> 图片
-                      </label>
-                    </div>
-                  </Field>
-                  {cfg.bgMode === 'color' && (
-                    <Field label="颜色">
-                      <ColorPick value={cfg.bgColor} onChange={(v) => setBg({ bgColor: v })} />
-                    </Field>
-                  )}
-                  {cfg.bgMode === 'image' && (
-                    <button
-                      onClick={() => bgFileRef.current?.click()}
-                      className="flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-100"
-                    >
-                      <ImagePlus size={13} /> {cfg.bgImage ? '更换图片' : '上传图片'}
-                    </button>
-                  )}
-                  <input ref={bgFileRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
-                  <Field label="毛玻璃">
-                    <NumberInput value={cfg.bgBlur} min={0} max={24} step={1} onChange={(n) => setBg({ bgBlur: n })} />
-                  </Field>
-                  <button
-                    onClick={() => setBg({ bgMode: 'color', bgColor: DEFAULT_HOME_CONFIG.bgColor, bgImage: '' })}
-                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-gray-400 hover:bg-gray-50"
-                    title="恢复默认背景"
-                  >
-                    <RotateCcw size={12} /> 重置
-                  </button>
-                  {cfg.bgMode === 'image' && cfg.bgImage && (
-                    <button onClick={() => setBg({ bgImage: '' })} className="text-xs text-red-500 hover:underline">
-                      移除图片
-                    </button>
-                  )}
-                </>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+              {fields(editing)}
+              {editingElem && (
+                <span className="text-xs text-gray-400">位置可在画布上拖拽调整</span>
               )}
-
-              {selected === 'login' && (
-                <>
-                  <Field label="宽度">
-                    <NumberInput value={cfg.loginBox.width} min={200} max={600} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, width: n } }))} />
-                  </Field>
-                  <Field label="高度">
-                    <NumberInput value={cfg.loginBox.height} min={200} max={600} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, height: n } }))} />
-                  </Field>
-                  <Field label="背景色">
-                    <ColorPick value={cfg.loginBox.bgColor} onChange={(v) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, bgColor: v } }))} />
-                  </Field>
-                  <Field label="透明度">
-                    <OpacityPick value={cfg.loginBox.bgOpacity} onChange={(v) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, bgOpacity: v } }))} />
-                  </Field>
-                  <Field label="毛玻璃">
-                    <NumberInput value={cfg.loginBox.blur} max={40} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, blur: n } }))} />
-                  </Field>
-                  <Field label="圆角">
-                    <NumberInput value={cfg.loginBox.radius} max={40} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, radius: n } }))} />
-                  </Field>
-                  <Field label="内边距X">
-                    <NumberInput value={cfg.loginBox.padX} min={0} max={80} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, padX: n } }))} />
-                  </Field>
-                  <Field label="内边距Y">
-                    <NumberInput value={cfg.loginBox.padY} min={0} max={80} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, padY: n } }))} />
-                  </Field>
-                  <Field label="输入框高">
-                    <NumberInput value={cfg.loginBox.fieldHeight} min={24} max={72} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, fieldHeight: n } }))} />
-                  </Field>
-                  <span className="text-xs text-gray-400">拖拽登录框可移动位置</span>
-                </>
-              )}
-
-              {(selected === 'title' || selected === 'subtitle') && (
-                <TextFields
-                  value={selected === 'title' ? cfg.title : cfg.subtitle}
-                  onChange={(p) => {
-                    const k = selected === 'subtitle' ? 'subtitle' : 'title';
-                    updateHomeConfig((c) => ({ ...c, [k]: { ...c[k], ...p } }));
-                  }}
-                />
-              )}
-
-              {selectedElem &&
-                (selectedElem.type === 'text' ? (
-                  <>
-                    <TextFields value={selectedElem} onChange={(p) => updateElement(selectedElem.id, p)} />
-                    <button
-                      onClick={() => removeElement(selectedElem.id)}
-                      className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-red-500 hover:bg-red-50"
-                    >
-                      <Trash2 size={13} /> 删除
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <ImageFields
-                      value={selectedElem}
-                      onChange={(p) => updateElement(selectedElem.id, p)}
-                      fileRef={imageFileRef}
-                      onPickFile={() => imageFileRef.current?.click()}
-                      onInputChange={onImageFile}
-                    />
-                    <button
-                      onClick={() => removeElement(selectedElem.id)}
-                      className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-red-500 hover:bg-red-50"
-                    >
-                      <Trash2 size={13} /> 删除
-                    </button>
-                  </>
-                ))}
-
-              {!selected && <span className="text-xs text-gray-400">从顶部选择「组件」添加文本 / 图片，或点击画布组件进行配置。</span>}
             </div>
           </div>
         </div>
-      </div>
-
-      {/* 画布 */}
-      <div className="flex-1 min-h-0 p-5">
-        <div className="flex h-full flex-col overflow-hidden rounded-2xl shadow-sm">
-          <div className="flex h-8 shrink-0 items-center justify-between bg-black/80 px-3">
-            <span className="text-[11px] text-white/70">登录页画布 · 点选组件配置 · 拖拽移动</span>
-            <span className="flex gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-red-400" />
-              <span className="h-2 w-2 rounded-full bg-yellow-400" />
-              <span className="h-2 w-2 rounded-full bg-green-400" />
-            </span>
-          </div>
-          <div className="flex flex-1 min-h-0 p-4" onClick={() => setSelected(null)}>
-            <div ref={previewRef} className="relative min-w-0 flex-1 overflow-hidden rounded-xl" style={bgStyle}>
-              <div
-                className="pointer-events-none absolute inset-0"
-                style={{ backdropFilter: `blur(${cfg.bgBlur}px)`, WebkitBackdropFilter: `blur(${cfg.bgBlur}px)` }}
-              />
-              {/* 登录框 */}
-              <div
-                className="absolute cursor-move select-none"
-                style={{
-                  left: `${cfg.loginBox.x}%`,
-                  top: `${cfg.loginBox.y}%`,
-                  width: cfg.loginBox.width,
-                  height: cfg.loginBox.height,
-                  transform: 'translate(-50%, -50%)',
-                  borderRadius: cfg.loginBox.radius,
-                  background: toRgba(cfg.loginBox.bgColor, cfg.loginBox.bgOpacity),
-                  backdropFilter: `blur(${cfg.loginBox.blur}px)`,
-                  WebkitBackdropFilter: `blur(${cfg.loginBox.blur}px)`,
-                  boxShadow: '0 8px 30px rgba(0,0,0,0.18)',
-                  padding: `${cfg.loginBox.padY}px ${cfg.loginBox.padX}px`,
-                  outline: selected === 'login' ? '2px dashed #3b82f6' : 'none',
-                  outlineOffset: '2px',
-                }}
-                onPointerDown={(e) => startDrag('login', e)}
-                title="点击选中，拖拽移动登录框"
-              >
-                <div className="text-sm font-semibold text-white/95">登录</div>
-                <div className="mt-2 rounded bg-white/30" style={{ height: cfg.loginBox.fieldHeight }} />
-                <div className="mt-2 rounded bg-white/30" style={{ height: cfg.loginBox.fieldHeight }} />
-                <div className="mt-2 rounded bg-white/30" style={{ height: cfg.loginBox.fieldHeight }} />
-                <div className="mt-3 rounded-lg bg-blue-500/90" style={{ height: cfg.loginBox.fieldHeight }} />
-              </div>
-              {/* 主标题 */}
-              <div
-                className="absolute cursor-move select-none leading-tight"
-                style={{
-                  left: `${cfg.title.x}%`,
-                  top: `${cfg.title.y}%`,
-                  transform: 'translateY(-50%)',
-                  whiteSpace: 'nowrap',
-                  fontFamily: cfg.title.font,
-                  fontSize: cfg.title.size,
-                  fontWeight: cfg.title.weight,
-                  letterSpacing: `${cfg.title.letterSpacing}px`,
-                  color: cfg.title.color,
-                  opacity: cfg.title.opacity,
-                  marginLeft: cfg.title.marginLeft,
-                  outline: selected === 'title' ? '2px dashed #3b82f6' : 'none',
-                  outlineOffset: '3px',
-                }}
-                onPointerDown={(e) => startDrag('title', e)}
-                title="点击选中，拖拽移动主标题"
-              >
-                {cfg.title.text}
-              </div>
-              {/* 副标题 */}
-              <div
-                className="absolute cursor-move select-none mt-2"
-                style={{
-                  left: `${cfg.subtitle.x}%`,
-                  top: `${cfg.subtitle.y}%`,
-                  transform: 'translateY(-50%)',
-                  whiteSpace: 'nowrap',
-                  fontFamily: cfg.subtitle.font,
-                  fontSize: cfg.subtitle.size,
-                  fontWeight: cfg.subtitle.weight,
-                  letterSpacing: `${cfg.subtitle.letterSpacing}px`,
-                  color: cfg.subtitle.color,
-                  opacity: cfg.subtitle.opacity,
-                  marginLeft: cfg.subtitle.marginLeft,
-                  outline: selected === 'subtitle' ? '2px dashed #3b82f6' : 'none',
-                  outlineOffset: '3px',
-                }}
-                onPointerDown={(e) => startDrag('subtitle', e)}
-                title="点击选中，拖拽移动副标题"
-              >
-                {cfg.subtitle.text}
-              </div>
-              {/* 添加的画布组件元素 */}
-              {cfg.elements.map((el) =>
-                el.type === 'text' ? (
-                  <div
-                    key={el.id}
-                    className="absolute cursor-move select-none leading-tight"
-                    style={{
-                      left: `${el.x}%`,
-                      top: `${el.y}%`,
-                      transform: 'translate(-50%,-50%)',
-                      whiteSpace: 'nowrap',
-                      fontFamily: el.font,
-                      fontSize: el.size,
-                      fontWeight: el.weight,
-                      letterSpacing: `${el.letterSpacing}px`,
-                      color: el.color,
-                      opacity: el.opacity,
-                      outline: selected === `elem:${el.id}` ? '2px dashed #3b82f6' : 'none',
-                      outlineOffset: '3px',
-                    }}
-                    onPointerDown={(e) => startDrag(`elem:${el.id}`, e)}
-                    title="点击选中，拖拽移动文本"
-                  >
-                    {el.text}
-                  </div>
-                ) : (
-                  <img
-                    key={el.id}
-                    src={el.src}
-                    alt=""
-                    className="absolute cursor-move select-none object-cover"
-                    style={{
-                      left: `${el.x}%`,
-                      top: `${el.y}%`,
-                      transform: 'translate(-50%,-50%)',
-                      width: el.width,
-                      height: el.height,
-                      borderRadius: el.borderRadius,
-                      opacity: el.opacity,
-                      outline: selected === `elem:${el.id}` ? '2px dashed #3b82f6' : 'none',
-                      outlineOffset: '2px',
-                    }}
-                    onPointerDown={(e) => startDrag(`elem:${el.id}`, e)}
-                    title="点击选中，拖拽移动图片"
-                  />
-                ),
-              )}
-              <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-black/30 px-3 py-0.5 text-[10px] text-white/80">
-                点击画布中的组件选中，通过顶部配置栏调整样式
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
