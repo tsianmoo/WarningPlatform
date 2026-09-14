@@ -94,6 +94,9 @@ export async function syncAlerts(alerts: AlertTask[]): Promise<void> {
   if (rows.length > 0) {
     const { error } = await client.from('alert_tasks').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存预警失败: ${error.message}`);
+  } else {
+    // 本次提交为空集合时不清空库中已有预警，避免前端某次空同步误删全部业务预警
+    return;
   }
 
   const { data: existing, error: selErr } = await client.from('alert_tasks').select('id');

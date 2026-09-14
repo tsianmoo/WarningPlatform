@@ -11,6 +11,7 @@
 - **预警分组**：`AlertRule.groupId` 关联 `RuleGroup`(id/name/created_at)。前端 `AlertList` 经 `ruleId → rule.groupId → ruleGroups.name` 解析分组名展示；无 → '—'。分组数据经 `/api/state` 同步。
 - **预警列表列结构**（`src/components/AlertList.tsx`）：序号 / 预警规则(`ruleName`) / 预警标题(`title`) / 预警分组(`groupOf`) / 预警条数 / 级别 / 部门 / 接收人 / 创建人 / 时间 / 已耗时 / 状态 / 操作。
 - **预警动作独立开关**：动作节点数据含 `enabled?: boolean`，`buildAlertsForRule` 过滤 `enabled !== false`；配置页激活与列表页启用（`activateRule`）均会生成本规则预警。
+- **全量覆盖同步风险**：`/api/state` POST 会全量覆盖数据库（upsert 传入 + 删除不在传入集合的旧预警）。`syncAlerts`（`src/lib/server/repo.ts`）已加**空集合守卫**：本次提交 alerts 为空数组时不执行 stale 删除（return），避免前端某次空同步误删全部业务预警。任何调整预警同步逻辑或新增前端触发源时，务必注意"若某次 push 的 alerts 集合不完整，会静默删掉库中其它预警"。
 
 ## 项目结构（多层导入）
 
