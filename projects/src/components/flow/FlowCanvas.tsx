@@ -212,15 +212,10 @@ function CanvasInner({
         const position = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
         const nd: FlowNode = { id: uid('node'), kind, data, position };
         const ns = [...localNodes, nd];
-        let es = localEdges;
-        // 自动连接：接到"最近一个源"末端
-        if (localNodes.some((n) => n.kind === 'trigger')) {
-          const last = localNodes[localNodes.length - 1];
-          if (last) es = [...es, { id: uid('edge'), source: last.id, target: nd.id }];
-        }
+        // 不再默认连线：新节点落画布后由用户手动从端点拖出连线
         setLocalNodes(ns);
-        setLocalEdges(es);
-        onFlowChange(ns, es);
+        setLocalEdges(localEdges);
+        onFlowChange(ns, localEdges);
       } catch {
         /* ignore */
       }
