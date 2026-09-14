@@ -1,5 +1,5 @@
 import { getSupabaseClient } from '@/storage/database/supabase-client';
-import type { AlertRule, AlertStatus, AlertTask, AttrCategory, DataTable, Dealer, HrAttribute, Organization, Person, RuleGroup, Store } from '@/lib/types';
+import type { AlertRule, AlertStatus, AlertTask, AttrCategory, DataTable, Dealer, HomeConfig, HrAttribute, Organization, Person, RuleGroup, Store } from '@/lib/types';
 
 interface TableRow {
   id: string;
@@ -481,4 +481,20 @@ export async function syncStores(stores: Store[]): Promise<void> {
     const { error: delErr } = await client.from('stores').delete().in('id', staleIds);
     if (delErr) throw new Error(`删除店仓失败: ${delErr.message}`);
   }
+}
+
+export async function getHomeConfig(): Promise<HomeConfig | null> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from('home_config').select('config').eq('id', 'home').single();
+  if (error) return null;
+  return (data?.config as HomeConfig) ?? null;
+}
+
+export async function saveHomeConfig(config: HomeConfig): Promise<void> {
+  const client = getSupabaseClient();
+  const { error } = await client.from('home_config').upsert(
+    { id: 'home', config, updated_at: Date.now() },
+    { onConflict: 'id' }
+  );
+  if (error) throw new Error(`保存首页配置失败: ${error.message}`);
 }

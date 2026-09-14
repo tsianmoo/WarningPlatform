@@ -1057,3 +1057,43 @@ export interface Store {
   sort: number;
   createdAt: number;
 }
+
+export type AlignX = 'left' | 'center' | 'right';
+export type AlignY = 'top' | 'middle' | 'bottom';
+
+/** 登录页 / 首页展示配置（大标题、小标题、背景） */
+export interface HomeTitleStyle {
+  text: string;
+  font: string;
+  size: number;
+  color: string;
+  opacity: number;
+}
+export interface HomeConfig {
+  bgMode: 'color' | 'image';
+  bgColor: string;
+  bgImage: string;
+  title: HomeTitleStyle;
+  subtitle: HomeTitleStyle;
+  titleX: AlignX;
+  titleY: AlignY;
+}
+
+export const DEFAULT_HOME_CONFIG: HomeConfig = {
+  bgMode: 'color',
+  bgColor: '#1e293b',
+  bgImage: '',
+  title: { text: '店牛预警平台', font: 'system-ui', size: 40, color: '#ffffff', opacity: 1 },
+  subtitle: { text: '零售终端数据预警与通知助手', font: 'system-ui', size: 16, color: '#cbd5e1', opacity: 0.9 },
+  titleX: 'left',
+  titleY: 'middle',
+};
+
+export const FONT_OPTIONS = [
+  { label: '系统默认', value: 'system-ui' },
+  { label: '黑体', value: '"Microsoft YaHei", "PingFang SC", sans-serif' },
+  { label: '宋体', value: '"SimSun", serif' },
+  { label: '楷体', value: '"KaiTi", "STKaiti", serif' },
+  { label: '无衬线', value: 'Arial, Helvetica, sans-serif' },
+  { label: '衬线', value: 'Georgia, "Times New Roman", serif' },
+];

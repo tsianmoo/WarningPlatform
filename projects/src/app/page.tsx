@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { Table2, BellRing, ShieldAlert, LayoutDashboard, Activity, Briefcase, Users } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Table2, BellRing, ShieldAlert, LayoutDashboard, Activity, Briefcase, Users, Settings } from 'lucide-react';
 import { StoreProvider, useStore } from '@/lib/store';
 import { DataTableManager } from '@/components/DataTableManager';
 import { RuleList } from '@/components/RuleList';
@@ -13,8 +14,9 @@ import { OrgArch } from '@/components/OrgArch';
 import { PeopleManage } from '@/components/PeopleManage';
 import { AttrManage } from '@/components/AttrManage';
 import { DealerStoreManage } from '@/components/DealerStoreManage';
+import { HomeConfig } from '@/components/HomeConfig';
 
-type View = 'home' | 'tables' | 'rules' | 'new' | 'edit' | 'alerts' | 'org' | 'people' | 'attrs' | 'dealer' | 'store' | 'dattrs' | 'sattrs';
+type View = 'home' | 'tables' | 'rules' | 'new' | 'edit' | 'alerts' | 'org' | 'people' | 'attrs' | 'dealer' | 'store' | 'dattrs' | 'sattrs' | 'homecfg';
 
 function Shell() {
   const { state } = useStore();
@@ -70,6 +72,8 @@ function Shell() {
     content = <PeopleManage />;
   } else if (view === 'attrs') {
     content = <AttrManage />;
+  } else if (view === 'homecfg') {
+    content = <HomeConfig />;
   } else {
     content = <RuleList onNew={startNew} onEdit={startEdit} onHome={goHome} />;
   }
@@ -171,6 +175,21 @@ function Shell() {
                 onClick={() => setView('attrs')}
               />
             </div>
+
+            {/* 系统管理 */}
+            <div className="pt-1">
+              <div className="mb-1 flex items-center gap-1.5 px-3 py-1">
+                <Settings size={14} className="text-gray-500" />
+                <span className="flex-1 text-xs font-medium text-gray-500">系统管理</span>
+              </div>
+              <NavItem
+                active={currentView === 'homecfg'}
+                icon={<LayoutDashboard size={15} />}
+                label="首页管理"
+                nested
+                onClick={() => setView('homecfg')}
+              />
+            </div>
           </nav>
           <div className="border-t p-3 text-[10px] leading-relaxed text-gray-400">
             将数据表标签化字段，拖拽构建可视化规则，自定义触发调度与通知对象，并跟踪每次执行。
@@ -216,6 +235,10 @@ function NavItem({
 }
 
 export default function Home() {
+  const router = useRouter();
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !localStorage.getItem('dn_auth')) router.replace('/login');
+  }, [router]);
   return (
     <StoreProvider>
       <Shell />

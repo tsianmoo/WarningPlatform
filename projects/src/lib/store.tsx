@@ -14,8 +14,9 @@ import type {
   RuleGroup,
   Schedule,
   TargetSetting,
+  HomeConfig,
 } from './types';
-import { uid, OPERATOR_OPTIONS } from './types';
+import { uid, OPERATOR_OPTIONS, DEFAULT_HOME_CONFIG } from './types';
 import { buildSampleTable, ensureFieldsComplete } from './parser';
 import { evaluateFlow } from './evaluate';
 import type { NodePreview } from './evaluate';
@@ -159,10 +160,10 @@ async function fetchRemoteState(): Promise<Partial<AppState> | null> {
   try {
     const res = await fetch(STATE_API, { cache: 'no-store' });
     if (!res.ok) return null;
-    const json = (await res.json()) as { tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[]; orgs?: Organization[]; persons?: Person[]; hrAttributes?: HrAttribute[]; dealers?: Dealer[]; stores?: Store[]; error?: string };
+    const json = (await res.json()) as { tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[]; orgs?: Organization[]; persons?: Person[]; hrAttributes?: HrAttribute[]; dealers?: Dealer[]; stores?: Store[]; config?: HomeConfig; error?: string };
     if (json.error) return null;
     remoteAvailable = true;
-    return { tables: json.tables ?? [], rules: json.rules ?? [], alerts: json.alerts ?? [], ruleGroups: json.groups ?? [], orgs: json.orgs ?? [], persons: json.persons ?? [], hrAttributes: json.hrAttributes ?? [], dealers: json.dealers ?? [], stores: json.stores ?? [] };
+    return { tables: json.tables ?? [], rules: json.rules ?? [], alerts: json.alerts ?? [], ruleGroups: json.groups ?? [], orgs: json.orgs ?? [], persons: json.persons ?? [], hrAttributes: json.hrAttributes ?? [], dealers: json.dealers ?? [], stores: json.stores ?? [], config: json.config ?? DEFAULT_HOME_CONFIG };
   } catch {
     return null;
   }
@@ -199,7 +200,7 @@ async function pushRemoteState(state: AppState) {
     await fetch(STATE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [] }),
+      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: state.config }),
     });
   } catch {
     /* 网络异常时忽略，localStorage 仍有兜底 */
@@ -226,6 +227,8 @@ export interface AppState {
   dealers: Dealer[];
   /** 店仓字典 */
   stores: Store[];
+  /** 登录页/首页展示配置 */
+  config: HomeConfig;
 }
 
 type StoreApi = {
@@ -278,6 +281,7 @@ type StoreApi = {
   updateStore: (s: Store) => void;
   removeStore: (id: string) => void;
   moveStore: (id: string, dir: -1 | 1) => void;
+  updateHomeConfig: (patch: Partial<HomeConfig> | ((c: HomeConfig) => HomeConfig)) => void;
   resetAll: () => void;
 };
 
@@ -298,7 +302,7 @@ function migrateState(raw: AppState | null): AppState {
           : [];
     return { ...r, tableIds };
   });
-  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [], hrAttributes: Array.isArray(raw.hrAttributes) ? raw.hrAttributes : [], dealers: Array.isArray(raw.dealers) ? raw.dealers : [], stores: Array.isArray(raw.stores) ? raw.stores : [] };
+  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [], hrAttributes: Array.isArray(raw.hrAttributes) ? raw.hrAttributes : [], dealers: Array.isArray(raw.dealers) ? raw.dealers : [], stores: Array.isArray(raw.stores) ? raw.stores : [], config: raw.config ?? DEFAULT_HOME_CONFIG };
 }
 
 function loadInitial(): AppState {
@@ -576,6 +580,10 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
     }
     case 'REPLACE_STORES':
       return { ...state, stores: Array.isArray(action.payload) ? (action.payload as Store[]) : state.stores };
+    case 'UPDATE_CONFIG': {
+      const patch = action.payload as HomeConfig | ((c: HomeConfig) => HomeConfig);
+      return { ...state, config: typeof patch === 'function' ? patch(state.config) : { ...state.config, ...patch } };
+    }
     case 'RESET':
       return loadInitialState();
     default:
@@ -595,10 +603,10 @@ function loadInitialState(): AppState {
     previewRows: sample.previewRows,
     rows: sample.rows,
   };
-  return { tables: [t], rules: [], activeTableId: t.id, builderTableIds: [t.id], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [] };
+  return { tables: [t], rules: [], activeTableId: t.id, builderTableIds: [t.id], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [], config: DEFAULT_HOME_CONFIG };
 }
 
-const EMPTY_STATE: AppState = { tables: [], rules: [], activeTableId: '', builderTableIds: [], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [] };
+const EMPTY_STATE: AppState = { tables: [], rules: [], activeTableId: '', builderTableIds: [], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [], config: DEFAULT_HOME_CONFIG };
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   // 初始统一为空，避免 SSR 与客户端首帧不一致导致 Hydration 报错；
@@ -626,6 +634,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             void pushRemoteState({
               tables,
               rules,
+              config: state.config,
               alerts: state.alerts ?? [],
               ruleGroups: state.ruleGroups ?? [],
               orgs: state.orgs ?? [],
@@ -649,6 +658,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           hrAttributes: remote.hrAttributes ?? [],
           dealers: remote.dealers ?? [],
           stores: remote.stores ?? [],
+          config: remote.config ?? DEFAULT_HOME_CONFIG,
           activeTableId: tables[0]?.id ?? '',
           builderTableIds: tables.map((t) => t.id),
         }));
@@ -778,6 +788,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         dispatch('UPDATE_STORE', { id, patch: { sort: swapWith.sort } });
         dispatch('UPDATE_STORE', { id: swapWith.id, patch: { sort: arr[idx].sort } });
       },
+      updateHomeConfig: (patch) => dispatch('UPDATE_CONFIG', patch),
       moveOrg: (id, dir) => {
         const target = state.orgs.find((o) => o.id === id);
         if (!target) return;
