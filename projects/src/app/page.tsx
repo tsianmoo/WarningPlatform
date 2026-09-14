@@ -11,7 +11,6 @@ import { NewRule, RuleConfigurator } from '@/components/RuleConfigurator';
 import { Dashboard } from '@/components/Dashboard';
 import { Toaster } from 'sonner';
 import { AlertList } from '@/components/AlertList';
-import { OrgArch } from '@/components/OrgArch';
 import { PeopleManage } from '@/components/PeopleManage';
 import { AttrManage } from '@/components/AttrManage';
 import { DealerStoreManage } from '@/components/DealerStoreManage';
@@ -85,7 +84,7 @@ function Shell() {
   } else if (view === 'alerts') {
     content = <AlertList onBack={goHome} />;
   } else if (view === 'org') {
-    content = <OrgArch />;
+    content = <AttrManage category="org" title="组织属性" parent="组织架构" hint="先给属性命名，再在属性下添加子标签（如 组织类型 / 层级 → 标签）" />;
   } else if (view === 'dealer') {
     content = <DealerStoreManage kind="dealer" />;
   } else if (view === 'store') {
@@ -149,7 +148,7 @@ function Shell() {
                 nested
                 active={currentView === 'org'}
                 icon={<span className="text-gray-400">·</span>}
-                label="组织分类"
+                label="组织属性"
                 onClick={() => setView('org')}
               />
               <NavItem
