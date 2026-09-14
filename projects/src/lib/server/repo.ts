@@ -301,6 +301,12 @@ interface PersonRow {
   manage_scope: Person['manageScope'] | null;
   phone: string | null;
   email: string | null;
+  username: string | null;
+  id_card: string | null;
+  address: string | null;
+  birthday: string | null;
+  password: string | null;
+  post: string | null;
   enabled: boolean;
   sort: number;
   created_at: number;
@@ -312,10 +318,16 @@ function toPerson(r: PersonRow): Person {
     name: r.name,
     orgId: r.org_id ?? '',
     title: r.title ?? undefined,
+    post: r.post ?? undefined,
     supervisorId: r.supervisor_id ?? undefined,
     manageScope: r.manage_scope ?? undefined,
     phone: r.phone ?? undefined,
     email: r.email ?? undefined,
+    username: r.username ?? undefined,
+    idCard: r.id_card ?? undefined,
+    address: r.address ?? undefined,
+    birthday: r.birthday ?? undefined,
+    password: r.password ?? undefined,
     enabled: r.enabled ?? true,
     sort: r.sort ?? 0,
     createdAt: r.created_at ?? Date.now(),
@@ -340,10 +352,16 @@ export async function syncPersons(persons: Person[]): Promise<void> {
     name: p.name,
     org_id: p.orgId ?? '',
     title: p.title ?? null,
+    post: p.post ?? null,
     supervisor_id: p.supervisorId ?? null,
     manage_scope: p.manageScope ?? null,
     phone: p.phone ?? null,
     email: p.email ?? null,
+    username: p.username ?? null,
+    id_card: p.idCard ?? null,
+    address: p.address ?? null,
+    birthday: p.birthday ?? null,
+    password: p.password ?? null,
     enabled: p.enabled ?? true,
     sort: p.sort ?? 0,
     created_at: p.createdAt ?? Date.now(),

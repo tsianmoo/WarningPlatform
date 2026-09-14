@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Users, Phone, Plus, Pencil, Trash2, Crosshair } from 'lucide-react';
+import { Users, Phone, Plus, Pencil, Trash2, Crosshair, KeyRound } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import type { Organization, Person } from '@/lib/types';
 import { ORG_KIND_OPTIONS } from '@/lib/types';
@@ -170,11 +170,22 @@ export function PeopleManage() {
                   </div>
                   <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
                     <span className="flex items-center gap-0.5"><span className="text-gray-300">⊞</span>{orgList.find((o) => o.id === p.orgId)?.name || '未分配部门'}</span>
+                    {p.username && <span className="flex items-center gap-0.5"><span className="font-mono">@</span>{p.username}</span>}
                     {p.phone && <span className="flex items-center gap-0.5"><Phone size={10} />{p.phone}</span>}
                     {p.manageScope?.desc && <span className="flex items-center gap-0.5 text-blue-500"><Crosshair size={10} />{p.manageScope.desc}</span>}
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    onClick={() => {
+                      const np = window.prompt(`为「${p.name}」设置新的登录密码：`, p.password || '');
+                      if (np !== null) { updatePerson({ ...p, password: np }); toast.success('已重置登录密码'); }
+                    }}
+                    className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                    title="重置密码"
+                  >
+                    <KeyRound size={14} />
+                  </button>
                   <button
                     onClick={() => { setEditing(p); setShowEditor(true); }}
                     className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
@@ -280,6 +291,11 @@ function PersonEditor({
   const [supervisorId, setSupervisorId] = useState(initial?.supervisorId || '');
   const [phone, setPhone] = useState(initial?.phone || '');
   const [email, setEmail] = useState(initial?.email || '');
+  const [username, setUsername] = useState(initial?.username || '');
+  const [idCard, setIdCard] = useState(initial?.idCard || '');
+  const [address, setAddress] = useState(initial?.address || '');
+  const [birthday, setBirthday] = useState(initial?.birthday || '');
+  const [password, setPassword] = useState(initial?.password || '');
   const [scopeTable, setScopeTable] = useState(initial?.manageScope?.tableId || '');
   const [scopeField, setScopeField] = useState(initial?.manageScope?.field || '');
   const [scopeValue, setScopeValue] = useState(initial?.manageScope?.value || '');
@@ -369,6 +385,32 @@ function PersonEditor({
             </div>
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">账号</label>
+              <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="登录账号" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">{initial ? '重置密码' : '初始密码'}</label>
+              <input value={password} onChange={(e) => setPassword(e.target.value)} type="text" placeholder={initial ? '留空保持原密码' : '设置初始登录密码'} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">身份证号</label>
+              <input value={idCard} onChange={(e) => setIdCard(e.target.value)} placeholder="身份证号" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">生日</label>
+              <input value={birthday} onChange={(e) => setBirthday(e.target.value)} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+            </div>
+            <div className="col-span-2">
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">联系地址</label>
+              <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="联系地址" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+            </div>
+          </div>
+
           <div className="flex items-center justify-between">
             <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-600">
               <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="accent-gray-900" />
@@ -392,6 +434,11 @@ function PersonEditor({
                 manageScope: scopeField && scopeValue ? { tableId: scopeTable, field: scopeField, value: scopeValue, desc: `${scopeField} = ${scopeValue}` } : initial?.manageScope,
                 phone: phone.trim() || undefined,
                 email: email.trim() || undefined,
+                username: username.trim() || undefined,
+                idCard: idCard.trim() || undefined,
+                address: address.trim() || undefined,
+                birthday: birthday || undefined,
+                password: password || undefined,
                 enabled,
                 sort: initial?.sort ?? Date.now(),
                 createdAt: initial?.createdAt ?? Date.now(),

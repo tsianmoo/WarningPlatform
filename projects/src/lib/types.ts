@@ -997,6 +997,16 @@ export interface Person {
   title?: string;
   /** 岗位（来自「岗位管理」属性标签） */
   post?: string;
+  /** 登录账号 */
+  username?: string;
+  /** 身份证号 */
+  idCard?: string;
+  /** 地址 */
+  address?: string;
+  /** 生日 */
+  birthday?: string;
+  /** 登录密码（初始=新建时设置，可随时重置） */
+  password?: string;
   /** 上级人员 id（空 = 该组织最高层） */
   supervisorId?: string;
   /** 管理范围（关联数据字段 + 分类值） */
