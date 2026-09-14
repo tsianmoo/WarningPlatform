@@ -81,6 +81,16 @@ export function AttrManage() {
               <span className="text-sm font-semibold text-gray-800">{attr.name}</span>
               <div className="flex items-center gap-1">
                 <button
+                  onClick={() => {
+                    const n = prompt('重命名属性标题', attr.name);
+                    if (n?.trim()) updateHrAttribute({ ...attr, name: n.trim() });
+                  }}
+                  className="rounded-md border border-gray-200 px-2 py-0.5 text-[11px] text-gray-500 hover:bg-gray-50"
+                  title="重命名属性"
+                >
+                  ✎ 改名
+                </button>
+                <button
                   onClick={() => addItem(attr)}
                   className="rounded-md border border-gray-200 px-2 py-0.5 text-[11px] text-gray-500 hover:bg-gray-50"
                 >
