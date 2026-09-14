@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, KeyRound, Pencil, Phone, Plus, Trash2, User } from 'lucide-react';
+import { ChevronDown, ChevronUp, KeyRound, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import type { AttrCategory, Dealer, HrAttribute, ManageScope, Person, Store } from '@/lib/types';
 import { toast } from 'sonner';
@@ -58,7 +58,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
   return (
     <div className="flex h-full overflow-hidden">
       {/* 左侧：经销商 / 店仓 列表 */}
-      <aside className="flex w-72 shrink-0 flex-col border-r border-gray-200 bg-white">
+      <aside className={`${kind === 'dealer' ? 'flex w-72' : 'flex flex-1'} shrink-0 flex-col border-r border-gray-200 bg-white`}>
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
           <div className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
             <span>{META[kind].leftLabel}</span>
@@ -92,7 +92,8 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
         </div>
       </aside>
 
-      {/* 右侧：人员 */}
+      {/* 右侧：人员（仅经销商模式；店仓管理只管理店仓本身，不在此新增人员） */}
+      {kind === 'dealer' && (
       <section className="flex flex-1 flex-col overflow-hidden">
         {!activeId ? (
           <div className="flex flex-1 items-center justify-center text-sm text-gray-400">请先选择左侧{unit}</div>
@@ -137,6 +138,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
           </>
         )}
       </section>
+      )}
 
       {dictForm && (
         <DictForm
