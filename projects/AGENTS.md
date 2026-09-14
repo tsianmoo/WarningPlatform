@@ -143,3 +143,4 @@
 - 表结构迁移/建表：schema 改动用 `coze-coding-ai db upgrade`，或直接对 develop 库 exec_sql；已在线上建好三业务表并 `ENABLE ROW LEVEL SECURITY`。
 - RLS：项目无 Auth（场景 A），后端用 service_role_key 天然绕过 RLS，不建 policy（无 policy 时 anon 完全被阻断，更安全）。
 - `src/app/api/state`：GET 全量读、POST 全量覆盖同步；字段名 snake_case 与数据库列一致。
+- **filter 来源表应从「已有条件字段」反查，勿回退 tables[0]**：过滤节点（filter）若 `data.tableId`/`source` 缺失（用户未持久化来源表），旧逻辑 `resolveRowset` 回退 `tables[0]`、`inferNodeCols` 返回空，导致两个 bug：(1) 来源错取首表（若 tables[0] 是商品表，而条件字段是店仓表字段，则 filter 命中 0）；(2) 下游填 filljoin 全集节点后「全集返回列/匹配字段」无字段可选（用户报"过滤结果命名可用店仓，但全集返回列/匹配字段空"）。修复：evaluate.ts `resolveRowset` 增加按条件字段反查——当 `tableId` 解析不到表时，遍历条件字段用 `t.fields.some(f.key∈fields)` 找到含全部/最多条件字段的表（且返回 `resolvedTableId` 供 filljoin 匹配键拼 `tableId`）；无匹配则回退空（null 安全）。`inferNodeCols` 的 filter 分支同步：无 tableId/source 时用**同一套条件字段反查表**推断输出列，保证 UI 字段候选与 evaluate 一致。⚠️ 维护两个实现时必须保持反查规则一致（evaluate 与 nodes.tsx），否则"有结果但选不到字段"会在 UI 复现。

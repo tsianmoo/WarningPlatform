@@ -581,6 +581,13 @@ function virtualTableFromPreview(out: NodePreview | undefined, name: string): Da
  * 便捷封装：按节点 data 上的 source/sourceNode/tableId 解析数据行集。
  * 各处理节点调用时把 byId（outputs 查找器）与 incoming 传入。
  */
+/** 返回包含全部指定字段的第一张表（用于来源表缺失时的字段提示推导） */
+function objectFieldsTable(tables: DataTable[], fieldKeys: string[]): DataTable | undefined {
+  const keys = fieldKeys.filter(Boolean);
+  if (!keys.length) return undefined;
+  return tables.find((t) => keys.every((k) => t.fields.some((f) => f.key === k)));
+}
+
 function resolveRowset(
   spec: { tableId?: string; source?: 'table' | 'node'; sourceNode?: string; sourceTable?: string },
   tables: DataTable[],
@@ -596,7 +603,9 @@ function resolveRowset(
     if (vt) return { t: vt, from: `节点结果·${name}` };
     return undefined;
   }
-  const t = resolveTable(tables, spec.tableId) || (spec.tableId === undefined ? tables[0] : undefined);
+  const t =
+    resolveTable(tables, spec.tableId) ||
+    (spec.tableId === undefined || spec.tableId === '' ? tables[0] : undefined);
   if (!t) return undefined;
   return { t, from: t.name };
 }
@@ -1190,10 +1199,16 @@ function evalNode(
 
     case 'filter': {
       const fd = d as unknown as FilterNodeData;
+      // 来源表缺失时，用过滤字段匹配包含这些字段的表（自愈历史数据/避免误取首表）
+      const srcSql = (d as Record<string, unknown>).source as 'table' | 'node' | undefined;
+      const hint =
+        !fd.tableId && srcSql !== 'node'
+          ? objectFieldsTable(tables, (fd.conditions || []).map((c) => c.fieldKey))
+          : undefined;
       const rs = resolveRowset(
         {
-          tableId: fd.tableId,
-          source: (d as Record<string, unknown>).source as 'table' | 'node' | undefined,
+          tableId: fd.tableId || hint?.id || fd.tableId,
+          source: srcSql,
           sourceNode: (d as Record<string, unknown>).sourceNode as string | undefined,
         },
         tables,

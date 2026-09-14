@@ -742,7 +742,14 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
       const srcNode = s(data.sourceNode);
       if (src === 'node' && srcNode) return inferNodeCols(allNodes, tables, srcNode);
       const tid = s(data.tableId);
-      const t = tables.find((x) => x.id === tid);
+      let t = tid ? tables.find((x) => x.id === tid) : undefined;
+      // 来源表缺失时用过滤字段匹配包含这些字段的表（避免误取首表）
+      if (!t && !tid) {
+        const conds = (data.conditions ?? []) as { fieldKey?: string }[];
+        const keys = conds.map((c) => c.fieldKey).filter(Boolean) as string[];
+        if (keys.length) t = tables.find((x) => keys.every((k) => x.fields.some((f) => f.key === k)));
+      }
+      if (!t) t = tables[0];
       return t ? t.fields.map((f) => ({ key: f.key, label: f.alias || f.key })) : [];
     }
     case 'condition': {
