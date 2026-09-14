@@ -123,7 +123,6 @@ const nextUid = (prefix: string) => `${prefix}_${(++uidSeq).toString(36)}`;
 const SRC_INPUT_CLS =
   'w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400';
 const SRC_ROW_CLS = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
-const NODE_ZOOM = 0.5; // 新增节点的基准显示比例（缩略展示，便于密集流程编辑）
 
 /** 数据源切换条：数据表 / 节点结果 */
 function SourceSwitch({
@@ -257,7 +256,7 @@ function NodeShell({ fnode, children }: { fnode: FlowNode; children: React.React
     preview.open(fnode, getNodes() as unknown as FlowNode[], getEdges() as unknown as FlowEdge[], tables);
   };
   return (
-    <div className="w-[300px] max-w-[300px] rounded-xl border bg-white shadow-sm" style={{ borderColor: color.border, zoom: NODE_ZOOM }}>
+    <div className="w-[300px] max-w-[300px] rounded-xl border bg-white shadow-sm" style={{ borderColor: color.border }}>
       <div
         className="group/head flex items-center gap-1.5 rounded-t-[11px] px-3 py-1.5"
         style={{ backgroundColor: color.bg }}
@@ -2384,7 +2383,7 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
     update({ content: next });
   };
   return (
-    <div className="w-[300px] overflow-hidden rounded-xl border border-amber-500/50 bg-white shadow-sm" style={{ zoom: NODE_ZOOM }}>
+    <div className="w-[300px] overflow-hidden rounded-xl border border-amber-500/50 bg-white shadow-sm">
       <div className="group/head flex items-center gap-1.5 bg-amber-50 px-3 py-1.5">
         <span className="flex h-5 w-5 items-center justify-center rounded-md bg-amber-500 text-white">
           <Bell size={13} strokeWidth={2.5} />
