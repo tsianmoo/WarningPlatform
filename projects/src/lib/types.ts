@@ -164,6 +164,8 @@ export interface ResolvedCompare {
 
 /** 条件节点数据 */
 export interface ConditionNodeData extends Partial<FieldRef> {
+  /** 结果命名（如：本月未开单判断），便于在画布/下游区分多个判断节点 */
+  resultLabel?: string;
   logic: 'AND' | 'OR'; // 与上一节点的连接逻辑：且 / 或
   operator: Operator;
   /** 比较右值来源：常量 / 引用另一表字段 / 引用另一节点的结果 */

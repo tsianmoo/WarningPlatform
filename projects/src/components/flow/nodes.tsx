@@ -238,7 +238,7 @@ function nodeKindCn(kind: FlowNode['kind']) {
 
 function nodeTitle(fnode: FlowNode) {
   const base = nodeKindCn(fnode.kind);
-  if (fnode.kind === 'baseline' || fnode.kind === 'groupby') {
+  if (fnode.kind === 'baseline' || fnode.kind === 'groupby' || fnode.kind === 'condition') {
     const rl = (fnode.data as { resultLabel?: string } | undefined)?.resultLabel;
     if (rl && rl.trim()) return `${base}（${rl.trim()}）`;
   }
@@ -879,6 +879,16 @@ const ConditionNode = memo(({ id, data }: NodeProps) => {
 
   return (
     <NodeShell fnode={fnode}>
+      {/* 结果命名：区分多个判断节点 */}
+      <div className="mb-1 flex items-center gap-1.5">
+        <span className="shrink-0 text-[11px] text-gray-400">命名</span>
+        <input
+          value={d.resultLabel ?? ''}
+          onChange={(e) => update({ resultLabel: e.target.value })}
+          placeholder="如：本月未开单判断"
+          className="min-w-0 flex-1 rounded-md border px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+        />
+      </div>
       {/* 左值：判断对象 —— 先选来源（节点结果/表字段） */}
       <div className="mb-1 flex items-center gap-1.5">
         <span className="shrink-0 text-[11px] text-gray-400">判断</span>

@@ -134,6 +134,7 @@
 - **lint 基准**：本项目已修至 `pnpm lint` 0 error 0 warning（禁 `any`/未用变量、JSX 内不直接 `Date.now()`/`Math.random()`/`"` 等）。改动代码后保持 `pnpm lint` / `pnpm ts-check` / `pnpm lint:style` 全绿，勿回退。
 - **规则配置页（RuleConfigurator）顶栏**：左侧 = 返回 + 标题输入 + 标题右侧的规则分组下拉（读 `state.ruleGroups`，改 `rule.groupId`，`''`=未分组）；右侧 `ml-auto` 右对齐 = 「流程搭建步骤条（STEPS）」+「保存草稿 / 激活规则」。分组下拉支持**新建**（＋→inline 命名回车，`addRuleGroup` 返回建好 id 的对象并立即选中）与**删除当前分组**（Trash 按钮，`removeRuleGroup` 同时把引用该分组的规则 `groupId` 清空归入未分组，走 `confirm` 二次确认）。新建规则引导 NewRuleGate 同样支持选/新建分组（ADD_RULE_GROUP reducer + StoreApi.addRuleGroup）。新建/删除分组均经 state 变化自动防抖同步到 `/api/state`（`syncRuleGroups`）。
 - **左侧节点面板（FlowCanvas PalettePanel）**：节点按功能分 4 组渲染——「数据与窗口」「筛选与排名」「计算与统计」「条件与输出」，定义在 `NODE_GROUPS`（kinds 引用平铺 `flowItems`）+ `NODE_ICON`（每 kind 一个 lucide 图标，无图标时回退 dot）。已删除原操作提示框、顶部「拖拽构建规则」、数据表说明等引导文本（冒心的功能性空态如"暂无数据表"保留）。改节点分组/图标只需改这两个常量。
+- **判断（condition）节点命名**：`ConditionNodeData.resultLabel`（types.ts，可空）。UI 面板顶部有「命名」输入框（`update({resultLabel})`，placeholder "如：本月未开单判断"）；`nodeTitle` 对该节点也渲染 `判断（命名）`，使画布上多个判断节点可区分。命名仅用于展示区分，不参与 evaluate 计算。
 
 ## 数据库（Supabase）
 
