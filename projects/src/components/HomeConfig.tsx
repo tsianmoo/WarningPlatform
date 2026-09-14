@@ -154,11 +154,13 @@ function ImageFields({
   onChange,
   fileRef,
   onPickFile,
+  onInputChange,
 }: {
   value: Pick<HomeImageElement, 'src' | 'width' | 'height' | 'borderRadius' | 'opacity'>;
   onChange: (p: Partial<HomeImageElement>) => void;
   fileRef: React.RefObject<HTMLInputElement | null>;
   onPickFile: () => void;
+  onInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
   return (
     <>
@@ -168,7 +170,7 @@ function ImageFields({
       >
         <ImagePlus size={13} /> {value.src ? '更换图片' : '上传图片'}
       </button>
-      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPickFile} />
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onInputChange} />
       <Field label="宽度">
         <NumberInput value={value.width} min={40} max={800} onChange={(n) => onChange({ width: n })} />
       </Field>
@@ -551,6 +553,7 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
                       onChange={(p) => updateElement(selectedElem.id, p)}
                       fileRef={imageFileRef}
                       onPickFile={() => imageFileRef.current?.click()}
+                      onInputChange={onImageFile}
                     />
                     <button
                       onClick={() => removeElement(selectedElem.id)}
