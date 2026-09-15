@@ -16,6 +16,18 @@ export function PeopleManage() {
   const [confirmDel, setConfirmDel] = useState<Person | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [orgModal, setOrgModal] = useState<Organization | null>(null);
+  const [fName, setFName] = useState('');
+  const [fUsername, setFUsername] = useState('');
+  const [fPhone, setFPhone] = useState('');
+  const [fTitle, setFTitle] = useState('');
+  const [fPost, setFPost] = useState('');
+  const [fScope, setFScope] = useState('');
+
+  const scopeOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of persons) if (p.manageScope?.desc) set.add(p.manageScope.desc);
+    return [...set];
+  }, [persons]);
 
   const sortedOrgs = [...orgs].sort((a, b) => a.sort - b.sort || a.createdAt - b.createdAt);
   const childrenByParent = useMemo(() => {
@@ -45,7 +57,17 @@ export function PeopleManage() {
     return list;
   }, [childrenByParent]);
 
-  const shown = activeOrg ? persons.filter((p) => p.orgId === activeOrg) : persons;
+  const shown = (activeOrg ? persons.filter((p) => p.orgId === activeOrg) : persons).filter(
+    (p) =>
+      (!fName || p.name.includes(fName.trim())) &&
+      (!fUsername || (p.username || '').toLowerCase().includes(fUsername.trim().toLowerCase())) &&
+      (!fPhone || (p.phone || '').includes(fPhone.trim())) &&
+      (!fTitle || (p.title || '').includes(fTitle.trim())) &&
+      (!fPost || (p.post || '').includes(fPost.trim())) &&
+      (!fScope || (p.manageScope?.desc || '').includes(fScope))
+  );
+
+  const hasFilter = fName || fUsername || fPhone || fTitle || fPost || fScope;
 
   return (
     <div className="flex h-full flex-col overflow-y-auto px-8 pb-10 pt-6">
@@ -146,6 +168,34 @@ export function PeopleManage() {
 
         {/* 右侧：人员列表 */}
         <div className="rounded-xl border border-gray-200 bg-white p-4">
+          <div className="mb-3 flex flex-wrap items-end gap-2 rounded-lg border border-gray-100 bg-gray-50/60 p-3">
+            <FilterInput label="姓名" value={fName} onChange={setFName} placeholder="搜索姓名" />
+            <FilterInput label="账号" value={fUsername} onChange={setFUsername} placeholder="搜索账号" />
+            <FilterInput label="电话" value={fPhone} onChange={setFPhone} placeholder="搜索电话" />
+            <FilterInput label="职位" value={fTitle} onChange={setFTitle} placeholder="搜索职位" />
+            <FilterInput label="岗位" value={fPost} onChange={setFPost} placeholder="搜索岗位" />
+            <label className="flex items-center gap-1.5">
+              <span className="text-[11px] text-gray-400">管理范围</span>
+              <select
+                value={fScope}
+                onChange={(e) => setFScope(e.target.value)}
+                className="h-8 rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none focus:border-gray-300"
+              >
+                <option value="">全部</option>
+                {scopeOptions.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </label>
+            {hasFilter && (
+              <button
+                onClick={() => { setFName(''); setFUsername(''); setFPhone(''); setFTitle(''); setFPost(''); setFScope(''); }}
+                className="ml-auto rounded-md border border-gray-200 px-2.5 py-1.5 text-[11px] text-gray-500 hover:bg-white"
+              >
+                重置
+              </button>
+            )}
+          </div>
           <div className="mb-3 flex items-center justify-between">
             <div className="text-sm font-semibold text-gray-800">{activeOrg ? orgList.find((o) => o.id === activeOrg)?.name : '全部人员'}</div>
             <div className="text-xs text-gray-400">共 {shown.length} 人 {activeOrg && <button onClick={() => setActiveOrg(null)} className="ml-2 text-blue-600 hover:underline">查看全部</button>}</div>
@@ -569,6 +619,30 @@ function PersonEditor({
         </div>
       </div>
     </div>
+  );
+}
+
+function FilterInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <label className="flex items-center gap-1.5">
+      <span className="text-[11px] text-gray-400">{label}</span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="h-8 w-32 rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none placeholder:text-gray-300 focus:border-gray-300"
+      />
+    </label>
   );
 }
 
