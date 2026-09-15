@@ -2578,46 +2578,28 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
 function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: (t: TargetSetting) => void }) {
   const mode: NotifyMode = targets.mode ?? 'manual';
   const setMode = (m: NotifyMode) => onChange({ ...targets, mode: m });
-  const toggleDept = (d: string) =>
+  const toggleDept = (id: string, name: string) => {
+    setSelDept(id);
     onChange({
       ...targets,
-      departments: targets.departments.includes(d) ? targets.departments.filter((x) => x !== d) : [...targets.departments, d],
+      departments: targets.departments.includes(name) ? targets.departments.filter((x) => x !== name) : [...targets.departments, name],
     });
+    void name;
+  };
   const togglePerson = (p: string) =>
     onChange({
       ...targets,
       personnel: targets.personnel.includes(p) ? targets.personnel.filter((x) => x !== p) : [...targets.personnel, p],
       personIds: targets.personIds?.includes(p) ? targets.personIds.filter((x) => x !== p) : [...(targets.personIds ?? []), p],
     });
-  const toggleOrg = (orgId: string, orgName: string, memberNames: string[]) => {
-    const orgOn = targets.orgIds?.includes(orgId) ?? false;
-    if (orgOn) {
-      // 移除此组织及其成员
-      onChange({
-        ...targets,
-        orgIds: (targets.orgIds ?? []).filter((x) => x !== orgId),
-        personIds: (targets.personIds ?? []).filter((x) => !memberNames.includes(x)),
-        personnel: targets.personnel.filter((x) => !memberNames.includes(x)),
-      });
-    } else {
-      // 加入此组织及其成员
-      const merged = new Set([...(targets.personnel ?? []), ...memberNames]);
-      onChange({
-        ...targets,
-        orgIds: [...(targets.orgIds ?? []), orgId],
-        personIds: [...(targets.personIds ?? []), ...memberNames],
-        personnel: Array.from(merged),
-      });
-    }
-    void orgName;
-  };
   const { state } = useStore();
+  const [selDept, setSelDept] = useState<string>('');
   const orgs = state.orgs ?? [];
   const stores = state.stores ?? [];
   const employees = state.employees ?? [];
   const persons = state.persons ?? [];
-  const orgMember = (orgId: string) => persons.filter((p) => p.orgId === orgId && p.enabled !== false).map((p) => p.name);
   const deptOrgs = orgs.filter((o) => o.kind === '部门');
+  const deptPersons = persons.filter((p) => p.orgId === selDept && p.enabled !== false);
   const groupLabel = 'mb-1 text-[10px] text-gray-400';
   return (
     <div className="mt-1.5 rounded-lg border border-amber-200/70 bg-amber-50/50 p-1.5">
@@ -2669,16 +2651,16 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
       {mode === 'manual' && (
         <>
           <div className="mb-1.5">
-        <div className={groupLabel}>按组织选择（组织架构）</div>
+        <div className={groupLabel}>适用部门（人员管理部门列表）</div>
         <div className="flex flex-wrap gap-1">
-          {orgs.length === 0 && <span className="text-[10px] text-gray-400">暂未配置组织架构</span>}
-          {orgs.map((o) => {
-            const on = targets.orgIds?.includes(o.id) ?? false;
+          {deptOrgs.length === 0 && <span className="text-[10px] text-gray-400">暂无部门，请先到「人员管理」新增</span>}
+          {deptOrgs.map((o) => {
+            const on = o.id === selDept;
             return (
               <button
                 key={o.id}
                 type="button"
-                onClick={() => toggleOrg(o.id, o.name, orgMember(o.id))}
+                onClick={() => toggleDept(o.id, o.name)}
                 className={`rounded px-1.5 py-0.5 text-[10px] transition ${
                   on ? 'bg-sky-500 text-white' : 'bg-white text-gray-500 hover:bg-sky-100'
                 }`}
@@ -2689,43 +2671,28 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
           })}
         </div>
       </div>
-      <div className="mb-1.5">
-        <div className={groupLabel}>适用部门（人员管理）</div>
-        <div className="flex flex-wrap gap-1">
-          {deptOrgs.length === 0 && <span className="text-[10px] text-gray-400">暂无部门，请先到「人员管理」新增</span>}
-          {deptOrgs.map((o) => (
-            <button
-              key={o.id}
-              type="button"
-              onClick={() => toggleDept(o.name)}
-              className={`rounded px-1.5 py-0.5 text-[10px] transition ${
-                targets.departments.includes(o.name) ? 'bg-amber-500 text-white' : 'bg-white text-gray-500 hover:bg-amber-100'
-              }`}
-            >
-              {o.name}
-            </button>
-          ))}
-        </div>
-      </div>
       <div>
-        <div className={groupLabel}>适用人员（人事架构）</div>
-        <div className="flex flex-wrap gap-1">
-          {persons.length === 0 && (
-            <span className="text-[10px] text-gray-400">暂无人员，请先到「人事架构」新增</span>
-          )}
-          {persons.filter((p) => p.enabled !== false).map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => togglePerson(p.name)}
-              className={`rounded px-1.5 py-0.5 text-[10px] transition ${
-                targets.personnel.includes(p.name) ? 'bg-amber-500 text-white' : 'bg-white text-gray-500 hover:bg-amber-100'
-              }`}
-            >
-              {p.name}
-            </button>
-          ))}
-        </div>
+        <div className={groupLabel}>选择推送给该部门的人（点击选中推送）</div>
+        {!selDept ? (
+          <div className="text-[10px] text-gray-400">请先在上方选择一个部门</div>
+        ) : deptPersons.length === 0 ? (
+          <div className="text-[10px] text-gray-400">该部门暂无人员</div>
+        ) : (
+          <div className="flex flex-wrap gap-1">
+            {deptPersons.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => togglePerson(p.name)}
+                className={`rounded px-1.5 py-0.5 text-[10px] transition ${
+                  targets.personnel.includes(p.name) ? 'bg-amber-500 text-white' : 'bg-white text-gray-500 hover:bg-amber-100'
+                }`}
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       </>
       )}
