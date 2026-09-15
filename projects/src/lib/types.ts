@@ -1145,9 +1145,14 @@ export interface DataScope {
 }
 
 /** 某个岗位（角色）的完整权限配置 */
+/** 权限主体类型：岗位 / 经销商 / 店仓 / 员工 */
+export type PermSubject = 'post' | 'dealer' | 'store' | 'employee';
+
 export interface RolePerm {
-  /** 岗位名（对应 Person.post） */
+  /** 权限主体标识：岗位时为岗位名，经销商/店仓/员工时为对应编号（code） */
   post: string;
+  /** 权限主体类型；缺省（旧数据）视为 'post' */
+  subjectKind?: PermSubject;
   /** 各页面的查看/操作权限（页面、资源、操作逐项细分） */
   pages: Partial<Record<PermModule, PagePerm>>;
   /** 数据权限范围；null 表示未配置 → 由用户归属自动推断 */

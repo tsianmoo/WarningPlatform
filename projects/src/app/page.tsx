@@ -17,7 +17,7 @@ import { DealerStoreManage } from '@/components/DealerStoreManage';
 import EmployeeManage from '@/components/EmployeeManage';
 import { HomeConfig } from '@/components/HomeConfig';
 import PermissionManage from '@/components/PermissionManage';
-import { resolvePerm, canView } from '@/lib/perm';
+import { resolvePerm, canView, resolveAuthAccount } from '@/lib/perm';
 
 type View = 'home' | 'tables' | 'apitable' | 'formtable' | 'rules' | 'new' | 'edit' | 'alerts' | 'people' | 'attrs' | 'dealer' | 'store' | 'dattrs' | 'sattrs' | 'emp' | 'eattrs' | 'homecfg' | 'perms';
 
@@ -66,7 +66,8 @@ function Shell() {
     if (typeof window !== 'undefined') setMeName(localStorage.getItem('dn_auth') || '');
   }, []);
   const me = state.persons.find((p) => p.name === meName) ?? null;
-  const perm = resolvePerm(me, state.config);
+  const { subject: meSubject } = resolveAuthAccount(state.stores ?? [], state.dealers ?? [], state.employees ?? [], meName, me);
+  const perm = resolvePerm(me, state.config, meSubject);
   const can = (m: Parameters<typeof canView>[1]) => canView(perm, m);
   const toggleFs = () => {
     if (!document.fullscreenElement) {

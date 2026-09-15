@@ -10,6 +10,8 @@ import type {
   PermOp,
   RolePerm,
   Store,
+  Dealer,
+  Employee,
 } from '@/lib/types';
 
 /** 全部功能页面 */
@@ -85,32 +87,100 @@ export interface ResolvedPerm {
   overridden: boolean;
 }
 
-/** 解析当前用户的生效权限：自定义覆盖 > 岗位模板 > 兜底 */
-export function resolvePerm(person: Person | null, cfg: HomeConfig | undefined | null): ResolvedPerm {
-  if (!person) return { pages: defaultPagePerms(), dataScope: null, overridden: false };
+/** 权限主体身份：主体类型 + 主体标识（岗位名 / 经销商编号 / 店仓编号 / 员工编号） */
+export interface AuthSubject {
+  kind: 'post' | 'dealer' | 'store' | 'employee';
+  key: string;
+}
 
-  const overrides: PersonPermOverride[] = cfg?.permOverrides ?? [];
-  const ov = overrides.find((o) => o && o.enabled !== false);
-  if (ov) {
-    const m = migrateOverride(ov);
-    return {
-      pages: { ...defaultPagePerms(), ...(m.pages ?? {}) },
-      dataScope: m.dataScope ?? null,
-      overridden: true,
-    };
-  }
+/** 在角色表中按主体类型 + 标识查找（缺省 subjectKind 视为 'post'） */
+export function findRoleBySubject(roles: RolePerm[], kind: 'post' | 'dealer' | 'store' | 'employee', key: string): RolePerm | undefined {
+  return roles.find((r) => (r.subjectKind ?? 'post') === kind && r.post === key && !!key);
+}
 
+/**
+ * 解析当前账号的生效权限：自定义覆盖(仅人员) > 岗位/经销商/店仓/员工角色 > 兜底。
+ * @param person 命中的人员（无则为 null）
+ * @param cfg 平台配置（含 permissions / permOverrides）
+ * @param account 非人员账号（经销商/店仓/员工）的主体身份
+ */
+export function resolvePerm(person: Person | null, cfg: HomeConfig | undefined | null, account?: AuthSubject | null): ResolvedPerm {
   const roles: RolePerm[] = cfg?.permissions ?? [];
-  const role = person.post ? roles.find((r) => r.post === person.post) : undefined;
-  if (role) {
-    const m = migrateRole(role);
+
+  if (person) {
+    const overrides: PersonPermOverride[] = cfg?.permOverrides ?? [];
+    const ov = overrides.find((o) => o && o.enabled !== false);
+    if (ov) {
+      const m = migrateOverride(ov);
+      return {
+        pages: { ...defaultPagePerms(), ...(m.pages ?? {}) },
+        dataScope: m.dataScope ?? null,
+        overridden: true,
+      };
+    }
+    const role = person.post ? findRoleBySubject(roles, 'post', person.post) : undefined;
+    if (role) {
+      const m = migrateRole(role);
+      return {
+        pages: { ...defaultPagePerms(), ...(m.pages ?? {}) },
+        dataScope: m.dataScope ?? null,
+        overridden: false,
+      };
+    }
+    return { pages: defaultPagePerms(), dataScope: null, overridden: false };
+  }
+
+  if (account && account.key) {
+    const role = findRoleBySubject(roles, account.kind, account.key);
+    if (role) {
+      const m = migrateRole(role);
+      return {
+        pages: { ...defaultPagePerms(), ...(m.pages ?? {}) },
+        dataScope: m.dataScope ?? null,
+        overridden: false,
+      };
+    }
+  }
+
+  return { pages: defaultPagePerms(), dataScope: null, overridden: false };
+}
+
+/**
+ * 根据登录名解析当前账号：命中人员返回人员（subjectKind='post'，key=岗位名）；
+ * 否则在 经销商/店仓/员工 中按 name 或 code 匹配，返回非人员主体与其对应的“归属人员壳”。
+ * @param scopePerson 非人员账号用于数据权限推断的轻量归属（dealerId / storeId）
+ */
+export function resolveAuthAccount(
+  stores: Store[],
+  dealers: Dealer[],
+  employees: Employee[],
+  meName: string,
+  me: Person | null
+): { subject: AuthSubject | null; scopePerson: Person | null } {
+  if (me) return { subject: me.post ? { kind: 'post', key: me.post } : null, scopePerson: me };
+  if (!meName) return { subject: null, scopePerson: null };
+  const d = dealers.find((x) => !!(x.name && x.name === meName) || !!(x.code && x.code === meName));
+  if (d) {
     return {
-      pages: { ...defaultPagePerms(), ...(m.pages ?? {}) },
-      dataScope: m.dataScope ?? null,
-      overridden: false,
+      subject: { kind: 'dealer', key: d.code || d.name || '' },
+      scopePerson: { id: d.id, name: meName, orgId: '', dealerId: d.id, enabled: true, sort: 0, createdAt: 0 },
     };
   }
-  return { pages: defaultPagePerms(), dataScope: null, overridden: false };
+  const s = stores.find((x) => !!(x.name && x.name === meName) || !!(x.code && x.code === meName));
+  if (s) {
+    return {
+      subject: { kind: 'store', key: s.code || s.name || '' },
+      scopePerson: { id: s.id, name: meName, orgId: '', dealerId: s.dealerId, storeId: s.id, enabled: true, sort: 0, createdAt: 0 },
+    };
+  }
+  const e = employees.find((x) => !!(x.name && x.name === meName) || !!(x.code && x.code === meName));
+  if (e) {
+    return {
+      subject: { kind: 'employee', key: e.code || e.name || '' },
+      scopePerson: { id: e.id, name: meName, orgId: '', dealerId: e.dealerId, storeId: e.storeId, enabled: true, sort: 0, createdAt: 0 },
+    };
+  }
+  return { subject: null, scopePerson: null };
 }
 
 export function canView(perm: ResolvedPerm, mod: PermModule): boolean {

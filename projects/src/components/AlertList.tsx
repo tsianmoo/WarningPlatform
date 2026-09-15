@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Bell, ClipboardList, Eye, History, MessageSquare, RotateCcw, Send, X } from 'lucide-react';
 import { useStore } from '@/lib/store';
-import { resolvePerm, canView, filterAlertsByScope } from '@/lib/perm';
+import { resolvePerm, canView, filterAlertsByScope, resolveAuthAccount } from '@/lib/perm';
 import type { AlertStatus, AlertTask, NotifyMode } from '@/lib/types';
 import { PERSONNEL } from '@/lib/types';
 
@@ -114,11 +114,12 @@ export function AlertList({ onBack }: { onBack: () => void }) {
   const PEOPLE = PERSONNEL as unknown as { name: string; dept: string }[];
   const [meName] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : ''));
   const me = state.persons.find((p) => p.name === meName) ?? null;
-  const perm = resolvePerm(me, state.config);
+  const { subject: meSubject, scopePerson } = resolveAuthAccount(state.stores ?? [], state.dealers ?? [], state.employees ?? [], meName, me);
+  const perm = resolvePerm(me, state.config, meSubject);
   const isManager = canView(perm, 'perms');
   const alerts = useMemo(
-    () => filterAlertsByScope(state.alerts ?? [], me, perm.dataScope, state.stores ?? []),
-    [state.alerts, me, perm.dataScope, state.stores]
+    () => filterAlertsByScope(state.alerts ?? [], scopePerson ?? me, perm.dataScope, state.stores ?? []),
+    [state.alerts, scopePerson, me, perm.dataScope, state.stores]
   );
   const pending = alerts.filter((a) => a.status === 'new' || a.status === 'accepted' || a.status === 'processing').length;
 

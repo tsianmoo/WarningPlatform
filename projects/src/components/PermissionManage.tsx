@@ -69,6 +69,8 @@ export default function PermissionManage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [draft, setDraft] = useState<RolePerm | null>(null);
   const [newPostName, setNewPostName] = useState('');
+  const [subjectTab, setSubjectTab] = useState<'post' | 'dealer' | 'store' | 'employee'>('post');
+  const [empQ, setEmpQ] = useState('');
 
   const allPosts = useMemo(() => {
     const fromPersons = Array.from(new Set(state.persons.map((p) => p.post).filter(Boolean) as string[]));
@@ -82,15 +84,15 @@ export default function PermissionManage() {
   const effectivePosts = useMemo(() => Array.from(new Set([...allPosts, ...posts])), [allPosts, posts]);
 
   const role = useMemo(
-    () => (selected ? state.permissions.find((r) => r.post === selected) : undefined),
-    [selected, state.permissions]
+    () => (selected ? state.permissions.find((r) => (r.subjectKind ?? 'post') === subjectTab && r.post === selected) : undefined),
+    [selected, subjectTab, state.permissions]
   );
 
   const select = (p: string) => {
     setSelected(p);
-    const exist = state.permissions.find((r) => r.post === p);
-    if (exist) setDraft({ ...exist, pages: { ...(exist.pages ?? {}) } });
-    else setDraft({ post: p, pages: {}, dataScope: null });
+    const exist = state.permissions.find((r) => (r.subjectKind ?? 'post') === subjectTab && r.post === p);
+    if (exist) setDraft({ ...exist, pages: { ...(exist.pages ?? {}) }, subjectKind: subjectTab });
+    else setDraft({ post: p, subjectKind: subjectTab, pages: {}, dataScope: null });
   };
 
   const pageOf = (m: PermModule): PagePerm => draft?.pages[m] ?? emptyPage();
@@ -125,8 +127,9 @@ export default function PermissionManage() {
 
   const save = () => {
     if (!draft || !draft.post) return;
-    const others = state.permissions.filter((r) => r.post !== draft.post);
-    const final: RolePerm = { ...draft, pages: draft.pages ?? {}, dataScope: draft.dataScope ?? null };
+    const kind = draft.subjectKind ?? 'post';
+    const others = state.permissions.filter((r) => !(r.post === draft.post && (r.subjectKind ?? 'post') === kind));
+    const final: RolePerm = { ...draft, subjectKind: kind, pages: draft.pages ?? {}, dataScope: draft.dataScope ?? null };
     setPermissions([...others, final]);
     setSelected(null);
     setDraft(null);
@@ -134,7 +137,8 @@ export default function PermissionManage() {
 
   const removeRole = () => {
     if (!selected) return;
-    setPermissions(state.permissions.filter((r) => r.post !== selected));
+    const kind = draft?.subjectKind ?? subjectTab;
+    setPermissions(state.permissions.filter((r) => !(r.post === selected && (r.subjectKind ?? 'post') === kind)));
     setSelected(null);
     setDraft(null);
   };
@@ -157,6 +161,31 @@ export default function PermissionManage() {
     return Array.from(map.entries()).map(([k, v]) => ({ attrName: k, values: Array.from(new Set(v)) }));
   }, [state.stores]);
 
+  const subjectList: Record<'post' | 'dealer' | 'store' | 'employee', { key: string; label: string }[]> = useMemo(() => {
+    const dealers = state.dealers.filter((d) => d.enabled !== false).map((d) => ({ key: d.code || d.name || '', label: d.code ? `${d.name}(${d.code})` : d.name }));
+    const stores = state.stores.filter((s) => s.enabled !== false).map((s) => ({ key: s.code || s.name || '', label: s.code ? `${s.name}(${s.code})` : s.name }));
+    const employees = state.employees
+      .filter((e) => e.enabled !== false && (!empQ || (e.name ?? '').includes(empQ) || (e.code ?? '').includes(empQ)))
+      .slice(0, 300)
+      .map((e) => ({ key: e.code || e.name || '', label: e.code ? `${e.name}(${e.code})` : e.name }));
+    return {
+      post: effectivePosts.map((p) => ({ key: p, label: p })),
+      dealer: dealers,
+      store: stores,
+      employee: employees,
+    };
+  }, [state.dealers, state.stores, state.employees, empQ, effectivePosts]);
+
+  const subjectHasRole = (kind: 'post' | 'dealer' | 'store' | 'employee', key: string) =>
+    state.permissions.some((r) => (r.subjectKind ?? 'post') === kind && r.post === key);
+
+  const SUBJECT_TABS: { k: 'post' | 'dealer' | 'store' | 'employee'; label: string }[] = [
+    { k: 'post', label: '岗位' },
+    { k: 'dealer', label: '经销商' },
+    { k: 'store', label: '店仓' },
+    { k: 'employee', label: '员工' },
+  ];
+
   const scope = draft?.dataScope ?? role?.dataScope ?? null;
 
   const groups = useMemo(() => {
@@ -167,31 +196,60 @@ export default function PermissionManage() {
 
   return (
     <div className="flex h-full gap-4 p-4">
-      {/* 左：岗位列表 */}
-      <div className="w-60 shrink-0 rounded-2xl border border-gray-200 bg-white p-3 overflow-auto">
-        <div className="mb-2 flex items-center justify-between px-1">
-          <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-800"><Shield className="h-4 w-4 text-blue-600" />岗位权限</span>
-          <button
-            onClick={() => { setNewPostName(''); setSelected('__new__'); setDraft(null); }}
-            className="flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
-          >
-            <Plus className="h-3.5 w-3.5" />新建
-          </button>
+      {/* 左：权限主体列表 */}
+      <div className="flex w-64 shrink-0 flex-col rounded-2xl border border-gray-200 bg-white overflow-hidden">
+        {/* 主体类型切换 */}
+        <div className="flex border-b border-gray-100">
+          {SUBJECT_TABS.map((t) => (
+            <button
+              key={t.k}
+              onClick={() => { setSubjectTab(t.k); setSelected(null); setDraft(null); }}
+              className={`flex-1 px-2 py-2 text-xs font-medium ${subjectTab === t.k ? 'border-b-2 border-blue-600 text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
-        {effectivePosts.map((p) => (
-          <button
-            key={p}
-            onClick={() => select(p)}
-            className={`mb-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[13px] ${
-              selected === p ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            <span className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5 text-gray-400" />{p}</span>
-            {state.permissions.some((r) => r.post === p) && <span className="text-[10px] text-emerald-500">已配置</span>}
-          </button>
-        ))}
-        {selected === '__new__' && (
-          <div className="mt-1 px-1">
+        <div className="flex items-center justify-between px-3 py-2">
+          <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-800">
+            <Shield className="h-4 w-4 text-blue-600" />
+            {subjectTab === 'post' ? '岗位权限' : subjectTab === 'dealer' ? '经销商权限' : subjectTab === 'store' ? '店仓权限' : '员工权限'}
+          </span>
+          {subjectTab === 'post' && (
+            <button
+              onClick={() => { setNewPostName(''); setSelected('__new__'); setDraft(null); }}
+              className="flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+            >
+              <Plus className="h-3.5 w-3.5" />新建
+            </button>
+          )}
+        </div>
+        {subjectTab === 'employee' && (
+          <div className="px-2 pb-2">
+            <input
+              value={empQ}
+              onChange={(e) => setEmpQ(e.target.value)}
+              placeholder="搜索员工姓名/编号"
+              className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs"
+            />
+          </div>
+        )}
+        <div className="flex-1 overflow-auto px-2 pb-2">
+          {subjectList[subjectTab].map((it) => (
+            <button
+              key={it.key}
+              onClick={() => select(it.key)}
+              className={`mb-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[13px] ${
+                selected === it.key ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <span className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5 text-gray-400" />{it.label}</span>
+              {subjectHasRole(subjectTab, it.key) && <span className="text-[10px] text-emerald-500">已配置</span>}
+            </button>
+          ))}
+        </div>
+        {subjectTab === 'post' && selected === '__new__' && (
+          <div className="border-t border-gray-100 p-2">
             <input
               value={newPostName}
               onChange={(e) => setNewPostName(e.target.value)}
@@ -203,11 +261,11 @@ export default function PermissionManage() {
               onClick={() => {
                 const name = newPostName.trim();
                 if (!name) return;
-                setPosts((p) => Array.from(new Set([...p, name])));
+                setPosts((s) => Array.from(new Set([...s, name])));
                 setNewPostName('');
                 setSelected(name);
-                const exist = state.permissions.find((r) => r.post === name);
-                setDraft(exist ? { ...exist, pages: { ...(exist.pages ?? {}) } } : { post: name, pages: {}, dataScope: null });
+                const exist = state.permissions.find((r) => (r.subjectKind ?? 'post') === 'post' && r.post === name);
+                setDraft(exist ? { ...exist, pages: { ...(exist.pages ?? {}) }, subjectKind: 'post' } : { post: name, subjectKind: 'post', pages: {}, dataScope: null });
               }}
               className="mt-1 w-full rounded-md bg-blue-600 py-1.5 text-xs text-white hover:bg-blue-700"
             >确定</button>
