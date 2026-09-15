@@ -22,12 +22,15 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
   const { dealers, stores, hrAttributes } = state;
 
   const list: (Dealer | Store)[] = (kind === 'dealer' ? dealers : stores).slice().sort((a, b) => a.sort - b.sort);
-  const unit = META[kind].unit;
+  const [kw, setKw] = useState('');
   const [activeId, setActiveId] = useState<string>(list[0]?.id || '');
   const [dictForm, setDictForm] = useState<{ item: (Dealer | Store) | null } | null>(null);
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
+  const q = kw.trim().toLowerCase();
+  const filtered = q ? list.filter((d) => (d.name || '').toLowerCase().includes(q) || (d.code || '').toLowerCase().includes(q)) : list;
+  const unit = META[kind].unit;
 
   const categoryAttrs = hrAttributes.filter((a) => (a.category ?? 'person') === KIND_CATEGORY[kind]);
 
@@ -137,17 +140,20 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
     <div className="flex h-full overflow-hidden">
       {/* 列表：经销商 / 店仓 宽表格 */}
       <aside className="flex flex-1 shrink-0 flex-col overflow-hidden border-r border-gray-200 bg-white">
-        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-          <div className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
-            <span>{META[kind].label}</span>
-            <span className="rounded-full bg-gray-100 px-1.5 text-[11px] text-gray-500">{list.length}</span>
+        <div className="border-b border-gray-100 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+              <span>{META[kind].label}</span>
+              <span className="rounded-full bg-gray-100 px-1.5 text-[11px] text-gray-500">{filtered.length}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button onClick={downloadTemplate} title="下载模板" className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><Download size={15} />模板</button>
+              <button onClick={() => fileRef.current?.click()} disabled={loading} title={`导入${unit}`} className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-60"><Upload size={15} />{loading ? '导入中…' : '导入'}</button>
+              <button onClick={() => setDictForm({ item: null })} title={`新增${unit}`} className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><Plus size={15} />新增{unit}</button>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <button onClick={downloadTemplate} title="下载模板" className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><Download size={15} />模板</button>
-            <button onClick={() => fileRef.current?.click()} disabled={loading} title={`导入${unit}`} className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-60"><Upload size={15} />{loading ? '导入中…' : '导入'}</button>
-            <button onClick={() => setDictForm({ item: null })} title={`新增${unit}`} className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><Plus size={15} />新增{unit}</button>
-            <input ref={fileRef} type="file" accept=".xlsx,.xls,.xlsm" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImport(f); e.target.value = ''; }} />
-          </div>
+          <input value={kw} onChange={(e) => setKw(e.target.value)} placeholder={`搜索${unit}名称 / 编号`} className="mt-2 w-full rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm outline-none focus:border-blue-400" />
+          <input ref={fileRef} type="file" accept=".xlsx,.xls,.xlsm" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImport(f); e.target.value = ''; }} />
         </div>
 
         <div className="flex-1 overflow-auto">
@@ -171,7 +177,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
               </tr>
             </thead>
             <tbody>
-              {list.map((d, idx) => {
+              {filtered.map((d, idx) => {
                 const s = d as Store;
                 return (
                   <tr key={d.id} onClick={() => setActiveId(d.id)} className={`cursor-pointer border-b border-gray-100 ${activeId === d.id ? 'bg-blue-50' : 'text-gray-700 hover:bg-gray-50'}`}>
@@ -201,7 +207,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
               })}
             </tbody>
           </table>
-          {list.length === 0 && <div className="px-4 py-8 text-center text-sm text-gray-400">暂无{unit}，点击右上角新增{unit}</div>}
+          {filtered.length === 0 && <div className="px-4 py-8 text-center text-sm text-gray-400">暂无{unit}，点击右上角新增{unit}</div>}
         </div>
       </aside>
 
