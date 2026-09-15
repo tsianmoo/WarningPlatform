@@ -353,7 +353,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                 const st = STATUS_META[a.status];
                 const count = a.preview?.storeMessages?.length ?? a.preview?.rows?.length ?? 0;
                 const stores = a.preview?.storeMessages ?? [];
-                const actions = buildActions(a, updateAlertStatus, setHandoffId, openConfirm);
+                const actions = buildActions(a, updateAlertStatus, setHandoffId, openConfirm, meName);
                 const dur = a.startedAt ? formatDur(a.startedAt, a.handledAt ?? now) : null;
                 return (
                   <Fragment key={a.id}>
@@ -601,7 +601,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                   {open.ruleName ? <p className="mt-0.5 truncate text-xs text-gray-400">{open.ruleName}</p> : null}
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                  {buildActions(open, updateAlertStatus, setHandoffId, openConfirm).map((x) => (
+                  {buildActions(open, updateAlertStatus, setHandoffId, openConfirm, meName).map((x) => (
                     <button
                       key={x.label}
                       onClick={x.fn}
@@ -895,21 +895,20 @@ function buildActions(
   a: AlertTask,
   update: (id: string, patch: Partial<AlertTask>) => void,
   handoff: (id: string) => void,
-  ask: (c: ConfirmReq) => void
+  ask: (c: ConfirmReq) => void,
+  who = '当前用户'
 ): AlertAction[] {
   const N = Date.now();
   const upd = (patch: Partial<AlertTask>) => update(a.id, { ...patch, updatedAt: N });
   // 已完成/不可用 → 灰色；未完成且可操作 → 蓝色
   const blue = 'bg-blue-600 text-white shadow-sm hover:bg-blue-600/90';
   const gray = 'cursor-default bg-gray-100 text-gray-400';
-  const okAccept = a.status === 'new';
-  const okStart = a.status === 'accepted';
+  const okStart = a.status === 'new' || a.status === 'accepted';
   const okDone = a.status === 'processing';
   const okFail = a.status === 'new' || a.status === 'accepted' || a.status === 'processing';
   const okHandoff = okFail;
   const acts: AlertAction[] = [
-    { label: '接受', cls: okAccept ? blue : gray, fn: okAccept ? () => ask({ title: '确认接受该预警？', desc: '接受后你将成为该预警的接收人，准备开始处理。', onOk: () => upd({ status: 'accepted', acceptedAt: Date.now(), assignee: a.assignee || '当前用户' }) }) : () => {} },
-    { label: '开始处理', cls: okStart ? blue : gray, fn: okStart ? () => ask({ title: '确认开始处理该预警？', desc: '确认后将开始计算处理时长。', onOk: () => upd({ status: 'processing', startedAt: Date.now() }) }) : () => {} },
+    { label: '开始处理', cls: okStart ? blue : gray, fn: okStart ? () => ask({ title: '确认开始处理该预警？', desc: '确认后将开始计算处理时长，你将成为该预警的处理人。', onOk: () => upd({ status: 'processing', startedAt: Date.now(), assignee: a.assignee || who }) }) : () => {} },
     { label: '完成', cls: okDone ? blue : gray, fn: okDone ? () => ask({ title: '标记为已处理', needText: true, required: true, placeholder: '请填写处理方案：如何处理、如何解决该预警。（必填）', onOk: (t) => upd({ status: 'done', handledAt: Date.now(), resolution: t }) }) : () => {} },
     { label: '转交', cls: okHandoff ? 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50' : gray, fn: okHandoff ? () => handoff(a.id) : () => {} },
     { label: '无法完成', cls: okFail ? blue : gray, fn: okFail ? () => ask({ title: '标记为无法完成', needText: true, required: true, placeholder: '请说明无法完成的原因。（必填）', onOk: (t) => upd({ status: 'failed', handledAt: Date.now(), failedReason: t }) }) : () => {} },
