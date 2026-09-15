@@ -213,26 +213,13 @@ function Shell() {
               onClick={() => setView('alerts')}
             />
             )}
-            {can('org') && (
+            {(can('dealer') || can('store') || can('dattrs') || can('sattrs')) && (
             <div className="pt-1">
               <div className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-800">
                 <Briefcase size={17} className="text-gray-400" />
                 <span className="flex-1">组织架构</span>
               </div>
-              <NavItem
-                nested
-                active={currentView === 'emp'}
-                icon={<span className="text-gray-400">·</span>}
-                label="员工管理"
-                onClick={() => setView('emp')}
-              />
-              <NavItem
-                nested
-                active={currentView === 'eattrs'}
-                icon={<span className="text-gray-400">·</span>}
-                label="员工属性"
-                onClick={() => setView('eattrs')}
-              />
+              {can('dealer') && (
               <NavItem
                 nested
                 active={currentView === 'dealer'}
@@ -240,6 +227,8 @@ function Shell() {
                 label="经销商管理"
                 onClick={() => setView('dealer')}
               />
+              )}
+              {can('dattrs') && (
               <NavItem
                 nested
                 active={currentView === 'dattrs'}
@@ -247,6 +236,8 @@ function Shell() {
                 label="经销商属性"
                 onClick={() => setView('dattrs')}
               />
+              )}
+              {can('store') && (
               <NavItem
                 nested
                 active={currentView === 'store'}
@@ -254,6 +245,8 @@ function Shell() {
                 label="店仓管理"
                 onClick={() => setView('store')}
               />
+              )}
+              {can('sattrs') && (
               <NavItem
                 nested
                 active={currentView === 'sattrs'}
@@ -261,14 +254,34 @@ function Shell() {
                 label="店仓属性"
                 onClick={() => setView('sattrs')}
               />
+              )}
+              {can('dealer') && (
+              <NavItem
+                nested
+                active={currentView === 'emp'}
+                icon={<span className="text-gray-400">·</span>}
+                label="员工管理"
+                onClick={() => setView('emp')}
+              />
+              )}
+              {can('dealer') && (
+              <NavItem
+                nested
+                active={currentView === 'eattrs'}
+                icon={<span className="text-gray-400">·</span>}
+                label="员工属性"
+                onClick={() => setView('eattrs')}
+              />
+              )}
             </div>
             )}
-            {can('people') && (
+            {(can('people') || can('attrs')) && (
             <div className="pt-1">
               <div className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-800">
                 <Users size={17} className="text-gray-400" />
                 <span className="flex-1">人事管理</span>
               </div>
+              {can('people') && (
               <NavItem
                 nested
                 active={currentView === 'people'}
@@ -276,6 +289,8 @@ function Shell() {
                 label="用户管理"
                 onClick={() => setView('people')}
               />
+              )}
+              {can('attrs') && (
               <NavItem
                 nested
                 active={currentView === 'attrs'}
@@ -283,6 +298,7 @@ function Shell() {
                 label="属性管理"
                 onClick={() => setView('attrs')}
               />
+              )}
             </div>
             )}
 

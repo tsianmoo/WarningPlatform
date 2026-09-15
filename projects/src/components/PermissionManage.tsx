@@ -1,42 +1,76 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Plus, Save, Trash2, Users, Shield } from 'lucide-react';
+import { Plus, Save, Trash2, Users, Shield, Eye } from 'lucide-react';
 import { useStore } from '@/lib/store';
-import type { DataScope, ModuleActionPerm, PermModule, RolePerm } from '@/lib/types';
+import type { DataScope, PagePerm, PermModule, PermOp, RolePerm } from '@/lib/types';
 
-const MODULE_LABELS: Record<PermModule, string> = {
-  home: '首页',
-  datatables: '数据表管理',
-  rules: '预警规则',
-  alerts: '预警列表',
-  org: '组织架构',
-  people: '人事管理',
-  homecfg: '系统-首页管理',
-  perms: '系统-权限管理',
+const OP_LABELS: Record<PermOp, string> = {
+  create: '新增',
+  edit: '编辑',
+  delete: '删除',
+  run: '启用/停用',
+  handle: '处理/转交',
+  upload: '上传数据',
+  download: '导出',
+  assign: '分配岗位',
+  resetPwd: '重置密码',
+  manage: '维护',
 };
 
-const MODULES: PermModule[] = ['datatables', 'rules', 'alerts', 'org', 'people', 'homecfg', 'perms'];
+interface PageSpec {
+  m: PermModule;
+  label: string;
+  group: string;
+  /** 页面级操作（无资源细分时也可承载处理/维护等粗粒度操作） */
+  coarseOps?: PermOp[];
+  /** 资源级操作 */
+  resOps?: PermOp[];
+  /** 该页资源的来源 */
+  resSource?: 'tables' | 'rules' | 'dealers' | 'stores' | 'persons';
+  resLabel?: string;
+}
 
-/** 每个模块可勾选的操作项（除固定"查看"） */
-const OPER_META: { key: keyof ModuleActionPerm; label: string; modules: PermModule[] }[] = [
-  { key: 'create', label: '新增', modules: ['datatables', 'rules', 'org', 'people'] },
-  { key: 'upload', label: '上传数据', modules: ['datatables'] },
-  { key: 'edit', label: '编辑', modules: ['datatables', 'rules', 'people'] },
-  { key: 'run', label: '启用/停用', modules: ['rules'] },
-  { key: 'handle', label: '处理/转交', modules: ['alerts'] },
-  { key: 'assign', label: '重置密码/分配岗位', modules: ['people'] },
-  { key: 'delete', label: '删除', modules: ['datatables', 'rules', 'alerts', 'org', 'people'] },
+const PAGE_SPECS: PageSpec[] = [
+  { m: 'home', label: '首页', group: '首页' },
+  {
+    m: 'datatables', label: '数据表管理', group: '业务管理',
+    coarseOps: ['create', 'download'], resOps: ['edit', 'delete', 'upload'],
+    resSource: 'tables', resLabel: '数据表',
+  },
+  {
+    m: 'rules', label: '预警规则', group: '业务管理',
+    coarseOps: ['create'], resOps: ['edit', 'delete', 'run'],
+    resSource: 'rules', resLabel: '规则',
+  },
+  { m: 'alerts', label: '预警列表', group: '业务管理', coarseOps: ['handle', 'delete'] },
+  {
+    m: 'dealer', label: '经销商管理', group: '组织架构',
+    coarseOps: ['create'], resOps: ['edit', 'delete'],
+    resSource: 'dealers', resLabel: '经销商',
+  },
+  {
+    m: 'store', label: '店仓管理', group: '组织架构',
+    coarseOps: ['create'], resOps: ['edit', 'delete'],
+    resSource: 'stores', resLabel: '店仓',
+  },
+  { m: 'dattrs', label: '经销商属性', group: '组织架构', coarseOps: ['manage'] },
+  { m: 'sattrs', label: '店仓属性', group: '组织架构', coarseOps: ['manage'] },
+  {
+    m: 'people', label: '用户管理', group: '人事管理',
+    coarseOps: ['create'], resOps: ['edit', 'delete', 'assign', 'resetPwd'],
+    resSource: 'persons', resLabel: '用户',
+  },
+  { m: 'attrs', label: '属性管理', group: '人事管理', coarseOps: ['manage'] },
+  { m: 'homecfg', label: '首页管理', group: '系统管理', coarseOps: ['edit'] },
+  { m: 'perms', label: '权限管理', group: '系统管理', coarseOps: ['edit'] },
 ];
 
-const SCOPE_LABELS: { value: DataScope['type']; label: string }[] = [
-  { value: 'all', label: '全部数据' },
-  { value: 'dealer', label: '所属经销商（及下级店仓）' },
-  { value: 'store', label: '所属门店（门店及以下）' },
-  { value: 'self', label: '仅本人相关预警' },
-  { value: 'managed', label: '按个人管理范围（manageScope）' },
-  { value: 'custom', label: '自定义范围' },
-];
+const GROUP_ORDER = ['首页', '业务管理', '组织架构', '人事管理', '系统管理'];
+
+function emptyPage(): PagePerm {
+  return { view: true };
+}
 
 export default function PermissionManage() {
   const { state, setPermissions } = useStore();
@@ -56,28 +90,52 @@ export default function PermissionManage() {
 
   const effectivePosts = useMemo(() => Array.from(new Set([...allPosts, ...posts])), [allPosts, posts]);
 
-  const role = useMemo(() => (selected ? state.permissions.find((r) => r.post === selected) : undefined), [selected, state.permissions]);
+  const role = useMemo(
+    () => (selected ? state.permissions.find((r) => r.post === selected) : undefined),
+    [selected, state.permissions]
+  );
 
   const select = (p: string) => {
     setSelected(p);
     const exist = state.permissions.find((r) => r.post === p);
-    if (exist) setDraft({ ...exist, modules: { ...exist.modules } });
-    else setDraft({ post: p, modules: {}, dataScope: null });
+    if (exist) setDraft({ ...exist, pages: { ...(exist.pages ?? {}) } });
+    else setDraft({ post: p, pages: {}, dataScope: null });
   };
 
-  const toggleView = (m: PermModule, v: boolean) => {
+  const pageOf = (m: PermModule): PagePerm => draft?.pages[m] ?? emptyPage();
+  const resOf = (m: PermModule, id: string): { [op in PermOp]?: boolean } =>
+    draft?.pages[m]?.resources?.[id] ?? {};
+
+  const setPage = (m: PermModule, patch: Partial<PagePerm>) => {
     if (!draft) return;
-    const cur = { ...(draft.modules[m] ?? { view: true }), view: v };
-    const modules = { ...draft.modules, [m]: cur };
-    setDraft({ ...draft, modules });
+    const cur = pageOf(m);
+    const pages = { ...draft.pages, [m]: { ...cur, ...patch } };
+    setDraft({ ...draft, pages });
   };
 
-  const toggleOper = (m: PermModule, k: keyof ModuleActionPerm, v: boolean) => {
+  const toggleView = (m: PermModule, v: boolean) => setPage(m, { view: v });
+
+  const toggleAll = (m: PermModule, op: PermOp, v: boolean) => {
     if (!draft) return;
-    const cur = { ...(draft.modules[m] ?? { view: true }), [k]: v } as ModuleActionPerm;
-    const modules = { ...draft.modules, [m]: cur };
-    setDraft({ ...draft, modules });
+    const cur = pageOf(m);
+    const all = { ...(cur.all ?? {}), [op]: v };
+    setPage(m, { all });
   };
+
+  const toggleRes = (m: PermModule, id: string, op: PermOp, v: boolean) => {
+    if (!draft) return;
+    const cur = pageOf(m);
+    const res = { ...(cur.resources ?? {}), [id]: { ...(cur.resources?.[id] ?? {}), [op]: v } };
+    setPage(m, { resources: res });
+  };
+
+  const resList = (s: PageSpec) =>
+    s.resSource === 'tables' ? state.tables
+      : s.resSource === 'rules' ? state.rules
+      : s.resSource === 'dealers' ? state.dealers
+      : s.resSource === 'stores' ? state.stores
+      : s.resSource === 'persons' ? state.persons
+      : [];
 
   const setScopeType = (type: DataScope['type']) => {
     if (!draft) return;
@@ -94,8 +152,8 @@ export default function PermissionManage() {
   const save = () => {
     if (!draft || !draft.post) return;
     const others = state.permissions.filter((r) => r.post !== draft.post);
-    // 无任何权限时仍需至少 view 原样保留；直接整体保存
-    setPermissions([...others, draft]);
+    const final: RolePerm = { ...draft, pages: draft.pages ?? {}, dataScope: draft.dataScope ?? null };
+    setPermissions([...others, final]);
     setSelected(null);
     setDraft(null);
   };
@@ -110,7 +168,7 @@ export default function PermissionManage() {
   const attrOptions = useMemo(() => {
     const map = new Map<string, string[]>();
     (state.stores ?? []).forEach((s) => {
-      (s.attrs ?? {}) && Object.entries(s.attrs ?? {}).forEach(([k, v]) => {
+      s.attrs && Object.entries(s.attrs).forEach(([k, v]) => {
         if (!v) return;
         map.has(k) ? map.get(k)!.push(v) : map.set(k, [v]);
       });
@@ -127,10 +185,16 @@ export default function PermissionManage() {
 
   const scope = draft?.dataScope ?? role?.dataScope ?? null;
 
+  const groups = useMemo(() => {
+    const g: Record<string, PageSpec[]> = {};
+    PAGE_SPECS.forEach((s) => (g[s.group] = [...(g[s.group] ?? []), s]));
+    return GROUP_ORDER.filter((k) => g[k]).map((k) => ({ group: k, specs: g[k] }));
+  }, []);
+
   return (
     <div className="flex h-full gap-4 p-4">
       {/* 左：岗位列表 */}
-      <div className="w-64 shrink-0 rounded-2xl border border-gray-200 bg-white p-3">
+      <div className="w-60 shrink-0 rounded-2xl border border-gray-200 bg-white p-3 overflow-auto">
         <div className="mb-2 flex items-center justify-between px-1">
           <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-800"><Shield className="h-4 w-4 text-blue-600" />岗位权限</span>
           <button
@@ -169,7 +233,7 @@ export default function PermissionManage() {
                 setNewPostName('');
                 setSelected(name);
                 const exist = state.permissions.find((r) => r.post === name);
-                setDraft(exist ? { ...exist, modules: { ...exist.modules } } : { post: name, modules: {}, dataScope: null });
+                setDraft(exist ? { ...exist, pages: { ...(exist.pages ?? {}) } } : { post: name, pages: {}, dataScope: null });
               }}
               className="mt-1 w-full rounded-md bg-blue-600 py-1.5 text-xs text-white hover:bg-blue-700"
             >确定</button>
@@ -177,119 +241,170 @@ export default function PermissionManage() {
         )}
       </div>
 
-      {/* 右：权限配置 */}
+      {/* 右：细粒度权限配置 */}
       <div className="flex-1 overflow-auto rounded-2xl border border-gray-200 bg-white p-4">
         {draft && draft.post !== '__new__' ? (
           <>
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-base font-semibold text-gray-900">「{draft.post}」权限配置</h3>
+              <h3 className="text-base font-semibold text-gray-900">「{draft.post}」功能权限</h3>
               <div className="flex items-center gap-2">
                 <button onClick={removeRole} className="flex items-center gap-1 rounded-md border border-red-200 px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" />删除</button>
                 <button onClick={save} className="flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-700"><Save className="h-3.5 w-3.5" />保存配置</button>
               </div>
             </div>
 
-            {/* 功能权限 */}
-            <div className="mb-5">
-              <div className="mb-2 text-sm font-medium text-gray-800">功能权限（查看 / 操作）</div>
-              <div className="overflow-hidden rounded-lg border border-gray-200">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-gray-50 text-gray-500">
-                    <tr>
-                      <th className="px-3 py-2 font-medium">模块</th>
-                      <th className="px-3 py-2 font-medium">查看</th>
-                      {OPER_META.map((o) => <th key={o.key} className="px-3 py-2 font-medium">{o.label}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {MODULES.map((m) => {
-                      const mp = draft.modules[m];
-                      const view = mp?.view ?? true;
+            {/* 功能权限：按页面/资源/操作细分 */}
+            <div className="space-y-4">
+              {groups.map(({ group, specs }) => (
+                <div key={group}>
+                  <div className="mb-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">{group}</div>
+                  <div className="overflow-hidden rounded-lg border border-gray-200">
+                    {specs.map((s, idx) => {
+                      const view = pageOf(s.m).view;
+                      const showRes = !!s.resSource && s.resOps!.length > 0;
+                      const res = showRes ? resList(s) : [];
+                      const resOpsOnly = s.resOps ?? [];
+                      const coarseOnly = s.coarseOps ?? [];
                       return (
-                        <tr key={m} className="border-t border-gray-100">
-                          <td className="px-3 py-2 font-medium text-gray-700">{MODULE_LABELS[m]}</td>
-                          <td className="px-3 py-2">
-                            <input type="checkbox" checked={view} onChange={(e) => toggleView(m, e.target.checked)} className="accent-blue-600" />
-                          </td>
-                          {OPER_META.map((o) => {
-                            if (!o.modules.includes(m)) return <td key={o.key} />;
-                            return (
-                              <td key={o.key} className="px-3 py-2">
-                                <input
-                                  type="checkbox"
-                                  disabled={!view}
-                                  checked={mp?.[o.key] ?? false}
-                                  onChange={(e) => toggleOper(m, o.key, e.target.checked)}
-                                  className="accent-blue-600 disabled:opacity-30"
-                                />
-                              </td>
-                            );
-                          })}
-                        </tr>
+                        <div key={s.m} className={`${idx > 0 ? 'border-t border-gray-100' : ''}`}>
+                          {/* 页面头部 */}
+                          <div className="flex items-center gap-4 bg-gray-50/60 px-3 py-2">
+                            <label className="flex w-40 shrink-0 items-center gap-1.5 text-[13px] font-semibold text-gray-700">
+                              <input type="checkbox" checked={view} onChange={(e) => toggleView(s.m, e.target.checked)} className="accent-blue-600" />
+                              <Eye className="h-3.5 w-3.5 text-gray-400" />
+                              {s.label}
+                            </label>
+                            <span className="text-[11px] text-gray-400">页面可见</span>
+                            {/* 页面级操作（如新增/处理/维护） */}
+                            {coarseOnly.length > 0 && (
+                              <div className="flex flex-wrap items-center gap-3">
+                                {coarseOnly.map((op) => (
+                                  <label key={op} className={`flex items-center gap-1 text-xs ${view ? 'text-gray-600' : 'text-gray-300'}`}>
+                                    <input type="checkbox" disabled={!view} checked={!!pageOf(s.m).all?.[op]} onChange={(e) => toggleAll(s.m, op, e.target.checked)} className="accent-blue-600 disabled:opacity-30" />
+                                    {OP_LABELS[op]}
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {showRes && (
+                            <div className="px-3 py-1">
+                              {/* 全部资源批量行 */}
+                              <div className="flex items-center gap-3 border-b border-dashed border-gray-100 py-1.5 text-xs">
+                                <span className="w-40 shrink-0 truncate text-gray-500">全部{s.resLabel}（默认）</span>
+                                <div className="flex gap-3">
+                                  {resOpsOnly.map((op) => (
+                                    <label key={op} className={`flex items-center gap-1 ${view ? 'text-gray-600' : 'text-gray-300'}`}>
+                                      <input type="checkbox" disabled={!view} checked={!!pageOf(s.m).all?.[op]} onChange={(e) => toggleAll(s.m, op, e.target.checked)} className="accent-blue-600 disabled:opacity-30" />
+                                      {OP_LABELS[op]}
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                              {/* 逐个资源细调 */}
+                              {res.length === 0 ? (
+                                <div className="py-1.5 text-[11px] text-gray-400">暂无{s.resLabel}</div>
+                              ) : (
+                                res.map((r) => {
+                                  const rid = (r as { id: string }).id;
+                                  const rname = (r as { name?: string }).name || rid;
+                                  return (
+                                    <div key={rid} className="flex items-center gap-3 border-b border-gray-50 py-1.5 text-xs">
+                                      <span className="w-40 shrink-0 truncate text-gray-700" title={rname}>{rname}</span>
+                                      <div className="flex gap-3">
+                                        {resOpsOnly.map((op) => {
+                                          const val = resOf(s.m, rid)[op] ?? pageOf(s.m).all?.[op] ?? false;
+                                          return (
+                                            <label key={op} className={`flex items-center gap-1 ${view ? 'text-gray-600' : 'text-gray-300'}`}>
+                                              <input type="checkbox" disabled={!view} checked={!!val} onChange={(e) => toggleRes(s.m, rid, op, e.target.checked)} className="accent-blue-600 disabled:opacity-30" />
+                                              {OP_LABELS[op]}
+                                            </label>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          )}
+                          </div>
                       );
                     })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* 数据权限 */}
-            <div className="mb-2 text-sm font-medium text-gray-800">数据权限（预警可见范围）</div>
-            <div className="mb-2 flex flex-wrap gap-2">
-              {SCOPE_LABELS.map((s) => (
-                <label key={s.value} className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs ${scope?.type === s.value ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                  <input type="radio" name="scope" checked={scope?.type === s.value} onChange={() => setScopeType(s.value)} className="accent-blue-600" />
-                  {s.label}
-                </label>
+                  </div>
+                </div>
               ))}
             </div>
 
-            {scope?.type === 'custom' && (
-              <div className="rounded-lg border border-gray-200 p-3">
-                <div className="mb-2 text-xs font-medium text-gray-600">自定义范围</div>
-                <div className="mb-3 grid grid-cols-2 gap-3">
-                  <div className="max-h-40 overflow-auto rounded border border-gray-100 p-2">
-                    <div className="mb-1 text-[11px] font-semibold text-gray-500">经销商</div>
-                    {state.dealers.filter((d) => d.enabled !== false).map((d) => (
-                      <label key={d.id} className="flex items-center gap-1.5 py-0.5 text-xs text-gray-700">
-                        <input type="checkbox" checked={(scope.dealerIds ?? []).includes(d.id)} onChange={() => toggleScopeItem('dealerIds', d.id)} className="accent-blue-600" />{d.name}
-                      </label>
-                    ))}
-                  </div>
-                  <div className="max-h-40 overflow-auto rounded border border-gray-100 p-2">
-                    <div className="mb-1 text-[11px] font-semibold text-gray-500">店仓</div>
-                    {state.stores.filter((s) => s.enabled !== false).map((s) => (
-                      <label key={s.id} className="flex items-center gap-1.5 py-0.5 text-xs text-gray-700">
-                        <input type="checkbox" checked={(scope.storeIds ?? []).includes(s.id)} onChange={() => toggleScopeItem('storeIds', s.id)} className="accent-blue-600" />{s.name}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <div className="text-xs font-medium text-gray-600">按店仓属性筛选（区部 / 销售区域等，多条件为叠加）</div>
-                <div className="mt-1.5 space-y-1.5">
-                  {attrOptions.map((a) => (
-                    <label key={a.attrName} className="flex items-center gap-2 text-xs text-gray-700">
-                      <span className="w-20 shrink-0 font-medium">{a.attrName}</span>
-                      <select
-                        multiple
-                        value={(scope.attrFilters ?? []).find((f) => f.attrName === a.attrName)?.values ?? []}
-                        onChange={(e) => {
-                          const vals = Array.from(e.target.selectedOptions).map((o) => o.value);
-                          const rest = (scope.attrFilters ?? []).filter((f) => f.attrName !== a.attrName);
-                          setDraft({ ...draft, dataScope: { ...scope, attrFilters: vals.length ? [...rest, { attrName: a.attrName, values: vals }] : rest } });
-                        }}
-                        className="h-auto min-h-[28px] flex-1 rounded border border-gray-200 px-1 text-xs"
-                      >
-                        {a.values.map((v) => <option key={v} value={v}>{v}</option>)}
-                      </select>
-                    </label>
-                  ))}
-                </div>
+            {/* 数据权限 */}
+            <div className="mt-5 border-t border-gray-100 pt-4">
+              <div className="mb-2 text-sm font-medium text-gray-800">数据权限（预警可见范围）</div>
+              <div className="mb-2 flex flex-wrap gap-2">
+                {([
+                  { value: 'all', label: '全部数据' },
+                  { value: 'dealer', label: '所属经销商（及下级店仓）' },
+                  { value: 'store', label: '所属门店（门店及以下）' },
+                  { value: 'self', label: '仅本人相关预警' },
+                  { value: 'managed', label: '按个人管理范围' },
+                  { value: 'custom', label: '自定义范围' },
+                ] as { value: DataScope['type']; label: string }[]).map((s) => (
+                  <label key={s.value} className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs ${scope?.type === s.value ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                    <input type="radio" name="scope" checked={scope?.type === s.value} onChange={() => setScopeType(s.value)} className="accent-blue-600" />
+                    {s.label}
+                  </label>
+                ))}
               </div>
-            )}
 
-            <div className="mt-3 rounded-lg bg-blue-50 p-3 text-xs text-blue-700">
-              说明：权限按「岗位（Person.post）」配置并作用于该岗位的所有用户；未配置的岗位默认可见全部模块、数据范围按用户归属自动推断（经销商→其下级、门店→门店及以下、其余→仅本人）。单用户自定义覆盖可在用户管理中设置。
+              {scope?.type === 'custom' && (
+                <div className="rounded-lg border border-gray-200 p-3">
+                  <div className="mb-2 text-xs font-medium text-gray-600">自定义范围</div>
+                  <div className="mb-3 grid grid-cols-2 gap-3">
+                    <div className="max-h-40 overflow-auto rounded border border-gray-100 p-2">
+                      <div className="mb-1 text-[11px] font-semibold text-gray-500">经销商</div>
+                      {state.dealers.filter((d) => d.enabled !== false).map((d) => (
+                        <label key={d.id} className="flex items-center gap-1.5 py-0.5 text-xs text-gray-700">
+                          <input type="checkbox" checked={(scope.dealerIds ?? []).includes(d.id)} onChange={() => toggleScopeItem('dealerIds', d.id)} className="accent-blue-600" />{d.name}
+                        </label>
+                      ))}
+                    </div>
+                    <div className="max-h-40 overflow-auto rounded border border-gray-100 p-2">
+                      <div className="mb-1 text-[11px] font-semibold text-gray-500">店仓</div>
+                      {state.stores.filter((s) => s.enabled !== false).map((s) => (
+                        <label key={s.id} className="flex items-center gap-1.5 py-0.5 text-xs text-gray-700">
+                          <input type="checkbox" checked={(scope.storeIds ?? []).includes(s.id)} onChange={() => toggleScopeItem('storeIds', s.id)} className="accent-blue-600" />{s.name}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="text-xs font-medium text-gray-600">按店仓属性筛选（区部 / 销售区域等，多条件为叠加）</div>
+                  <div className="mt-1.5 space-y-1.5">
+                    {attrOptions.map((a) => (
+                      <label key={a.attrName} className="flex items-center gap-2 text-xs text-gray-700">
+                        <span className="w-20 shrink-0 font-medium">{a.attrName}</span>
+                        <select
+                          multiple
+                          value={(scope.attrFilters ?? []).find((f) => f.attrName === a.attrName)?.values ?? []}
+                          onChange={(e) => {
+                            const vals = Array.from(e.target.selectedOptions).map((o) => o.value);
+                            const rest = (scope.attrFilters ?? []).filter((f) => f.attrName !== a.attrName);
+                            setDraft({ ...draft, dataScope: { ...scope, attrFilters: vals.length ? [...rest, { attrName: a.attrName, values: vals }] : rest } });
+                          }}
+                          className="h-auto min-h-[28px] flex-1 rounded border border-gray-200 px-1 text-xs"
+                        >
+                          {a.values.map((v) => <option key={v} value={v}>{v}</option>)}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-3 rounded-lg bg-blue-50 p-3 text-xs text-blue-700">
+                说明：
+                1) 功能权限按「页面 → 数据/规则/经销商/店仓/用户 → 操作」逐项勾选：页面可见决定能否进入该页；「全部XX（默认）」作为该页资源的默认权限，可再对单个资源单独收紧或放开。
+                2) 数据权限控制预警可见范围，按「岗位（Person.post）」配置并作用于该岗位所有用户；未配置的岗位默认可见全部页面、预警按所属自动推断（经销商→其下级、门店→门店及以下、其余→仅本人）。
+              </div>
             </div>
           </>
         ) : (

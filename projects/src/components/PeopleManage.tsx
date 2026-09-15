@@ -3,12 +3,17 @@
 import { useMemo, useState } from 'react';
 import { Users, Phone, Plus, Pencil, Trash2, Crosshair, KeyRound } from 'lucide-react';
 import { useStore } from '@/lib/store';
+import { resolvePerm, canOper } from '@/lib/perm';
 import type { Organization, Person } from '@/lib/types';
 import { toast } from 'sonner';
 
 export function PeopleManage() {
   const { state, addPerson, updatePerson, removePerson, addOrg, updateOrg, removeOrg, moveOrg } = useStore();
   const { orgs, persons, hrAttributes } = state;
+  const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
+  const me = state.persons.find((p) => p.name === meName) ?? null;
+  const perm = resolvePerm(me, state.config);
+  const can = (op: Parameters<typeof canOper>[2], rid?: string) => canOper(perm, 'people', op as never, rid);
   const [activeOrg, setActiveOrg] = useState<string | null>(null);
   const [editing, setEditing] = useState<Person | null>(null);
   const [showEditor, setShowEditor] = useState(false);
@@ -82,6 +87,7 @@ export function PeopleManage() {
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-gray-900">用户管理</h1>
           <p className="mt-1 text-sm text-gray-400">添加人员：选择部门 / 职位 / 岗位，填写基础信息与管理范围</p>
         </div>
+        {can('create') && (
         <button
           onClick={() => {
             setEditing(null);
@@ -92,6 +98,7 @@ export function PeopleManage() {
           <Plus size={15} />
           新增人员
         </button>
+        )}
       </header>
 
       <div className="grid gap-6 grid-cols-[280px_1fr]">
@@ -249,6 +256,7 @@ export function PeopleManage() {
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
+                  {can('resetPwd', p.id) && (
                   <button
                     onClick={() => {
                       const np = window.prompt(`为「${p.name}」设置新的登录密码：`, p.password || '');
@@ -259,6 +267,8 @@ export function PeopleManage() {
                   >
                     <KeyRound size={14} />
                   </button>
+                  )}
+                  {can('edit', p.id) && (
                   <button
                     onClick={() => { setEditing(p); setShowEditor(true); }}
                     className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
@@ -266,9 +276,12 @@ export function PeopleManage() {
                   >
                     <Pencil size={14} />
                   </button>
+                  )}
+                  {can('delete', p.id) && (
                   <button onClick={() => setConfirmDel(p)} className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500" title="删除">
                     <Trash2 size={14} />
                   </button>
+                  )}
                 </div>
               </div>
             ))}

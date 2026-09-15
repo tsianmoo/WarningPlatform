@@ -12,6 +12,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { useStore, formatDateTime } from '@/lib/store';
+import { resolvePerm, canOper } from '@/lib/perm';
 import { parseTableFile, buildTableFromRows } from '@/lib/parser';
 import { uid, type FieldType, type DataTable, type AlertRule } from '@/lib/types';
 import { toast } from 'sonner';
@@ -35,6 +36,10 @@ const TYPE_LABEL: Record<FieldType, string> = {
 
 export function DataTableManager({ onHome }: { onHome?: () => void }) {
   const { state, addTable, removeTable, setActiveTable, renameField, setFieldType } = useStore();
+  const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
+  const me = state.persons.find((p) => p.name === meName) ?? null;
+  const perm = resolvePerm(me, state.config);
+  const can = (op: Parameters<typeof canOper>[2], rid?: string) => canOper(perm, 'datatables', op as never, rid);
   const [dragging, setDragging] = useState(false);
   const [openDelete, setOpenDelete] = useState<{ id: string; refs: AlertRule[] } | null>(null);
 
@@ -158,6 +163,7 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
                         </div>
                       </div>
                     </div>
+                    {can('delete', t.id) && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -168,6 +174,7 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
                     >
                       <Trash2 size={15} />
                     </button>
+                    )}
                   </div>
                 ))}
               </div>

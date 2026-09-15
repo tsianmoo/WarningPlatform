@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Plus, BellRing, ArrowLeft, Trash2, Users, CalendarClock, Table2, Pencil, PlayCircle, PauseCircle, Copy } from 'lucide-react';
 import type { AlertRule, RuleGroup } from '@/lib/types';
 import { useStore, formatDateTime } from '@/lib/store';
+import { resolvePerm, canOper } from '@/lib/perm';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -34,6 +35,10 @@ export function RuleList({
 }) {
   const { state, removeRule, updateRule, addRule, activateRule, addRuleGroup, removeRuleGroup, updateRuleGroup } = useStore();
   const [detailId, setDetailId] = useState<string | null>(null);
+  const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
+  const me = state.persons.find((p) => p.name === meName) ?? null;
+  const perm = resolvePerm(me, state.config);
+  const can = (op: Parameters<typeof canOper>[2], rid?: string) => canOper(perm, 'rules', op as never, rid);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string>('all');
   const [confirm, setConfirm] = useState<{ kind: 'delete' | 'copy'; rule: AlertRule } | null>(null);
@@ -114,12 +119,14 @@ export function RuleList({
               <ArrowLeft size={15} strokeWidth={2} /> 返回首页
             </button>
           )}
+          {can('create') && (
           <button
             onClick={onNew}
             className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700"
           >
             <Plus size={16} /> 新建规则
           </button>
+          )}
         </div>
       </header>
 
@@ -163,7 +170,7 @@ export function RuleList({
                       {r.description && <div className="mt-0.5 line-clamp-2 text-xs text-gray-400">{r.description}</div>}
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
-                      {(r.status === 'active' || r.status === 'paused') && (
+                      {(r.status === 'active' || r.status === 'paused') && can('run', r.id) && (
                         <button
                           onClick={() => {
                             const next = r.status === 'active' ? 'paused' : 'active';
@@ -184,6 +191,7 @@ export function RuleList({
                       >
                         <Pencil size={15} />
                       </button>
+                      {can('delete', r.id) && (
                       <button
                         onClick={() => setConfirm({ kind: 'delete', rule: r })}
                         className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
@@ -191,6 +199,8 @@ export function RuleList({
                       >
                         <Trash2 size={15} />
                       </button>
+                      )}
+                      {can('create', r.id) && (
                       <button
                         onClick={() => setConfirm({ kind: 'copy', rule: r })}
                         className="rounded-md p-1.5 text-gray-400 hover:bg-blue-50 hover:text-blue-500"
@@ -198,6 +208,7 @@ export function RuleList({
                       >
                         <Copy size={15} />
                       </button>
+                      )}
                     </div>
                   </div>
 

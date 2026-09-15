@@ -3,23 +3,83 @@ import type {
   DataScope,
   HomeConfig,
   ModuleActionPerm,
+  PagePerm,
   Person,
   PersonPermOverride,
   PermModule,
+  PermOp,
   RolePerm,
   Store,
 } from '@/lib/types';
 
-/** 岗位默认（未配置任何权限时的兜底）：所有模块可见，仅本人数据 → 不锁死用户 */
-export function defaultPermModules(): Partial<Record<PermModule, ModuleActionPerm>> {
-  const mods: PermModule[] = ['home', 'datatables', 'rules', 'alerts', 'org', 'people', 'homecfg', 'perms'];
-  const out: Partial<Record<PermModule, ModuleActionPerm>> = {};
-  for (const m of mods) out[m] = { view: true };
+/** 全部功能页面 */
+export const ALL_MODULES: PermModule[] = [
+  'home',
+  'datatables',
+  'rules',
+  'alerts',
+  'dealer',
+  'store',
+  'dattrs',
+  'sattrs',
+  'people',
+  'attrs',
+  'homecfg',
+  'perms',
+];
+
+/** 岗位默认（未配置任何权限时的兜底）：所有页面及操作全放开 → 系统开箱可用，配置了岗位后才按角色收紧 */
+export function defaultPagePerms(): Partial<Record<PermModule, PagePerm>> {
+  const all: Partial<Record<PermOp, boolean>> = {
+    create: true,
+    edit: true,
+    delete: true,
+    run: true,
+    handle: true,
+    upload: true,
+    download: true,
+    assign: true,
+    resetPwd: true,
+    manage: true,
+  };
+  const out: Partial<Record<PermModule, PagePerm>> = {};
+  for (const m of ALL_MODULES) out[m] = { view: true, all: { ...all } };
   return out;
 }
 
+function pageFromModule(ma: ModuleActionPerm | undefined): PagePerm {
+  const all: Partial<Record<PermOp, boolean>> = {};
+  if (ma) {
+    (['create', 'edit', 'delete', 'run', 'handle', 'upload', 'assign'] as (keyof ModuleActionPerm)[]).forEach((k) => {
+      if (k !== 'view' && ma[k] !== undefined && ma[k] !== null) all[k] = !!ma[k];
+    });
+  }
+  return { view: ma?.view ?? true, all };
+}
+
+/** 旧数据（modules）→ 新结构（pages）迁移 */
+export function migrateRole(r: RolePerm): RolePerm {
+  const pages = { ...(r.pages ?? {}) };
+  if (r.modules && !r.pages) {
+    (Object.keys(r.modules) as PermModule[]).forEach((m) => {
+      pages[m] = pageFromModule(r.modules![m]);
+    });
+  }
+  return { ...r, pages, modules: undefined };
+}
+
+function migrateOverride(o: PersonPermOverride): PersonPermOverride {
+  const pages = { ...(o.pages ?? {}) };
+  if (o.modules && !o.pages) {
+    (Object.keys(o.modules) as PermModule[]).forEach((m) => {
+      pages[m] = pageFromModule(o.modules![m]);
+    });
+  }
+  return { ...o, pages, modules: undefined };
+}
+
 export interface ResolvedPerm {
-  modules: Partial<Record<PermModule, ModuleActionPerm>>;
+  pages: Partial<Record<PermModule, PagePerm>>;
   dataScope: DataScope | null;
   /** 是否命中用户自定义覆盖 */
   overridden: boolean;
@@ -27,14 +87,15 @@ export interface ResolvedPerm {
 
 /** 解析当前用户的生效权限：自定义覆盖 > 岗位模板 > 兜底 */
 export function resolvePerm(person: Person | null, cfg: HomeConfig | undefined | null): ResolvedPerm {
-  if (!person) return { modules: defaultPermModules(), dataScope: null, overridden: false };
+  if (!person) return { pages: defaultPagePerms(), dataScope: null, overridden: false };
 
   const overrides: PersonPermOverride[] = cfg?.permOverrides ?? [];
   const ov = overrides.find((o) => o && o.enabled !== false);
   if (ov) {
+    const m = migrateOverride(ov);
     return {
-      modules: { ...defaultPermModules(), ...(ov.modules ?? {}) },
-      dataScope: ov.dataScope ?? null,
+      pages: { ...defaultPagePerms(), ...(m.pages ?? {}) },
+      dataScope: m.dataScope ?? null,
       overridden: true,
     };
   }
@@ -42,24 +103,33 @@ export function resolvePerm(person: Person | null, cfg: HomeConfig | undefined |
   const roles: RolePerm[] = cfg?.permissions ?? [];
   const role = person.post ? roles.find((r) => r.post === person.post) : undefined;
   if (role) {
+    const m = migrateRole(role);
     return {
-      modules: { ...defaultPermModules(), ...(role.modules ?? {}) },
-      dataScope: role.dataScope ?? null,
+      pages: { ...defaultPagePerms(), ...(m.pages ?? {}) },
+      dataScope: m.dataScope ?? null,
       overridden: false,
     };
   }
-  return { modules: defaultPermModules(), dataScope: null, overridden: false };
+  return { pages: defaultPagePerms(), dataScope: null, overridden: false };
 }
 
 export function canView(perm: ResolvedPerm, mod: PermModule): boolean {
-  return perm.modules[mod]?.view ?? true;
+  return perm.pages[mod]?.view ?? true;
 }
 
-export function canOper(perm: ResolvedPerm, mod: PermModule, action: keyof ModuleActionPerm): boolean {
-  const m = perm.modules[mod];
-  if (!m) return false;
-  if (mod === 'perms') return m.view && (m.edit ?? false);
-  return m[action] ?? false;
+/**
+ * 判断页面操作权限。
+ * @param op 操作码（PermOp）
+ * @param resourceId 资源 id（数据表/规则/经销商/店仓/人员）。传了则取该资源细粒度；否则取页面级默认(all)
+ */
+export function canOper(perm: ResolvedPerm, mod: PermModule, op: PermOp, resourceId?: string): boolean {
+  const p = perm.pages[mod];
+  if (!p || !p.view) return false;
+  if (resourceId && p.resources?.[resourceId]) {
+    const r = p.resources[resourceId][op];
+    if (r !== undefined) return !!r;
+  }
+  return p.all?.[op] ?? false;
 }
 
 /** 由数据范围 + 用户归属推导允许可见的店仓 id 集合；all 返回 null（代表不过滤） */
@@ -135,4 +205,10 @@ function storeAttrValue(s: Store, attrName: string): string {
   if (attrName === '所属分公司' || attrName === 'company') return s.company ?? '';
   if (attrName === '所属部门' || attrName === 'department') return s.department ?? '';
   return s.attrs?.[attrName] ?? '';
+}
+
+/** 便捷取 Person.permOverride（兼容 modules 旧的字段） */
+export function normalizePersonOverride(p?: Person): PersonPermOverride | undefined {
+  if (!p?.permOverride) return undefined;
+  return p.permOverride;
 }

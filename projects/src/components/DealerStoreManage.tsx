@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useStore } from '@/lib/store';
+import { resolvePerm, canOper } from '@/lib/perm';
 import { toast } from 'sonner';
 import type { AttrCategory, Dealer, HrAttribute, Store } from '@/lib/types';
 import { parseExcel } from '@/lib/parser';
@@ -19,6 +20,11 @@ const META: Record<Kind, { unit: string; label: string }> = {
 
 export function DealerStoreManage({ kind }: { kind: Kind }) {
   const { state, addDealer, updateDealer, removeDealer, moveDealer, addStore, updateStore, removeStore, moveStore } = useStore();
+  const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
+  const me = state.persons.find((p) => p.name === meName) ?? null;
+  const perm = resolvePerm(me, state.config);
+  const mod: 'dealer' | 'store' = kind === 'dealer' ? 'dealer' : 'store';
+  const can = (op: Parameters<typeof canOper>[2], rid?: string) => canOper(perm, mod, op as never, rid);
   const { dealers, stores, hrAttributes } = state;
 
   const list: (Dealer | Store)[] = (kind === 'dealer' ? dealers : stores).slice().sort((a, b) => a.sort - b.sort);
@@ -160,7 +166,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
             <div className="flex items-center gap-1.5">
               <button onClick={downloadTemplate} title="下载模板" className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><Download size={15} />模板</button>
               <button onClick={() => fileRef.current?.click()} disabled={loading} title={`导入${unit}`} className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-60"><Upload size={15} />{loading ? '导入中…' : '导入'}</button>
-              <button onClick={() => setDictForm({ item: null })} title={`新增${unit}`} className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><Plus size={15} />新增{unit}</button>
+              {can('create') && <button onClick={() => setDictForm({ item: null })} title={`新增${unit}`} className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><Plus size={15} />新增{unit}</button>}
             </div>
           </div>
           <input value={kw} onChange={(e) => setKw(e.target.value)} placeholder={`搜索${unit}名称 / 编号`} className="mt-2 w-full rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm outline-none focus:border-blue-400" />
@@ -209,8 +215,8 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
                       <span className="flex items-center justify-end gap-0.5 text-gray-400">
                         <button title="上移" onClick={(e) => { e.stopPropagation(); move(d.id, -1); }} className="rounded p-1 hover:bg-gray-100 hover:text-gray-700"><ChevronUp size={14} /></button>
                         <button title="下移" onClick={(e) => { e.stopPropagation(); move(d.id, 1); }} className="rounded p-1 hover:bg-gray-100 hover:text-gray-700"><ChevronDown size={14} /></button>
-                        <button title="编辑" onClick={(e) => { e.stopPropagation(); setDictForm({ item: d }); }} className="rounded p-1 hover:bg-gray-100 hover:text-gray-700"><Pencil size={14} /></button>
-                        <button title="删除" onClick={(e) => { e.stopPropagation(); setConfirmDel(d.id); }} className="rounded p-1 hover:bg-red-50 hover:text-red-600"><Trash2 size={14} /></button>
+                        {can('edit', d.id) && <button title="编辑" onClick={(e) => { e.stopPropagation(); setDictForm({ item: d }); }} className="rounded p-1 hover:bg-gray-100 hover:text-gray-700"><Pencil size={14} /></button>}
+                        {can('delete', d.id) && <button title="删除" onClick={(e) => { e.stopPropagation(); setConfirmDel(d.id); }} className="rounded p-1 hover:bg-red-50 hover:text-red-600"><Trash2 size={14} /></button>}
                       </span>
                     </td>
                   </tr>

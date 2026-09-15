@@ -1053,31 +1053,55 @@ export interface Person {
 
 // ============ 权限管理 ============
 
-/** 功能模块（与侧边栏/页面一一对应） */
+/** 功能页面（与侧边栏导航叶子项一一对应，供"每页面每操作"细分授权） */
 export type PermModule =
   | 'home'        // 首页
   | 'datatables'  // 数据表管理
   | 'rules'       // 预警规则
   | 'alerts'      // 预警列表
-  | 'org'         // 组织架构（经销商/店仓/员工）
-  | 'people'      // 人事管理（用户管理/属性管理）
+  | 'dealer'      // 组织-经销商管理
+  | 'store'       // 组织-店仓管理
+  | 'dattrs'      // 组织-经销商属性
+  | 'sattrs'      // 组织-店仓属性
+  | 'people'      // 人事-人员管理
+  | 'attrs'       // 人事-属性管理
   | 'homecfg'     // 系统-首页管理
   | 'perms';      // 系统-权限管理
 
-/** 单个模块的操作权限（全部可选勾选，尽可能细） */
+/** 权限操作码（可勾选的最小操作单元，越细越好） */
+export type PermOp =
+  | 'create'    // 新增
+  | 'edit'      // 编辑
+  | 'delete'    // 删除
+  | 'run'       // 预警规则：启用/停用
+  | 'handle'    // 预警列表：处理/转交
+  | 'upload'    // 数据表：上传/覆盖数据
+  | 'download'  // 导出/下载
+  | 'assign'    // 人员：分配岗位
+  | 'resetPwd'  // 人员：重置密码
+  | 'manage';   // 属性/字典维护
+
+/**
+ * 页面级功能权限：
+ * - view：页面入口可见（决定侧边栏/能否进入该页面）
+ * - all：页面级操作（如"新增"、预警"处理/删除"），也作为未在 resources 中单独勾选资源的默认操作
+ * - resources：资源级操作，key=资源 id（数据表/规则/经销商/店仓/人员），value=该资源可执行操作
+ */
+export interface PagePerm {
+  view: boolean;
+  all?: Partial<Record<PermOp, boolean>>;
+  resources?: Record<string, Partial<Record<PermOp, boolean>>>;
+}
+
+/** 旧版模块级操作权限（兼容迁移用；新数据一律用 PagePerm） */
 export interface ModuleActionPerm {
-  /** 查看权（决定模块是否可见/可进入） */
   view: boolean;
   create?: boolean;
   edit?: boolean;
   delete?: boolean;
-  /** 预警规则：启停 */
   run?: boolean;
-  /** 预警列表：处理 / 转交 / 生成 */
   handle?: boolean;
-  /** 数据表：上传数据 */
   upload?: boolean;
-  /** 用户管理：重置密码 / 分配岗位 */
   assign?: boolean;
 }
 
@@ -1102,19 +1126,23 @@ export interface DataScope {
 export interface RolePerm {
   /** 岗位名（对应 Person.post） */
   post: string;
-  /** 各模块的查看/操作权限 */
-  modules: Partial<Record<PermModule, ModuleActionPerm>>;
+  /** 各页面的查看/操作权限（页面、资源、操作逐项细分） */
+  pages: Partial<Record<PermModule, PagePerm>>;
   /** 数据权限范围；null 表示未配置 → 由用户归属自动推断 */
   dataScope: DataScope | null;
   createdAt?: number;
+  /** 兼容旧数据（按模块授权），读取时一键迁移到 pages */
+  modules?: Partial<Record<PermModule, ModuleActionPerm>>;
 }
 
 /** 单用户自定义覆盖（优先级高于岗位模板） */
 export interface PersonPermOverride {
   /** 是否启用自定义（否则用岗位模板） */
   enabled?: boolean;
-  modules?: Partial<Record<PermModule, ModuleActionPerm>>;
+  pages?: Partial<Record<PermModule, PagePerm>>;
   dataScope?: DataScope | null;
+  /** 兼容旧数据 */
+  modules?: Partial<Record<PermModule, ModuleActionPerm>>;
 }
 
 /** 人事属性下的单个条目 */
