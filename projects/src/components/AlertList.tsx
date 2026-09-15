@@ -6,11 +6,11 @@ import { useStore } from '@/lib/store';
 import type { AlertStatus, AlertTask, NotifyMode } from '@/lib/types';
 import { PERSONNEL } from '@/lib/types';
 
-const LEVEL_META: Record<string, { label: string; text: string; dot: string }> = {
-  info: { label: '提醒', text: 'text-blue-600', dot: 'bg-blue-500' },
-  warn: { label: '预警', text: 'text-amber-600', dot: 'bg-amber-500' },
-  critical: { label: '紧急', text: 'text-red-600', dot: 'bg-red-500' },
-  remind: { label: '提醒', text: 'text-blue-600', dot: 'bg-blue-500' },
+const LEVEL_META: Record<string, { label: string; text: string; dot: string; bg: string }> = {
+  info: { label: '提醒', text: 'text-blue-600', dot: 'bg-blue-500', bg: 'bg-blue-50 text-blue-600' },
+  warn: { label: '预警', text: 'text-amber-600', dot: 'bg-amber-500', bg: 'bg-amber-50 text-amber-600' },
+  critical: { label: '紧急', text: 'text-red-600', dot: 'bg-red-500', bg: 'bg-red-50 text-red-600' },
+  remind: { label: '提醒', text: 'text-blue-600', dot: 'bg-blue-500', bg: 'bg-blue-50 text-blue-600' },
 };
 
 const STATUS_META: Record<AlertStatus, { label: string; text: string }> = {
@@ -208,7 +208,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
         <select value={filter.level} onChange={(e) => setFilter({ ...filter, level: e.target.value })} className={SelectCls}>
           <option value="all">重要程度</option>
           {Object.keys(LEVEL_META).map((k) => (
-            <option key={k} value={k}>{LEVEL_META[k].label}（{k}级）</option>
+            <option key={k} value={k}>{LEVEL_META[k].label}</option>
           ))}
         </select>
         <select value={filter.status} onChange={(e) => setFilter({ ...filter, status: e.target.value })} className={SelectCls}>
@@ -289,11 +289,11 @@ export function AlertList({ onBack }: { onBack: () => void }) {
           <table className="w-full border-collapse bg-white text-xs">
             <thead>
               <tr className="sticky top-0 z-10 bg-white text-left text-xs text-gray-400">
-                <th className="min-w-40 whitespace-nowrap px-4 py-3 pl-6 font-medium">预警标题</th>
+                <th className="w-14 whitespace-nowrap px-4 py-3 pl-6 font-medium">序号</th>
+                <th className="min-w-44 whitespace-nowrap px-4 py-3 font-medium">预警标题</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">重要程度</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">预警分组</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">条数</th>
-                <th className="min-w-32 whitespace-nowrap px-4 py-3 font-medium">预警规则</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">接收人</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">已过时间</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">状态</th>
@@ -341,18 +341,19 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                 return (
                   <Fragment key={a.id}>
                     <tr className="align-middle transition-colors last:border-0 hover:bg-gray-50/70">
-                      <td className="min-w-40 whitespace-nowrap px-4 py-3 pl-6 align-middle text-[13px] text-gray-600">{a.title || '—'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 pl-6 align-middle text-[13px] tabular-nums text-gray-400">{idx + 1}</td>
+                      <td className="min-w-44 whitespace-nowrap px-4 py-3 align-middle">
+                        <div className="text-[13px] font-medium text-gray-800">{a.title || '—'}</div>
+                        {a.ruleName ? <div className="mt-0.5 text-[11px] text-gray-400">{a.ruleName}</div> : null}
+                      </td>
                       <td className="whitespace-nowrap px-4 py-3">
-                        <span className={`inline-flex items-center gap-1.5 text-[13px] font-medium ${lv.text}`}>
+                        <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-medium ${lv.bg}`}>
                           <i className={`h-1.5 w-1.5 shrink-0 rounded-full ${lv.dot}`} />
-                          {lv.label}（{a.level ?? 'warn'}级）
+                          {lv.label}
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-[13px] text-gray-600">{groupOf.get(a.ruleId) || '—'}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs tabular-nums text-gray-600">{count}</td>
-                      <td className="min-w-32 whitespace-nowrap px-4 py-3 align-middle text-[13px] font-medium text-gray-800">
-                        {a.ruleName || '—'}
-                      </td>
                       <td className="whitespace-nowrap px-4 py-3 text-[13px] text-gray-600">
                         {a.handoffTo ? (
                           <span>{a.handoffTo}<span className="ml-1 text-[11px] text-gray-400">（转交）</span></span>

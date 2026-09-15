@@ -97,7 +97,7 @@
 - 模板默认预装核心组件库 `shadcn/ui`，位于`src/components/ui/`目录下
 - Next.js 项目**必须默认**采用 shadcn/ui 组件、风格和规范，**除非用户指定用其他的组件和规范。**
 - **预警列表（AlertList.tsx）视觉约束**：用户要求"简约高级感、杜绝 AI 味道"——禁用泛蓝渐变（去 `blue-500/blue-600` 主色）、禁用粉彩徽标堆砌（级别/状态改用 **tonal 浅底或中性 dot+文字色**）、禁用发虚重阴影与 `rounded-2xl` 大圆角（改 `rounded-xl` + `border-gray-200` + `shadow-lg`）。表头与内容均 `whitespace-nowrap`（标题栏文本、重要程度、状态、触发时间、操作列不换行）；重要程度列用「dot + label」而非大色块；主操作按钮统一 `bg-gray-800`（中性深色）而非彩色实心；序号用 `tabular-nums` 细灰。容器为白底 `rounded-xl border` 卡片而非在灰底上裸表。
-- **预警列表列结构（最新版，与第12条一致）**：报警标题 / 重要程度 / 预警分组 / 条数 / 预警规则 / 接收人 / 已过时间 / 状态 / 操作。已删除：序号、创建人、创建时间、「适用部门」、适用店仓/适用员工/适用用户三列及对应筛选下拉。表格无边线（无外层 border、无行分割线，靠行 hover 高亮区分）。
+- **预警列表列结构（最新版，与第12条一致）**：序号 / 预警标题（标题下以 `text-[11px] text-gray-400` 小字显示来源规则 `ruleName`，故无独立「预警规则」列）/ 重要程度（中文标签：`LEVEL_META[k].label` 用 `rounded-full px-2.5 py-0.5 bg-*-50 text-*-600` 徽标展示，**不显示英文 level 后缀**）/ 预警分组 / 条数 / 接收人 / 已过时间 / 状态 / 操作。已删除：创建人、创建时间、「适用部门」、适用店仓/适用员工/适用用户三列及对应筛选下拉。表格无边线（无外层 border、无行分割线，靠行 hover 高亮区分）。
 - **店仓级预警消息（storeMessages）**：由 `buildAlertsForRule` 对每个 action 节点命中明细逐行渲染——列取 `storeMessages[].{store, message}`，`store` 取含「店/仓」的列（否则首列），`message` 用 action 消息模板 `{字段}` 替换该行值。`createdBy='系统'`（规则触发）。两者随 `preview` JSON 持久化（repo 白名单列无法新增，故塞进 preview JSON，零 schema 改动）。点击「查看」展开显示每个店铺的预警消息。
 
 ## 规则引擎节点（预警规则画布）
