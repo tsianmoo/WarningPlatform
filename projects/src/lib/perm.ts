@@ -176,10 +176,11 @@ export function filterAlertsByScope(
 }
 
 /**
- * 预警的归属性店仓 id：
+ * 预警的归属性店仓 id（按「接收门店」口径）：
  * 1) 优先读显式持久化的 storeIds（新规则已带）；
- * 2) 否则从预警内容里已存的店仓名推断（preview.recipients/storeMessages/rows 中的店仓名称），
- *    兼容历史上未落库归属列的存量预警——这些字段精确记录了该条预警命中的店仓。
+ * 2) 否则取该预警实际接收/通知的门店名（preview.recipients 中 mode=store 的 names，
+ *    preview.storeMessages[].store）映射为门店 id。
+ * 仅用接收门店判定，保证「可见预警的接收人始终落在数据权限范围内」。
  */
 function storeIdsOf(a: AlertTask, nameToId: Map<string, string>): string[] {
   if (a.storeIds?.length) return a.storeIds;
@@ -188,10 +189,6 @@ function storeIdsOf(a: AlertTask, nameToId: Map<string, string>): string[] {
     if (r.mode === 'store') (r.names ?? []).forEach((n) => n && names.add(n));
   }
   for (const sm of a.preview?.storeMessages ?? []) if (sm.store) names.add(sm.store);
-  for (const row of a.preview?.rows ?? []) {
-    const n = row['店仓名称'];
-    if (typeof n === 'string' && n) names.add(n);
-  }
   const out = new Set<string>();
   for (const n of names) {
     const id = nameToId.get(n);
