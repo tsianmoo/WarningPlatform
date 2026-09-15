@@ -267,6 +267,8 @@ export function RuleList({
               ) : (
                 <>
                   确定删除「<span className="font-semibold text-gray-700">{confirm?.rule.name}</span>」吗？删除后不可恢复。
+                  <br />
+                  该规则下已生成的预警需要如何处理？
                 </>
               )}
             </AlertDialogDescription>
@@ -283,18 +285,31 @@ export function RuleList({
                 确认复制
               </AlertDialogAction>
             ) : (
-              <AlertDialogAction
-                className="bg-red-600 text-white hover:bg-red-700"
-                onClick={() => {
-                  if (confirm) {
-                    removeRule(confirm.rule.id);
-                    toast.success('已删除规则');
-                  }
-                  setConfirm(null);
-                }}
-              >
-                确认删除
-              </AlertDialogAction>
+              <>
+                <AlertDialogAction
+                  onClick={() => {
+                    if (confirm) {
+                      removeRule(confirm.rule.id);
+                      toast.success('已删除规则，已生成的预警全部保留');
+                    }
+                    setConfirm(null);
+                  }}
+                >
+                  仅删规则（保留预警）
+                </AlertDialogAction>
+                <AlertDialogAction
+                  className="bg-red-600 text-white hover:bg-red-700"
+                  onClick={() => {
+                    if (confirm) {
+                      removeRule(confirm.rule.id, true);
+                      toast.success('已删除规则并清空其下所有预警');
+                    }
+                    setConfirm(null);
+                  }}
+                >
+                  删除并清空预警
+                </AlertDialogAction>
+              </>
             )}
           </AlertDialogFooter>
         </AlertDialogContent>

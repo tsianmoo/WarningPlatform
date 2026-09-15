@@ -85,6 +85,10 @@ export function ExecutionTracker({ rule }: { rule: AlertRule }) {
 
   /** 立即触发：把规则配置的预警动作节点转成预警工单写入预警列表，并将本次执行标记为已完成 */
   const triggerNow = (e: ExecutionRecord) => {
+    if (rule.status !== 'active') {
+      toast.error('该规则已停用，不再生成新预警');
+      return;
+    }
     const list = buildAlertsForRule(rule);
     list.forEach((a) => addAlert(a));
     updateExecution(rule.id, e.id, {

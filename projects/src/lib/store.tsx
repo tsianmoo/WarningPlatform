@@ -310,7 +310,7 @@ type StoreApi = {
   // rules
   addRule: (r: AlertRule) => void;
   updateRule: (id: string, patch: Partial<AlertRule>) => void;
-  removeRule: (id: string) => void;
+  removeRule: (id: string, clearAlerts?: boolean) => void;
   activateRule: (id: string) => void;
   // execution
   updateExecution: (ruleId: string, execId: string, patch: Partial<ExecutionRecord>) => void;
@@ -492,8 +492,14 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
         rules: state.rules.map((r) => (r.id === id ? { ...r, ...patch, updatedAt: Date.now() } : r)),
       };
     }
-    case 'REMOVE_RULE':
-      return { ...state, rules: state.rules.filter((r) => r.id !== action.payload) };
+    case 'REMOVE_RULE': {
+      const { id, clearAlerts } = (action.payload ?? {}) as { id: string; clearAlerts?: boolean };
+      return {
+        ...state,
+        rules: state.rules.filter((r) => r.id !== id),
+        ...(clearAlerts ? { alerts: state.alerts.filter((a) => a.ruleId !== id) } : {}),
+      };
+    }
     case 'UPDATE_EXECUTION': {
       const { ruleId, execId, patch } = action.payload as {
         ruleId: string;
@@ -847,7 +853,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         }
         if (rule.status !== 'active') dispatch('UPDATE_RULE', { id, patch: { status: 'active' } });
       },
-      removeRule: (id) => dispatch('REMOVE_RULE', id),
+      removeRule: (id, clearAlerts) => dispatch('REMOVE_RULE', { id, clearAlerts: !!clearAlerts }),
       updateExecution: (ruleId, execId, patch) => dispatch('UPDATE_EXECUTION', { ruleId, execId, patch }),
       addRuleGroup: (name) => {
         const n = String(name ?? '').trim();
