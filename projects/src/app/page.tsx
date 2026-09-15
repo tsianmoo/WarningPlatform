@@ -78,6 +78,8 @@ function Shell() {
     }
   };
   const logout = () => {
+    setMeName('');
+    setView('home');
     localStorage.removeItem('dn_auth');
     router.push('/login');
   };
@@ -144,6 +146,14 @@ function Shell() {
   } else {
     content = <RuleList onNew={startNew} onEdit={startEdit} onHome={goHome} />;
   }
+
+  // 登录态/数据未就绪时，主内容与菜单统一显示加载态，避免退出或切换账号时闪出旧首页/默认页
+  const readyUI = !!meName && ready;
+  const loadingUI = (
+    <div className="flex h-full min-h-[240px] w-full items-center justify-center text-sm text-gray-400">
+      正在加载…
+    </div>
+  );
 
   // 预警配置页（new / edit）隐藏左侧导航栏，聚焦画布编辑
   const withSidebar = view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts' || view === 'people' || view === 'attrs' || view === 'dealer' || view === 'store' || view === 'dattrs' || view === 'sattrs' || view === 'emp' || view === 'eattrs' || view === 'homecfg' || view === 'perms';
@@ -377,10 +387,10 @@ function Shell() {
               )}
             </div>
           </header>
-          <main className="min-w-0 flex-1 overflow-auto">{content}</main>
+          <main className="min-w-0 flex-1 overflow-auto">{readyUI ? content : loadingUI}</main>
         </div>
       ) : (
-        <main className="min-w-0 flex-1">{content}</main>
+        <main className="min-w-0 flex-1">{readyUI ? content : loadingUI}</main>
       )}
 
       {showProfile && draft && (
