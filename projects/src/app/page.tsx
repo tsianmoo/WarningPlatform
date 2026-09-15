@@ -48,7 +48,7 @@ function FormFillPlaceholder({ onHome }: { onHome: () => void }) {
 }
 
 function Shell() {
-  const { state, updatePerson } = useStore();
+  const { state, updatePerson, ready } = useStore();
   const [view, setView] = useState<View>('home');
   const [editingId, setEditingId] = useState<string | null>(null);
   const router = useRouter();
@@ -148,7 +148,6 @@ function Shell() {
   // 预警配置页（new / edit）隐藏左侧导航栏，聚焦画布编辑
   const withSidebar = view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts' || view === 'people' || view === 'attrs' || view === 'dealer' || view === 'store' || view === 'dattrs' || view === 'sattrs' || view === 'emp' || view === 'eattrs' || view === 'homecfg' || view === 'perms';
   const currentView = view;
-  const pendingAlerts = state.alerts.filter((a) => a.status === 'new' || a.status === 'processing').length;
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#F7F8FA] text-gray-900">
@@ -165,6 +164,10 @@ function Shell() {
             </div>
           </div>
           <nav className="flex-1 space-y-1 px-2 py-2">
+            {!ready ? (
+              <div className="px-3 py-3 text-xs text-gray-400">正在加载菜单…</div>
+            ) : (
+            <>
             <NavItem active={view === 'home'} icon={<LayoutDashboard size={17} />} label="首页" onClick={goHome} />
             {can('datatables') && (
             <div className="pt-1">
@@ -200,7 +203,6 @@ function Shell() {
               active={currentView === 'rules' || currentView === 'new' || currentView === 'edit'}
               icon={<BellRing size={17} />}
               label="预警规则"
-              badge={state.rules.length}
               onClick={() => goRules()}
             />
             )}
@@ -209,7 +211,6 @@ function Shell() {
               active={currentView === 'alerts'}
               icon={<Activity size={17} />}
               label="预警列表"
-              badge={pendingAlerts}
               onClick={() => setView('alerts')}
             />
             )}
@@ -327,6 +328,8 @@ function Shell() {
               />
               )}
             </div>
+            </>
+            )}
           </nav>
           <div className="border-t p-3 text-[10px] leading-relaxed text-gray-400">
             将数据表标签化字段，拖拽构建可视化规则，自定义触发调度与通知对象，并跟踪每次执行。
