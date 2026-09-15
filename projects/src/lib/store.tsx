@@ -18,6 +18,8 @@ import type {
   TargetSetting,
   NotifyMode,
   HomeConfig,
+  RolePerm,
+  PersonPermOverride,
 } from './types';
 import { uid, OPERATOR_OPTIONS, DEFAULT_HOME_CONFIG, normalizeHomeConfig } from './types';
 import { buildSampleTable, ensureFieldsComplete } from './parser';
@@ -218,6 +220,9 @@ export function buildAlertsForRule(
         assignee: curNames.length
           ? `${curNames.slice(0, 3).join('、')}${curNames.length > 3 ? ' 等' : ''}`
           : (notify?.personnel?.[0] ?? targets?.personnel?.[0] ?? ''),
+        storeIds: Array.from(new Set(curStores.map((s) => storesList.find((x) => x.name === s.store)?.id).filter(Boolean) as string[])),
+        dealerIds: Array.from(new Set(storesList.filter((x) => curStores.some((s) => s.store === x.name)).map((x) => x.dealerId).filter(Boolean) as string[])),
+        notified: curNames.slice(),
         status: 'new' as const,
       };
     };
@@ -278,7 +283,7 @@ async function pushRemoteState(state: AppState) {
     await fetch(STATE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: state.config }),
+      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] } }),
     });
   } catch {
     /* 网络异常时忽略，localStorage 仍有兜底 */
@@ -309,6 +314,10 @@ export interface AppState {
   stores: Store[];
   /** 登录页/首页展示配置 */
   config: HomeConfig;
+  /** 权限配置：岗位权限表 */
+  permissions: RolePerm[];
+  /** 权限配置：单用户覆盖 */
+  permOverrides: PersonPermOverride[];
 }
 
 type StoreApi = {
@@ -368,6 +377,8 @@ type StoreApi = {
   removeStore: (id: string) => void;
   moveStore: (id: string, dir: -1 | 1) => void;
   updateHomeConfig: (patch: Partial<HomeConfig> | ((c: HomeConfig) => HomeConfig)) => void;
+  setPermissions: (roles: RolePerm[]) => void;
+  setPermOverrides: (ovs: PersonPermOverride[]) => void;
   resetAll: () => void;
 };
 
@@ -388,7 +399,8 @@ function migrateState(raw: AppState | null): AppState {
           : [];
     return { ...r, tableIds };
   });
-  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [], hrAttributes: normalizeHrAttrs((Array.isArray(raw.hrAttributes) ? raw.hrAttributes : []).filter((a) => (a.category ?? 'person') !== ('org' as never))), dealers: Array.isArray(raw.dealers) ? raw.dealers : [], stores: Array.isArray(raw.stores) ? raw.stores : [], employees: Array.isArray(raw.employees) ? raw.employees : [], config: normalizeHomeConfig(raw.config) };
+  const cfg = normalizeHomeConfig(raw.config);
+  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [], hrAttributes: normalizeHrAttrs((Array.isArray(raw.hrAttributes) ? raw.hrAttributes : []).filter((a) => (a.category ?? 'person') !== ('org' as never))), dealers: Array.isArray(raw.dealers) ? raw.dealers : [], stores: Array.isArray(raw.stores) ? raw.stores : [], employees: Array.isArray(raw.employees) ? raw.employees : [], config: cfg, permissions: Array.isArray(cfg.permissions) ? cfg.permissions : (Array.isArray(raw.permissions) ? raw.permissions : []), permOverrides: Array.isArray(cfg.permOverrides) ? cfg.permOverrides : (Array.isArray(raw.permOverrides) ? raw.permOverrides : []) };
 }
 
 function loadInitial(): AppState {
@@ -727,6 +739,10 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
       const patch = action.payload as HomeConfig | ((c: HomeConfig) => HomeConfig);
       return { ...state, config: typeof patch === 'function' ? patch(state.config) : { ...state.config, ...patch } };
     }
+    case 'SET_PERMISSIONS':
+      return { ...state, permissions: Array.isArray(action.payload) ? (action.payload as RolePerm[]) : state.permissions };
+    case 'SET_PERM_OVERRIDES':
+      return { ...state, permOverrides: Array.isArray(action.payload) ? (action.payload as PersonPermOverride[]) : state.permOverrides };
     case 'RESET':
       return loadInitialState();
     default:
@@ -746,10 +762,10 @@ function loadInitialState(): AppState {
     previewRows: sample.previewRows,
     rows: sample.rows,
   };
-  return { tables: [t], rules: [], activeTableId: t.id, builderTableIds: [t.id], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [], employees: [], config: DEFAULT_HOME_CONFIG };
+  return { tables: [t], rules: [], activeTableId: t.id, builderTableIds: [t.id], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [], employees: [], config: DEFAULT_HOME_CONFIG, permissions: [], permOverrides: [] };
 }
 
-const EMPTY_STATE: AppState = { tables: [], rules: [], activeTableId: '', builderTableIds: [], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [], employees: [], config: DEFAULT_HOME_CONFIG };
+const EMPTY_STATE: AppState = { tables: [], rules: [], activeTableId: '', builderTableIds: [], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [], employees: [], config: DEFAULT_HOME_CONFIG, permissions: [], permOverrides: [] };
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   // 初始统一为空，避免 SSR 与客户端首帧不一致导致 Hydration 报错；
@@ -786,6 +802,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               dealers: state.dealers ?? [],
               stores: state.stores ?? [],
               employees: state.employees ?? [],
+              permissions: state.permissions ?? [],
+              permOverrides: state.permOverrides ?? [],
               activeTableId: tables[0]?.id ?? '',
               builderTableIds: tables.map((t) => t.id),
             });
@@ -804,6 +822,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           stores: remote.stores ?? [],
           employees: remote.employees ?? [],
           config: normalizeHomeConfig(remote.config),
+          permissions: Array.isArray((remote.config as HomeConfig | undefined)?.permissions) ? ((remote.config as HomeConfig).permissions ?? []) : (s.permissions ?? []),
+          permOverrides: Array.isArray((remote.config as HomeConfig | undefined)?.permOverrides) ? ((remote.config as HomeConfig).permOverrides ?? []) : (s.permOverrides ?? []),
           activeTableId: tables[0]?.id ?? '',
           builderTableIds: tables.map((t) => t.id),
         }));
@@ -943,6 +963,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         dispatch('UPDATE_STORE', { id: swapWith.id, patch: { sort: arr[idx].sort } });
       },
       updateHomeConfig: (patch) => dispatch('UPDATE_CONFIG', patch),
+      setPermissions: (roles) => dispatch('SET_PERMISSIONS', roles),
+      setPermOverrides: (ovs) => dispatch('SET_PERM_OVERRIDES', ovs),
       moveOrg: (id, dir) => {
         const target = state.orgs.find((o) => o.id === id);
         if (!target) return;

@@ -934,6 +934,12 @@ export interface AlertTask {
   createdBy?: string;
   dept: string;
   assignee: string;
+  /** 命中店仓归属的经销商 id（按数据权限归集经销商预警） */
+  dealerIds?: string[];
+  /** 命中店仓 id（按数据权限归集门店预警） */
+  storeIds?: string[];
+  /** 通知到的接收方名称（"只看到本人"时匹配 assignee/notified） */
+  notified?: string[];
   status: AlertStatus;
   handoffTo?: string;
   createdAt: number;
@@ -1036,11 +1042,79 @@ export interface Person {
   supervisorId?: string;
   /** 管理范围（关联数据字段 + 分类值） */
   manageScope?: ManageScope;
+  /** 单用户权限覆盖（不为空时以它为准，覆盖岗位默认权限） */
+  permOverride?: PersonPermOverride;
   phone?: string;
   email?: string;
   enabled: boolean;
   sort: number;
   createdAt: number;
+}
+
+// ============ 权限管理 ============
+
+/** 功能模块（与侧边栏/页面一一对应） */
+export type PermModule =
+  | 'home'        // 首页
+  | 'datatables'  // 数据表管理
+  | 'rules'       // 预警规则
+  | 'alerts'      // 预警列表
+  | 'org'         // 组织架构（经销商/店仓/员工）
+  | 'people'      // 人事管理（用户管理/属性管理）
+  | 'homecfg'     // 系统-首页管理
+  | 'perms';      // 系统-权限管理
+
+/** 单个模块的操作权限（全部可选勾选，尽可能细） */
+export interface ModuleActionPerm {
+  /** 查看权（决定模块是否可见/可进入） */
+  view: boolean;
+  create?: boolean;
+  edit?: boolean;
+  delete?: boolean;
+  /** 预警规则：启停 */
+  run?: boolean;
+  /** 预警列表：处理 / 转交 / 生成 */
+  handle?: boolean;
+  /** 数据表：上传数据 */
+  upload?: boolean;
+  /** 用户管理：重置密码 / 分配岗位 */
+  assign?: boolean;
+}
+
+/** 数据权限范围 */
+export type DataScopeType = 'all' | 'dealer' | 'store' | 'self' | 'managed' | 'custom';
+
+export interface DataScope {
+  type: DataScopeType;
+  /** 自定义：选中的经销商 id */
+  dealerIds?: string[];
+  /** 自定义：选中的店仓 id */
+  storeIds?: string[];
+  /** 自定义：按店仓属性过滤（如区部/销售区域），各条件为 AND */
+  attrFilters?: { attrName: string; values: string[] }[];
+  /** managed 模式：复用用户自身 manageScope */
+  useManageScope?: boolean;
+  /** 冗余展示说明 */
+  desc?: string;
+}
+
+/** 某个岗位（角色）的完整权限配置 */
+export interface RolePerm {
+  /** 岗位名（对应 Person.post） */
+  post: string;
+  /** 各模块的查看/操作权限 */
+  modules: Partial<Record<PermModule, ModuleActionPerm>>;
+  /** 数据权限范围；null 表示未配置 → 由用户归属自动推断 */
+  dataScope: DataScope | null;
+  createdAt?: number;
+}
+
+/** 单用户自定义覆盖（优先级高于岗位模板） */
+export interface PersonPermOverride {
+  /** 是否启用自定义（否则用岗位模板） */
+  enabled?: boolean;
+  modules?: Partial<Record<PermModule, ModuleActionPerm>>;
+  dataScope?: DataScope | null;
 }
 
 /** 人事属性下的单个条目 */
@@ -1224,6 +1298,9 @@ export interface HomeConfig {
   subtitle: HomeTitleStyle;
   loginBox: LoginBoxStyle;
   elements: HomeElement[]; // 通过「组件」添加的画布元素（文本 / 图片）
+  /** 权限配置载体（岗位权限表 + 单用户覆盖），随 config 一并持久化 */
+  permissions?: RolePerm[];
+  permOverrides?: PersonPermOverride[];
 }
 
 export const DEFAULT_HOME_CONFIG: HomeConfig = {

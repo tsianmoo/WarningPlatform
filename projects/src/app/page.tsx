@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { Person } from '@/lib/types';
 import { useRouter } from 'next/navigation';
-import { Table2, BellRing, ShieldAlert, LayoutDashboard, Activity, Briefcase, Users, Settings, Maximize, Minimize, LogOut, UploadCloud, Server, ClipboardList } from 'lucide-react';
+import { Table2, BellRing, ShieldAlert, Shield, LayoutDashboard, Activity, Briefcase, Users, Settings, Maximize, Minimize, LogOut, UploadCloud, Server, ClipboardList } from 'lucide-react';
 import { StoreProvider, useStore } from '@/lib/store';
 import { DataTableManager } from '@/components/DataTableManager';
 import { RuleList } from '@/components/RuleList';
@@ -16,8 +16,10 @@ import { AttrManage } from '@/components/AttrManage';
 import { DealerStoreManage } from '@/components/DealerStoreManage';
 import EmployeeManage from '@/components/EmployeeManage';
 import { HomeConfig } from '@/components/HomeConfig';
+import PermissionManage from '@/components/PermissionManage';
+import { resolvePerm, canView } from '@/lib/perm';
 
-type View = 'home' | 'tables' | 'apitable' | 'formtable' | 'rules' | 'new' | 'edit' | 'alerts' | 'people' | 'attrs' | 'dealer' | 'store' | 'dattrs' | 'sattrs' | 'emp' | 'eattrs' | 'homecfg';
+type View = 'home' | 'tables' | 'apitable' | 'formtable' | 'rules' | 'new' | 'edit' | 'alerts' | 'people' | 'attrs' | 'dealer' | 'store' | 'dattrs' | 'sattrs' | 'emp' | 'eattrs' | 'homecfg' | 'perms';
 
 function ApiDataPlaceholder({ onHome }: { onHome: () => void }) {
   return (
@@ -64,6 +66,8 @@ function Shell() {
     if (typeof window !== 'undefined') setMeName(localStorage.getItem('dn_auth') || '');
   }, []);
   const me = state.persons.find((p) => p.name === meName) ?? null;
+  const perm = resolvePerm(me, state.config);
+  const can = (m: Parameters<typeof canView>[1]) => canView(perm, m);
   const toggleFs = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen?.();
@@ -135,12 +139,14 @@ function Shell() {
     content = <AttrManage />;
   } else if (view === 'homecfg') {
     content = <HomeConfig onBack={() => setView('home')} />;
+  } else if (view === 'perms') {
+    content = <PermissionManage />;
   } else {
     content = <RuleList onNew={startNew} onEdit={startEdit} onHome={goHome} />;
   }
 
   // 预警配置页（new / edit）隐藏左侧导航栏，聚焦画布编辑
-  const withSidebar = view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts' || view === 'people' || view === 'attrs' || view === 'dealer' || view === 'store' || view === 'dattrs' || view === 'sattrs' || view === 'emp' || view === 'eattrs';
+  const withSidebar = view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts' || view === 'people' || view === 'attrs' || view === 'dealer' || view === 'store' || view === 'dattrs' || view === 'sattrs' || view === 'emp' || view === 'eattrs' || view === 'homecfg' || view === 'perms';
   const currentView = view;
   const pendingAlerts = state.alerts.filter((a) => a.status === 'new' || a.status === 'processing').length;
 
@@ -160,6 +166,7 @@ function Shell() {
           </div>
           <nav className="flex-1 space-y-1 px-2 py-2">
             <NavItem active={view === 'home'} icon={<LayoutDashboard size={17} />} label="首页" onClick={goHome} />
+            {can('datatables') && (
             <div className="pt-1">
               <div className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-800">
                 <Table2 size={17} className="text-gray-400" />
@@ -187,6 +194,8 @@ function Shell() {
                 onClick={() => setView('formtable')}
               />
             </div>
+            )}
+            {can('rules') && (
             <NavItem
               active={currentView === 'rules' || currentView === 'new' || currentView === 'edit'}
               icon={<BellRing size={17} />}
@@ -194,6 +203,8 @@ function Shell() {
               badge={state.rules.length}
               onClick={() => goRules()}
             />
+            )}
+            {can('alerts') && (
             <NavItem
               active={currentView === 'alerts'}
               icon={<Activity size={17} />}
@@ -201,6 +212,8 @@ function Shell() {
               badge={pendingAlerts}
               onClick={() => setView('alerts')}
             />
+            )}
+            {can('org') && (
             <div className="pt-1">
               <div className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-800">
                 <Briefcase size={17} className="text-gray-400" />
@@ -249,6 +262,8 @@ function Shell() {
                 onClick={() => setView('sattrs')}
               />
             </div>
+            )}
+            {can('people') && (
             <div className="pt-1">
               <div className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-800">
                 <Users size={17} className="text-gray-400" />
@@ -269,6 +284,7 @@ function Shell() {
                 onClick={() => setView('attrs')}
               />
             </div>
+            )}
 
             {/* 系统管理 */}
             <div className="pt-1">
@@ -276,6 +292,7 @@ function Shell() {
                 <Settings size={14} className="text-gray-500" />
                 <span className="flex-1 text-xs font-medium text-gray-500">系统管理</span>
               </div>
+              {can('homecfg') && (
               <NavItem
                 active={currentView === 'homecfg'}
                 icon={<LayoutDashboard size={15} />}
@@ -283,6 +300,16 @@ function Shell() {
                 nested
                 onClick={() => setView('homecfg')}
               />
+              )}
+              {can('perms') && (
+              <NavItem
+                active={currentView === 'perms'}
+                icon={<Shield size={15} />}
+                label="权限管理"
+                nested
+                onClick={() => setView('perms')}
+              />
+              )}
             </div>
           </nav>
           <div className="border-t p-3 text-[10px] leading-relaxed text-gray-400">

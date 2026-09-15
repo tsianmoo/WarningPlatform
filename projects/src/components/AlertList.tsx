@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Bell, Eye, Plus, RotateCcw, Send, X } from 'lucide-react';
 import { useStore } from '@/lib/store';
+import { resolvePerm, canOper, filterAlertsByScope } from '@/lib/perm';
 import type { AlertStatus, AlertTask, NotifyMode } from '@/lib/types';
 import { PERSONNEL } from '@/lib/types';
 
@@ -94,7 +95,14 @@ function quickRange(key: string): { start: string; end: string } {
 export function AlertList({ onBack }: { onBack: () => void }) {
   const { state, addAlert, updateAlertStatus } = useStore();
   const PEOPLE = PERSONNEL as unknown as { name: string; dept: string }[];
-  const alerts = useMemo(() => state.alerts ?? [], [state.alerts]);
+  const [meName] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : ''));
+  const me = state.persons.find((p) => p.name === meName) ?? null;
+  const perm = resolvePerm(me, state.config);
+  const canHandle = canOper(perm, 'alerts', 'handle');
+  const alerts = useMemo(
+    () => filterAlertsByScope(state.alerts ?? [], me, perm.dataScope, state.stores ?? []),
+    [state.alerts, me, perm.dataScope, state.stores]
+  );
   const pending = alerts.filter((a) => a.status === 'new' || a.status === 'accepted' || a.status === 'processing').length;
 
   const [creating, setCreating] = useState(false);
@@ -374,7 +382,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 pr-6">
                         <div className="flex items-center gap-1.5 whitespace-nowrap">
-                          {actions.map((x) => (
+                          {canHandle ? actions.map((x) => (
                             <button
                               key={x.label}
                               onClick={x.fn}
@@ -382,7 +390,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                             >
                               {x.label}
                             </button>
-                          ))}
+                          )) : null}
                           {count > 0 ? (
                             <button
                               onClick={() => setOpenId(openId === a.id ? null : a.id)}
