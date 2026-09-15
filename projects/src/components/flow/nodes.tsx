@@ -46,7 +46,6 @@ import {
   type RepeatType,
   type RankNodeData,
   type RankItem,
-  DEPARTMENTS,
 } from '@/lib/types';
 import { useStore } from '@/lib/store';
 import TimeComponent from './TimeComponent';
@@ -2618,6 +2617,7 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
   const employees = state.employees ?? [];
   const persons = state.persons ?? [];
   const orgMember = (orgId: string) => persons.filter((p) => p.orgId === orgId && p.enabled !== false).map((p) => p.name);
+  const deptOrgs = orgs.filter((o) => o.kind === '部门');
   const groupLabel = 'mb-1 text-[10px] text-gray-400';
   return (
     <div className="mt-1.5 rounded-lg border border-amber-200/70 bg-amber-50/50 p-1.5">
@@ -2690,18 +2690,19 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
         </div>
       </div>
       <div className="mb-1.5">
-        <div className={groupLabel}>适用部门</div>
+        <div className={groupLabel}>适用部门（人员管理）</div>
         <div className="flex flex-wrap gap-1">
-          {DEPARTMENTS.map((dt) => (
+          {deptOrgs.length === 0 && <span className="text-[10px] text-gray-400">暂无部门，请先到「人员管理」新增</span>}
+          {deptOrgs.map((o) => (
             <button
-              key={dt}
+              key={o.id}
               type="button"
-              onClick={() => toggleDept(dt)}
+              onClick={() => toggleDept(o.name)}
               className={`rounded px-1.5 py-0.5 text-[10px] transition ${
-                targets.departments.includes(dt) ? 'bg-amber-500 text-white' : 'bg-white text-gray-500 hover:bg-amber-100'
+                targets.departments.includes(o.name) ? 'bg-amber-500 text-white' : 'bg-white text-gray-500 hover:bg-amber-100'
               }`}
             >
-              {dt}
+              {o.name}
             </button>
           ))}
         </div>
