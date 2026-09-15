@@ -43,18 +43,18 @@ export function defaultPagePerms(): Partial<Record<PermModule, PagePerm>> {
     manage: true,
   };
   const out: Partial<Record<PermModule, PagePerm>> = {};
-  for (const m of ALL_MODULES) out[m] = { view: true, all: { ...all } };
+  for (const m of ALL_MODULES) out[m] = { view: true, ops: { ...all } };
   return out;
 }
 
 function pageFromModule(ma: ModuleActionPerm | undefined): PagePerm {
-  const all: Partial<Record<PermOp, boolean>> = {};
+  const ops: Partial<Record<PermOp, boolean>> = {};
   if (ma) {
     (['create', 'edit', 'delete', 'run', 'handle', 'upload', 'assign'] as (keyof ModuleActionPerm)[]).forEach((k) => {
-      if (k !== 'view' && ma[k] !== undefined && ma[k] !== null) all[k] = !!ma[k];
+      if (k !== 'view' && ma[k] !== undefined && ma[k] !== null) ops[k as PermOp] = !!ma[k];
     });
   }
-  return { view: ma?.view ?? true, all };
+  return { view: ma?.view ?? true, ops };
 }
 
 /** 旧数据（modules）→ 新结构（pages）迁移 */
@@ -119,17 +119,12 @@ export function canView(perm: ResolvedPerm, mod: PermModule): boolean {
 
 /**
  * 判断页面操作权限。
- * @param op 操作码（PermOp）
- * @param resourceId 资源 id（数据表/规则/经销商/店仓/人员）。传了则取该资源细粒度；否则取页面级默认(all)
+ * @param op 操作码（PermOp）；页面级，作用于该页所有资源（整页统一，不细分到单个表/经销商）
  */
-export function canOper(perm: ResolvedPerm, mod: PermModule, op: PermOp, resourceId?: string): boolean {
+export function canOper(perm: ResolvedPerm, mod: PermModule, op: PermOp): boolean {
   const p = perm.pages[mod];
   if (!p || !p.view) return false;
-  if (resourceId && p.resources?.[resourceId]) {
-    const r = p.resources[resourceId][op];
-    if (r !== undefined) return !!r;
-  }
-  return p.all?.[op] ?? false;
+  return p.ops?.[op] ?? false;
 }
 
 /** 由数据范围 + 用户归属推导允许可见的店仓 id 集合；all 返回 null（代表不过滤） */

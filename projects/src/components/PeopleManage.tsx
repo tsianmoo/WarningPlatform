@@ -13,7 +13,7 @@ export function PeopleManage() {
   const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
   const me = state.persons.find((p) => p.name === meName) ?? null;
   const perm = resolvePerm(me, state.config);
-  const can = (op: Parameters<typeof canOper>[2], rid?: string) => canOper(perm, 'people', op as never, rid);
+  const can = (op: Parameters<typeof canOper>[2], _rid?: string) => canOper(perm, 'people', op);
   const [activeOrg, setActiveOrg] = useState<string | null>(null);
   const [editing, setEditing] = useState<Person | null>(null);
   const [showEditor, setShowEditor] = useState(false);

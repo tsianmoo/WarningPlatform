@@ -39,7 +39,7 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
   const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
   const me = state.persons.find((p) => p.name === meName) ?? null;
   const perm = resolvePerm(me, state.config);
-  const can = (op: Parameters<typeof canOper>[2], rid?: string) => canOper(perm, 'datatables', op as never, rid);
+  const can = (op: Parameters<typeof canOper>[2], _rid?: string) => canOper(perm, 'datatables', op);
   const [dragging, setDragging] = useState(false);
   const [openDelete, setOpenDelete] = useState<{ id: string; refs: AlertRule[] } | null>(null);
 

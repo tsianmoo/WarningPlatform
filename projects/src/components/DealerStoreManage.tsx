@@ -24,7 +24,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
   const me = state.persons.find((p) => p.name === meName) ?? null;
   const perm = resolvePerm(me, state.config);
   const mod: 'dealer' | 'store' = kind === 'dealer' ? 'dealer' : 'store';
-  const can = (op: Parameters<typeof canOper>[2], rid?: string) => canOper(perm, mod, op as never, rid);
+  const can = (op: Parameters<typeof canOper>[2], _rid?: string) => canOper(perm, mod, op);
   const { dealers, stores, hrAttributes } = state;
 
   const list: (Dealer | Store)[] = (kind === 'dealer' ? dealers : stores).slice().sort((a, b) => a.sort - b.sort);

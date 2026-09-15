@@ -1084,13 +1084,11 @@ export type PermOp =
 /**
  * 页面级功能权限：
  * - view：页面入口可见（决定侧边栏/能否进入该页面）
- * - all：页面级操作（如"新增"、预警"处理/删除"），也作为未在 resources 中单独勾选资源的默认操作
- * - resources：资源级操作，key=资源 id（数据表/规则/经销商/店仓/人员），value=该资源可执行操作
+ * - ops：该页面下的操作（新增/编辑/删除/上传等），作用于整页资源（不细分到单个表/经销商/规则）
  */
 export interface PagePerm {
   view: boolean;
-  all?: Partial<Record<PermOp, boolean>>;
-  resources?: Record<string, Partial<Record<PermOp, boolean>>>;
+  ops?: Partial<Record<PermOp, boolean>>;
 }
 
 /** 旧版模块级操作权限（兼容迁移用；新数据一律用 PagePerm） */

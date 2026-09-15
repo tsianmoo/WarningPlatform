@@ -22,13 +22,9 @@ interface PageSpec {
   m: PermModule;
   label: string;
   group: string;
-  /** 页面级操作（无资源细分时也可承载处理/维护等粗粒度操作） */
+  /** 页面级操作（可承载新增/处理/维护等粗粒度操作；整页统一，不细分到单个资源实例） */
   coarseOps?: PermOp[];
-  /** 资源级操作 */
   resOps?: PermOp[];
-  /** 该页资源的来源 */
-  resSource?: 'tables' | 'rules' | 'dealers' | 'stores' | 'persons';
-  resLabel?: string;
 }
 
 const PAGE_SPECS: PageSpec[] = [
@@ -36,30 +32,25 @@ const PAGE_SPECS: PageSpec[] = [
   {
     m: 'datatables', label: '数据表管理', group: '业务管理',
     coarseOps: ['create', 'download'], resOps: ['edit', 'delete', 'upload'],
-    resSource: 'tables', resLabel: '数据表',
   },
   {
     m: 'rules', label: '预警规则', group: '业务管理',
     coarseOps: ['create'], resOps: ['edit', 'delete', 'run'],
-    resSource: 'rules', resLabel: '规则',
   },
   { m: 'alerts', label: '预警列表', group: '业务管理', coarseOps: ['handle', 'delete'] },
   {
     m: 'dealer', label: '经销商管理', group: '组织架构',
     coarseOps: ['create'], resOps: ['edit', 'delete'],
-    resSource: 'dealers', resLabel: '经销商',
   },
   {
     m: 'store', label: '店仓管理', group: '组织架构',
     coarseOps: ['create'], resOps: ['edit', 'delete'],
-    resSource: 'stores', resLabel: '店仓',
   },
   { m: 'dattrs', label: '经销商属性', group: '组织架构', coarseOps: ['manage'] },
   { m: 'sattrs', label: '店仓属性', group: '组织架构', coarseOps: ['manage'] },
   {
     m: 'people', label: '用户管理', group: '人事管理',
     coarseOps: ['create'], resOps: ['edit', 'delete', 'assign', 'resetPwd'],
-    resSource: 'persons', resLabel: '用户',
   },
   { m: 'attrs', label: '属性管理', group: '人事管理', coarseOps: ['manage'] },
   { m: 'homecfg', label: '首页管理', group: '系统管理', coarseOps: ['edit'] },
@@ -103,8 +94,6 @@ export default function PermissionManage() {
   };
 
   const pageOf = (m: PermModule): PagePerm => draft?.pages[m] ?? emptyPage();
-  const resOf = (m: PermModule, id: string): { [op in PermOp]?: boolean } =>
-    draft?.pages[m]?.resources?.[id] ?? {};
 
   const setPage = (m: PermModule, patch: Partial<PagePerm>) => {
     if (!draft) return;
@@ -115,27 +104,12 @@ export default function PermissionManage() {
 
   const toggleView = (m: PermModule, v: boolean) => setPage(m, { view: v });
 
-  const toggleAll = (m: PermModule, op: PermOp, v: boolean) => {
+  const toggleOp = (m: PermModule, op: PermOp, v: boolean) => {
     if (!draft) return;
     const cur = pageOf(m);
-    const all = { ...(cur.all ?? {}), [op]: v };
-    setPage(m, { all });
+    const ops = { ...(cur.ops ?? {}), [op]: v };
+    setPage(m, { ops });
   };
-
-  const toggleRes = (m: PermModule, id: string, op: PermOp, v: boolean) => {
-    if (!draft) return;
-    const cur = pageOf(m);
-    const res = { ...(cur.resources ?? {}), [id]: { ...(cur.resources?.[id] ?? {}), [op]: v } };
-    setPage(m, { resources: res });
-  };
-
-  const resList = (s: PageSpec) =>
-    s.resSource === 'tables' ? state.tables
-      : s.resSource === 'rules' ? state.rules
-      : s.resSource === 'dealers' ? state.dealers
-      : s.resSource === 'stores' ? state.stores
-      : s.resSource === 'persons' ? state.persons
-      : [];
 
   const setScopeType = (type: DataScope['type']) => {
     if (!draft) return;
@@ -261,75 +235,27 @@ export default function PermissionManage() {
                   <div className="overflow-hidden rounded-lg border border-gray-200">
                     {specs.map((s, idx) => {
                       const view = pageOf(s.m).view;
-                      const showRes = !!s.resSource && s.resOps!.length > 0;
-                      const res = showRes ? resList(s) : [];
-                      const resOpsOnly = s.resOps ?? [];
-                      const coarseOnly = s.coarseOps ?? [];
+                      const ops = [...(s.coarseOps ?? []), ...(s.resOps ?? [])];
                       return (
                         <div key={s.m} className={`${idx > 0 ? 'border-t border-gray-100' : ''}`}>
-                          {/* 页面头部 */}
-                          <div className="flex items-center gap-4 bg-gray-50/60 px-3 py-2">
+                          {/* 页面头部：页面可见 + 页面级操作（作用于整页资源，不细分到单个实例） */}
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 bg-gray-50/60 px-3 py-2">
                             <label className="flex w-40 shrink-0 items-center gap-1.5 text-[13px] font-semibold text-gray-700">
                               <input type="checkbox" checked={view} onChange={(e) => toggleView(s.m, e.target.checked)} className="accent-blue-600" />
                               <Eye className="h-3.5 w-3.5 text-gray-400" />
                               {s.label}
                             </label>
                             <span className="text-[11px] text-gray-400">页面可见</span>
-                            {/* 页面级操作（如新增/处理/维护） */}
-                            {coarseOnly.length > 0 && (
-                              <div className="flex flex-wrap items-center gap-3">
-                                {coarseOnly.map((op) => (
-                                  <label key={op} className={`flex items-center gap-1 text-xs ${view ? 'text-gray-600' : 'text-gray-300'}`}>
-                                    <input type="checkbox" disabled={!view} checked={!!pageOf(s.m).all?.[op]} onChange={(e) => toggleAll(s.m, op, e.target.checked)} className="accent-blue-600 disabled:opacity-30" />
-                                    {OP_LABELS[op]}
-                                  </label>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          {showRes && (
-                            <div className="px-3 py-1">
-                              {/* 全部资源批量行 */}
-                              <div className="flex items-center gap-3 border-b border-dashed border-gray-100 py-1.5 text-xs">
-                                <span className="w-40 shrink-0 truncate text-gray-500">全部{s.resLabel}（默认）</span>
-                                <div className="flex gap-3">
-                                  {resOpsOnly.map((op) => (
-                                    <label key={op} className={`flex items-center gap-1 ${view ? 'text-gray-600' : 'text-gray-300'}`}>
-                                      <input type="checkbox" disabled={!view} checked={!!pageOf(s.m).all?.[op]} onChange={(e) => toggleAll(s.m, op, e.target.checked)} className="accent-blue-600 disabled:opacity-30" />
-                                      {OP_LABELS[op]}
-                                    </label>
-                                  ))}
-                                </div>
-                              </div>
-                              {/* 逐个资源细调 */}
-                              {res.length === 0 ? (
-                                <div className="py-1.5 text-[11px] text-gray-400">暂无{s.resLabel}</div>
-                              ) : (
-                                res.map((r) => {
-                                  const rid = (r as { id: string }).id;
-                                  const rname = (r as { name?: string }).name || rid;
-                                  return (
-                                    <div key={rid} className="flex items-center gap-3 border-b border-gray-50 py-1.5 text-xs">
-                                      <span className="w-40 shrink-0 truncate text-gray-700" title={rname}>{rname}</span>
-                                      <div className="flex gap-3">
-                                        {resOpsOnly.map((op) => {
-                                          const val = resOf(s.m, rid)[op] ?? pageOf(s.m).all?.[op] ?? false;
-                                          return (
-                                            <label key={op} className={`flex items-center gap-1 ${view ? 'text-gray-600' : 'text-gray-300'}`}>
-                                              <input type="checkbox" disabled={!view} checked={!!val} onChange={(e) => toggleRes(s.m, rid, op, e.target.checked)} className="accent-blue-600 disabled:opacity-30" />
-                                              {OP_LABELS[op]}
-                                            </label>
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  );
-                                })
-                              )}
+                            <div className="flex flex-wrap items-center gap-3">
+                              {ops.map((op) => (
+                                <label key={op} className={`flex items-center gap-1 text-xs ${view ? 'text-gray-600' : 'text-gray-300'}`}>
+                                  <input type="checkbox" disabled={!view} checked={!!pageOf(s.m).ops?.[op]} onChange={(e) => toggleOp(s.m, op, e.target.checked)} className="accent-blue-600 disabled:opacity-30" />
+                                  {OP_LABELS[op]}
+                                </label>
+                              ))}
                             </div>
-                          )}
                           </div>
+                        </div>
                       );
                     })}
                   </div>
@@ -402,7 +328,7 @@ export default function PermissionManage() {
 
               <div className="mt-3 rounded-lg bg-blue-50 p-3 text-xs text-blue-700">
                 说明：
-                1) 功能权限按「页面 → 数据/规则/经销商/店仓/用户 → 操作」逐项勾选：页面可见决定能否进入该页；「全部XX（默认）」作为该页资源的默认权限，可再对单个资源单独收紧或放开。
+                1) 功能权限按「页面 → 操作」勾选：页面可见决定能否进入该页，具体操作（新增/编辑/删除/上传等）作用于该页面下的全部资源（经销商、店仓、规则、数据表等整页统一，不细分到单个实例）。
                 2) 数据权限控制预警可见范围，按「岗位（Person.post）」配置并作用于该岗位所有用户；未配置的岗位默认可见全部页面、预警按所属自动推断（经销商→其下级、门店→门店及以下、其余→仅本人）。
               </div>
             </div>

@@ -38,7 +38,7 @@ export function RuleList({
   const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
   const me = state.persons.find((p) => p.name === meName) ?? null;
   const perm = resolvePerm(me, state.config);
-  const can = (op: Parameters<typeof canOper>[2], rid?: string) => canOper(perm, 'rules', op as never, rid);
+  const can = (op: Parameters<typeof canOper>[2], _rid?: string) => canOper(perm, 'rules', op);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string>('all');
   const [confirm, setConfirm] = useState<{ kind: 'delete' | 'copy'; rule: AlertRule } | null>(null);
