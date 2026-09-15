@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Bell, ClipboardList, Eye, History, MessageSquare, Plus, RotateCcw, Send, X } from 'lucide-react';
 import { useStore } from '@/lib/store';
-import { resolvePerm, canOper, canView, filterAlertsByScope } from '@/lib/perm';
+import { resolvePerm, canView, filterAlertsByScope } from '@/lib/perm';
 import type { AlertStatus, AlertTask, NotifyMode } from '@/lib/types';
 import { PERSONNEL } from '@/lib/types';
 
@@ -115,7 +115,6 @@ export function AlertList({ onBack }: { onBack: () => void }) {
   const [meName] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : ''));
   const me = state.persons.find((p) => p.name === meName) ?? null;
   const perm = resolvePerm(me, state.config);
-  const canHandle = canOper(perm, 'alerts', 'handle');
   const alerts = useMemo(
     () => filterAlertsByScope(state.alerts ?? [], me, perm.dataScope, state.stores ?? []),
     [state.alerts, me, perm.dataScope, state.stores]
@@ -353,7 +352,6 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                 const st = STATUS_META[a.status];
                 const count = a.preview?.storeMessages?.length ?? a.preview?.rows?.length ?? 0;
                 const stores = a.preview?.storeMessages ?? [];
-                const actions = buildActions(a, updateAlertStatus, setHandoffId, openConfirm, meName);
                 const dur = a.startedAt ? formatDur(a.startedAt, a.handledAt ?? now) : null;
                 return (
                   <Fragment key={a.id}>
@@ -394,19 +392,10 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 pr-6">
                         <div className="flex items-center gap-1.5 whitespace-nowrap">
-                          {canHandle ? actions.map((x) => (
-                            <button
-                              key={x.label}
-                              onClick={x.fn}
-                              className={`whitespace-nowrap rounded px-2 py-1 text-[11px] font-medium transition-colors ${x.cls}`}
-                            >
-                              {x.label}
-                            </button>
-                          )) : null}
                           {count > 0 ? (
                             <button
                               onClick={() => setOpenId(a.id)}
-                              className="inline-flex items-center gap-1 whitespace-nowrap rounded border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-500 transition-colors hover:bg-gray-50"
+                              className="inline-flex items-center gap-1 whitespace-nowrap rounded border border-gray-200 bg-white px-3 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-50"
                             >
                               <Eye size={12} /> 查看
                             </button>
