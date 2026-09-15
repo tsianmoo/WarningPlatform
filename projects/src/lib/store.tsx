@@ -9,6 +9,7 @@ import type {
   HrAttribute,
   Dealer,
   Store,
+  Employee,
   Organization,
   Person,
   RuleGroup,
@@ -160,10 +161,10 @@ async function fetchRemoteState(): Promise<Partial<AppState> | null> {
   try {
     const res = await fetch(STATE_API, { cache: 'no-store' });
     if (!res.ok) return null;
-    const json = (await res.json()) as { tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[]; orgs?: Organization[]; persons?: Person[]; hrAttributes?: HrAttribute[]; dealers?: Dealer[]; stores?: Store[]; config?: HomeConfig; error?: string };
+    const json = (await res.json()) as { tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[]; orgs?: Organization[]; persons?: Person[]; employees?: Employee[]; hrAttributes?: HrAttribute[]; dealers?: Dealer[]; stores?: Store[]; config?: HomeConfig; error?: string };
     if (json.error) return null;
     remoteAvailable = true;
-    return { tables: json.tables ?? [], rules: json.rules ?? [], alerts: json.alerts ?? [], ruleGroups: json.groups ?? [], orgs: json.orgs ?? [], persons: json.persons ?? [], hrAttributes: json.hrAttributes ?? [], dealers: json.dealers ?? [], stores: json.stores ?? [], config: normalizeHomeConfig(json.config) };
+    return { tables: json.tables ?? [], rules: json.rules ?? [], alerts: json.alerts ?? [], ruleGroups: json.groups ?? [], orgs: json.orgs ?? [], persons: json.persons ?? [], employees: json.employees ?? [], hrAttributes: json.hrAttributes ?? [], dealers: json.dealers ?? [], stores: json.stores ?? [], config: normalizeHomeConfig(json.config) };
   } catch {
     return null;
   }
@@ -200,7 +201,7 @@ async function pushRemoteState(state: AppState) {
     await fetch(STATE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: state.config }),
+      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: state.config }),
     });
   } catch {
     /* 网络异常时忽略，localStorage 仍有兜底 */
@@ -221,6 +222,8 @@ export interface AppState {
   orgs: Organization[];
   /** 人事架构（挂载在组织下的人员） */
   persons: Person[];
+  employees: Employee[];
+  /** 员工（组织架构下，可登录系统） */
   /** 人事属性字典（部门管理/职位管理/岗位管理等，每属性含多条目） */
   hrAttributes: HrAttribute[];
   /** 经销商字典 */
@@ -267,6 +270,11 @@ type StoreApi = {
   addPerson: (p: Omit<Person, 'id' | 'createdAt'>) => Person;
   updatePerson: (p: Person) => void;
   removePerson: (id: string) => void;
+  // employees
+  addEmployee: (p: Omit<Employee, 'id' | 'createdAt'>) => Employee;
+  updateEmployee: (p: Employee) => void;
+  removeEmployee: (id: string) => void;
+  replEmployees: (list: (Omit<Employee, 'id' | 'createdAt'>)[]) => void;
   // hr attributes
   addHrAttribute: (a: Omit<HrAttribute, 'id' | 'createdAt'>) => HrAttribute;
   updateHrAttribute: (a: HrAttribute) => void;
@@ -302,7 +310,7 @@ function migrateState(raw: AppState | null): AppState {
           : [];
     return { ...r, tableIds };
   });
-  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [], hrAttributes: (Array.isArray(raw.hrAttributes) ? raw.hrAttributes : []).filter((a) => (a.category ?? 'person') !== ('org' as never)), dealers: Array.isArray(raw.dealers) ? raw.dealers : [], stores: Array.isArray(raw.stores) ? raw.stores : [], config: normalizeHomeConfig(raw.config) };
+  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [], hrAttributes: (Array.isArray(raw.hrAttributes) ? raw.hrAttributes : []).filter((a) => (a.category ?? 'person') !== ('org' as never)), dealers: Array.isArray(raw.dealers) ? raw.dealers : [], stores: Array.isArray(raw.stores) ? raw.stores : [], employees: Array.isArray(raw.employees) ? raw.employees : [], config: normalizeHomeConfig(raw.config) };
 }
 
 function loadInitial(): AppState {
@@ -511,6 +519,21 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
     }
     case 'REPLACE_ORGS':
       return { ...state, orgs: Array.isArray(action.payload) ? (action.payload as Organization[]) : state.orgs };
+    // 员工管理
+    case 'ADD_EMPLOYEE': {
+      if (state.employees.some((x) => x.id === (action.payload as Employee).id)) return state;
+      return { ...state, employees: [...state.employees, action.payload as Employee] };
+    }
+    case 'UPDATE_EMPLOYEE': {
+      const { id, patch } = action.payload as { id: string; patch: Employee };
+      return { ...state, employees: state.employees.map((x) => (x.id === id ? { ...x, ...patch, id } : x)) };
+    }
+    case 'REMOVE_EMPLOYEE': {
+      const id = action.payload as string;
+      return { ...state, employees: state.employees.filter((e) => e.id !== id) };
+    }
+    case 'REPLACE_EMPLOYEES':
+      return { ...state, employees: Array.isArray(action.payload) ? (action.payload as Employee[]) : state.employees };
     // 人事架构
     case 'ADD_PERSON': {
       const p = action.payload as Person;
@@ -532,6 +555,20 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
     }
     case 'REPLACE_PERSONS':
       return { ...state, persons: Array.isArray(action.payload) ? (action.payload as Person[]) : state.persons };
+    // 员工管理
+    case 'ADD_EMPLOYEE': {
+      const e = action.payload as Employee;
+      if (state.employees.some((x) => x.id === e.id)) return state;
+      return { ...state, employees: [...state.employees, e] };
+    }
+    case 'UPDATE_EMPLOYEE': {
+      const { id, patch } = action.payload as { id: string; patch: Partial<Employee> };
+      return { ...state, employees: state.employees.map((e) => (e.id === id ? { ...e, ...patch } : e)) };
+    }
+    case 'REMOVE_EMPLOYEE':
+      return { ...state, employees: state.employees.filter((e) => e.id !== (action.payload as string)) };
+    case 'REPLACE_EMPLOYEES':
+      return { ...state, employees: Array.isArray(action.payload) ? (action.payload as Employee[]) : state.employees };
     // 人事属性字典
     case 'ADD_HRATTR': {
       const a = action.payload as HrAttribute;
@@ -580,6 +617,22 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
     }
     case 'REPLACE_STORES':
       return { ...state, stores: Array.isArray(action.payload) ? (action.payload as Store[]) : state.stores };
+    // 员工
+    case 'ADD_EMPLOYEE': {
+      const e = action.payload as Employee;
+      if (state.employees.some((x) => x.id === e.id)) return state;
+      return { ...state, employees: [...state.employees, e] };
+    }
+    case 'UPDATE_EMPLOYEE': {
+      const { id, patch } = action.payload as { id: string; patch: Partial<Employee> };
+      return { ...state, employees: state.employees.map((e) => (e.id === id ? { ...e, ...patch } : e)) };
+    }
+    case 'REMOVE_EMPLOYEE': {
+      const id = action.payload as string;
+      return { ...state, employees: state.employees.filter((e) => e.id !== id) };
+    }
+    case 'REPLACE_EMPLOYEES':
+      return { ...state, employees: Array.isArray(action.payload) ? (action.payload as Employee[]) : state.employees };
     case 'UPDATE_CONFIG': {
       const patch = action.payload as HomeConfig | ((c: HomeConfig) => HomeConfig);
       return { ...state, config: typeof patch === 'function' ? patch(state.config) : { ...state.config, ...patch } };
@@ -603,10 +656,10 @@ function loadInitialState(): AppState {
     previewRows: sample.previewRows,
     rows: sample.rows,
   };
-  return { tables: [t], rules: [], activeTableId: t.id, builderTableIds: [t.id], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [], config: DEFAULT_HOME_CONFIG };
+  return { tables: [t], rules: [], activeTableId: t.id, builderTableIds: [t.id], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [], employees: [], config: DEFAULT_HOME_CONFIG };
 }
 
-const EMPTY_STATE: AppState = { tables: [], rules: [], activeTableId: '', builderTableIds: [], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [], config: DEFAULT_HOME_CONFIG };
+const EMPTY_STATE: AppState = { tables: [], rules: [], activeTableId: '', builderTableIds: [], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [], employees: [], config: DEFAULT_HOME_CONFIG };
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   // 初始统一为空，避免 SSR 与客户端首帧不一致导致 Hydration 报错；
@@ -642,6 +695,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               hrAttributes: state.hrAttributes ?? [],
               dealers: state.dealers ?? [],
               stores: state.stores ?? [],
+              employees: state.employees ?? [],
               activeTableId: tables[0]?.id ?? '',
               builderTableIds: tables.map((t) => t.id),
             });
@@ -658,6 +712,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           hrAttributes: (remote.hrAttributes ?? []).filter((a) => (a.category ?? 'person') !== ('org' as never)),
           dealers: remote.dealers ?? [],
           stores: remote.stores ?? [],
+          employees: remote.employees ?? [],
           config: normalizeHomeConfig(remote.config),
           activeTableId: tables[0]?.id ?? '',
           builderTableIds: tables.map((t) => t.id),
@@ -744,6 +799,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       },
       updateOrg: (o) => dispatch('UPDATE_ORG', { id: o.id, patch: o }),
       removeOrg: (id) => dispatch('REMOVE_ORG', id),
+      replEmployees: (list) => dispatch('REPLACE_EMPLOYEES', list),
+      addEmployee: (e) => {
+        const emp: Employee = { ...e, id: uid('emp'), createdAt: Date.now() };
+        dispatch('ADD_EMPLOYEE', emp);
+        return emp;
+      },
+      updateEmployee: (e) => dispatch('UPDATE_EMPLOYEE', { id: e.id, patch: e }),
+      removeEmployee: (id) => dispatch('REMOVE_EMPLOYEE', id),
       addPerson: (p) => {
         const person: Person = { ...p, id: uid('person'), createdAt: Date.now() };
         dispatch('ADD_PERSON', person);

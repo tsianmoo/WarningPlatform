@@ -8,7 +8,7 @@ import { DEFAULT_HOME_CONFIG, type HomeConfig } from '@/lib/types';
 export default function LoginPage() {
   const router = useRouter();
   const [cfg, setCfg] = useState<HomeConfig>(DEFAULT_HOME_CONFIG);
-  const [persons, setPersons] = useState<{ username?: string; password?: string; name: string }[]>([]);
+  const [users, setUsers] = useState<{ username?: string; password?: string; name: string; type: string; id?: string }[]>([]);
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
@@ -56,7 +56,15 @@ export default function LoginPage() {
       .then((r) => r.json())
       .then((j) => {
         if (j?.config) setCfg({ ...DEFAULT_HOME_CONFIG, ...j.config });
-        if (Array.isArray(j?.persons)) setPersons(j.persons);
+        type Row = { id?: string; username?: string; password?: string; name?: string; code?: string };
+        const toAcct = (r: Row, type: string) => ({ username: (r.username ?? r.code) || '', password: r.password || '', name: r.name || r.code || r.username || '', type, id: r.id || '' });
+        const all = [
+          ...(Array.isArray(j?.persons) ? (j.persons as Row[]).map((p) => toAcct(p, 'person')) : []),
+          ...(Array.isArray(j?.dealers) ? (j.dealers as Row[]).map((d) => toAcct(d, 'dealer')) : []),
+          ...(Array.isArray(j?.stores) ? (j.stores as Row[]).map((s) => toAcct(s, 'store')) : []),
+          ...(Array.isArray(j?.employees) ? (j.employees as Row[]).map((e) => toAcct(e, 'employee')) : []),
+        ];
+        setUsers(all);
       })
       .catch(() => {});
     const c = genCaptcha();
@@ -77,7 +85,7 @@ export default function LoginPage() {
       setCode('');
       return;
     }
-    const user = persons.find((p) => p.username === account.trim() && p.password === password);
+    const user = users.find((p) => p.username === account.trim() && p.password === password);
     const isDefaultAdmin = account.trim() === 'admin' && password === '123456';
     if (!user && !isDefaultAdmin) {
       setError('账号或密码错误');
@@ -86,6 +94,7 @@ export default function LoginPage() {
     setLoading(true);
     const who = user ? user.name : '管理员';
     localStorage.setItem('dn_auth', who);
+    if (user) { localStorage.setItem('dn_auth_type', user.type); localStorage.setItem('dn_auth_id', user.id || ''); }
     setTimeout(() => router.replace('/'), 350);
   };
 

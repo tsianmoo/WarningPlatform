@@ -1107,6 +1107,29 @@ export interface Store {
   attrs?: DictAttrs;
 }
 
+/** 员工档案条目 */
+export interface Employee {
+  id: string;
+  /** 员工编号 */
+  code?: string;
+  /** 员工姓名 */
+  name: string;
+  /** 所属经销商 id */
+  dealerId?: string;
+  /** 所属店仓 id */
+  storeId?: string;
+  /** 岗位 */
+  post?: string;
+  /** 是否在职 */
+  onDuty?: boolean;
+  /** 是否可用 */
+  enabled?: boolean;
+  /** 初始密码（登录用） */
+  password?: string;
+  sort: number;
+  createdAt: number;
+}
+
 export type AlignX = 'left' | 'center' | 'right';
 export type AlignY = 'top' | 'middle' | 'bottom';
 

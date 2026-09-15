@@ -1,5 +1,5 @@
 import { getSupabaseClient } from '@/storage/database/supabase-client';
-import type { AlertRule, AlertStatus, AlertTask, AttrCategory, DataTable, Dealer, HomeConfig, HrAttribute, Organization, Person, RuleGroup, Store } from '@/lib/types';
+import type { AlertRule, AlertStatus, AlertTask, AttrCategory, DataTable, Dealer, Employee, HomeConfig, HrAttribute, Organization, Person, RuleGroup, Store } from '@/lib/types';
 
 interface TableRow {
   id: string;
@@ -442,6 +442,9 @@ interface DictRow {
   enabled?: boolean | null;
   attrs?: Record<string, string> | null;
   dealer_id?: string | null;
+  store_id?: string | null;
+  post?: string | null;
+  on_duty?: boolean | null;
   brand?: string | null;
   company?: string | null;
   department?: string | null;
@@ -569,6 +572,58 @@ export async function syncStores(stores: Store[]): Promise<void> {
   if (staleIds.length > 0) {
     const { error: delErr } = await client.from('stores').delete().in('id', staleIds);
     if (delErr) throw new Error(`删除店仓失败: ${delErr.message}`);
+  }
+}
+
+function toEmployee(r: DictRow): Employee {
+  return {
+    id: r.id,
+    code: r.code ?? undefined,
+    name: r.name ?? '',
+    dealerId: r.dealer_id ?? undefined,
+    storeId: r.store_id ?? undefined,
+    post: r.post ?? undefined,
+    onDuty: r.on_duty ?? true,
+    enabled: r.enabled ?? true,
+    password: r.password ?? undefined,
+    sort: r.sort ?? 0,
+    createdAt: r.created_at ?? 0,
+  };
+}
+
+export async function getAllEmployees(): Promise<Employee[]> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from('employees').select('*').order('sort', { ascending: true });
+  if (error) throw new Error(`读取员工失败: ${error.message}`);
+  return ((data as DictRow[] | null) ?? []).map(toEmployee);
+}
+
+export async function syncEmployees(employees: Employee[]): Promise<void> {
+  const client = getSupabaseClient();
+  const rows = employees.map((e) => ({
+    id: e.id,
+    code: e.code ?? null,
+    name: e.name ?? '',
+    dealer_id: e.dealerId ?? null,
+    store_id: e.storeId ?? null,
+    post: e.post ?? null,
+    on_duty: e.onDuty ?? true,
+    enabled: e.enabled ?? true,
+    password: e.password ?? null,
+    sort: e.sort ?? 0,
+    created_at: e.createdAt ?? 0,
+  }));
+  if (rows.length > 0) {
+    const { error } = await client.from('employees').upsert(rows, { onConflict: 'id' });
+    if (error) throw new Error(`保存员工失败: ${error.message}`);
+  }
+  const { data: existing, error: selErr } = await client.from('employees').select('id');
+  if (selErr) throw new Error(`读取员工ID失败: ${selErr.message}`);
+  const keep = new Set(employees.map((e) => e.id));
+  const staleIds = ((existing as { id: string }[] | null) ?? []).map((r) => r.id).filter((id) => !keep.has(id));
+  if (staleIds.length > 0) {
+    const { error: delErr } = await client.from('employees').delete().in('id', staleIds);
+    if (delErr) throw new Error(`删除员工失败: ${delErr.message}`);
   }
 }
 
