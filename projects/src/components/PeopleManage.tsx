@@ -172,8 +172,32 @@ export function PeopleManage() {
             <FilterInput label="姓名" value={fName} onChange={setFName} placeholder="搜索姓名" />
             <FilterInput label="账号" value={fUsername} onChange={setFUsername} placeholder="搜索账号" />
             <FilterInput label="电话" value={fPhone} onChange={setFPhone} placeholder="搜索电话" />
-            <FilterInput label="职位" value={fTitle} onChange={setFTitle} placeholder="搜索职位" />
-            <FilterInput label="岗位" value={fPost} onChange={setFPost} placeholder="搜索岗位" />
+            <label className="flex items-center gap-1.5">
+              <span className="text-[11px] text-gray-400">职位</span>
+              <select
+                value={fTitle}
+                onChange={(e) => setFTitle(e.target.value)}
+                className="h-8 rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none focus:border-gray-300"
+              >
+                <option value="">全部</option>
+                {jobLabels.map((it) => (
+                  <option key={typeof it === 'string' ? it : it.id} value={typeof it === 'string' ? it : it.name}>{typeof it === 'string' ? it : it.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5">
+              <span className="text-[11px] text-gray-400">岗位</span>
+              <select
+                value={fPost}
+                onChange={(e) => setFPost(e.target.value)}
+                className="h-8 rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none focus:border-gray-300"
+              >
+                <option value="">全部</option>
+                {postLabels.map((it) => (
+                  <option key={typeof it === 'string' ? it : it.id} value={typeof it === 'string' ? it : it.name}>{typeof it === 'string' ? it : it.name}</option>
+                ))}
+              </select>
+            </label>
             <label className="flex items-center gap-1.5">
               <span className="text-[11px] text-gray-400">管理范围</span>
               <select
