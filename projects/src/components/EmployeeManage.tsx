@@ -15,11 +15,12 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
   const storeMap = useMemo(() => new Map(stores.map((s) => [s.id, s.name])), [stores]);
 
   const [editing, setEditing] = useState<Employee | null>(null);
+  const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ code: '', name: '', dealerId: '', storeId: '', post: '', onDuty: true, enabled: true, password: '' });
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const openNew = () => { setEditing(null); setForm({ code: '', name: '', dealerId: '', storeId: '', post: '', onDuty: true, enabled: true, password: '' }); };
-  const openEdit = (e: Employee) => { setEditing(e); setForm({ code: e.code ?? '', name: e.name, dealerId: e.dealerId ?? '', storeId: e.storeId ?? '', post: e.post ?? '', onDuty: e.onDuty !== false, enabled: e.enabled !== false, password: e.password ?? '' }); };
+  const openNew = () => { setEditing(null); setForm({ code: '', name: '', dealerId: '', storeId: '', post: '', onDuty: true, enabled: true, password: '' }); setOpen(true); };
+  const openEdit = (e: Employee) => { setEditing(e); setForm({ code: e.code ?? '', name: e.name, dealerId: e.dealerId ?? '', storeId: e.storeId ?? '', post: e.post ?? '', onDuty: e.onDuty !== false, enabled: e.enabled !== false, password: e.password ?? '' }); setOpen(true); };
 
   const save = () => {
     const c = form.code.trim();
@@ -32,6 +33,7 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
     if (editing) updateEmployee({ ...data, sort, id: editing.id } as Employee);
     else addEmployee({ ...data, sort } as Omit<Employee, 'id' | 'createdAt'>);
     setEditing(null);
+    setOpen(false);
   };
 
   const del = (e: Employee) => { if (confirm(`确认删除员工「${e.name}」？`)) removeEmployee(e.id); };
@@ -132,8 +134,8 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
         </table>
       </div>
 
-      {(editing !== null || form.name !== '' || form.code !== '') && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setEditing(null)}>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setOpen(false)}>
           <div className="w-[420px] rounded-lg bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-3 text-base font-semibold">{editing ? '编辑员工' : '新增员工'}</h3>
             <div className="grid grid-cols-2 gap-3">
@@ -149,7 +151,7 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
               </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => setEditing(null)} className="rounded border border-gray-300 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100">取消</button>
+              <button onClick={() => setOpen(false)} className="rounded border border-gray-300 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100">取消</button>
               <button onClick={save} className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700">保存</button>
             </div>
           </div>
