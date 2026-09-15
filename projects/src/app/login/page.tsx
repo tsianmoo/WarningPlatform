@@ -15,7 +15,9 @@ export default function LoginPage() {
   const [captchaText, setCaptchaText] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pick, setPick] = useState<(typeof users)[number][] | null>(null);
   const captchaRef = useRef<HTMLCanvasElement>(null);
+  const TYPE_LABEL: Record<string, string> = { person: '人员', dealer: '经销商', store: '店仓', employee: '员工' };
 
   const genCaptcha = () => {
     const s = Math.random().toString(36).slice(2, 6);
@@ -86,16 +88,26 @@ export default function LoginPage() {
       setCode('');
       return;
     }
-    const user = users.find((p) => p.username === account.trim() && p.password === password);
+    const exact = users.filter((p) => p.username === account.trim() && p.password === password);
     const isDefaultAdmin = account.trim() === 'admin' && password === '123456';
-    if (!user && !isDefaultAdmin) {
+    if (!exact.length && !isDefaultAdmin) {
       setError('账号或密码错误');
       return;
     }
+    if (exact.length > 1) { setPick(exact); return; }
+    const user = exact.find(Boolean);
     setLoading(true);
     const who = user ? user.name : '管理员';
     localStorage.setItem('dn_auth', who);
     if (user) { localStorage.setItem('dn_auth_type', user.type); localStorage.setItem('dn_auth_id', user.id || ''); }
+    setTimeout(() => router.replace('/'), 350);
+  };
+
+  const pickAccount = (u: (typeof users)[number]) => {
+    setPick(null);
+    setLoading(true);
+    localStorage.setItem('dn_auth', u.name);
+    if (u.type) { localStorage.setItem('dn_auth_type', u.type); localStorage.setItem('dn_auth_id', u.id || ''); }
     setTimeout(() => router.replace('/'), 350);
   };
 
@@ -274,6 +286,30 @@ export default function LoginPage() {
             }}
           />
         ),
+      )}
+
+      {pick && pick.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => setPick(null)}>
+          <div className="mx-4 w-full max-w-xs rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-sm font-semibold text-gray-800">检测到多个同名账号，请选择登录身份</div>
+            <p className="mb-4 text-xs text-gray-400">账号「{account.trim()}」在以下类型中均存在</p>
+            <div className="flex flex-col gap-2">
+              {pick.map((u, i) => (
+                <button
+                  key={i}
+                  onClick={() => pickAccount(u)}
+                  className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 transition hover:border-blue-400 hover:bg-blue-50"
+                >
+                  <span className="font-medium">{u.name || u.username}</span>
+                  <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-500">{TYPE_LABEL[u.type] || u.type}</span>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setPick(null)} className="mt-4 w-full rounded-lg border border-gray-200 py-2 text-sm text-gray-500 hover:bg-gray-50">
+              取消
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
