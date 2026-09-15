@@ -55,7 +55,12 @@ function alertStores(a: AlertTask): string[] {
   return [...set];
 }
 
-const emptyFilter = { kw: '', level: 'all' as string, status: 'all' as string, dept: 'all' as string, person: 'all' as string, store: 'all' as string, start: '', end: '' };
+/** 取某条预警中指定通知方式（店仓/员工/用户）下的接收对象名 */
+function recipientNames(a: AlertTask, mode: NotifyMode): string[] {
+  return a.preview?.recipients?.find((r) => r.mode === mode)?.names ?? [];
+}
+
+const emptyFilter = { kw: '', level: 'all' as string, status: 'all' as string, person: 'all' as string, store: 'all' as string, employee: 'all' as string, user: 'all' as string, start: '', end: '' };
 
 /** 快捷日期标签定义 */
 const QUICK_TAGS: { key: string; label: string }[] = [
@@ -132,12 +137,13 @@ export function AlertList({ onBack }: { onBack: () => void }) {
     return m;
   }, [state.rules, groupNameById]);
 
-  const deptOptions = useMemo(() => [...new Set(alerts.map((a) => a.dept).filter(Boolean))], [alerts]);
   const personOptions = useMemo(
     () => [...new Set(alerts.map((a) => a.assignee || a.handoffTo).filter(Boolean))],
     [alerts]
   );
   const storeOptions = useMemo(() => [...new Set(alerts.flatMap(alertStores))], [alerts]);
+  const employeeOptions = useMemo(() => [...new Set(alerts.flatMap((a) => recipientNames(a, 'employee')))], [alerts]);
+  const userOptions = useMemo(() => [...new Set(alerts.flatMap((a) => recipientNames(a, 'person')))], [alerts]);
 
   const filtered = useMemo(() => {
     const start = filter.start ? new Date(filter.start + 'T00:00:00').getTime() : null;
@@ -146,9 +152,10 @@ export function AlertList({ onBack }: { onBack: () => void }) {
       if (filter.kw && !(`${a.ruleName || a.title}`.toLowerCase().includes(filter.kw.toLowerCase()))) return false;
       if (filter.level !== 'all' && (a.level ?? 'warn') !== filter.level) return false;
       if (filter.status !== 'all' && a.status !== filter.status) return false;
-      if (filter.dept !== 'all' && a.dept !== filter.dept) return false;
       if (filter.person !== 'all' && a.assignee !== filter.person && a.handoffTo !== filter.person) return false;
       if (filter.store !== 'all' && !alertStores(a).includes(filter.store)) return false;
+      if (filter.employee !== 'all' && !recipientNames(a, 'employee').includes(filter.employee)) return false;
+      if (filter.user !== 'all' && !recipientNames(a, 'person').includes(filter.user)) return false;
       if (start && a.createdAt < start) return false;
       if (end && a.createdAt > end) return false;
       return true;
@@ -233,14 +240,8 @@ export function AlertList({ onBack }: { onBack: () => void }) {
             <option key={k} value={k}>{STATUS_META[k].label}</option>
           ))}
         </select>
-        <select value={filter.dept} onChange={(e) => setFilter({ ...filter, dept: e.target.value })} className={SelectCls}>
-          <option value="all">适用部门</option>
-          {deptOptions.map((d) => (
-            <option key={d} value={d}>{d}</option>
-          ))}
-        </select>
         <select value={filter.person} onChange={(e) => setFilter({ ...filter, person: e.target.value })} className={SelectCls}>
-          <option value="all">适用人员</option>
+          <option value="all">接收人</option>
           {personOptions.map((p) => (
             <option key={p} value={p}>{p}</option>
           ))}
@@ -248,6 +249,18 @@ export function AlertList({ onBack }: { onBack: () => void }) {
         <select value={filter.store} onChange={(e) => setFilter({ ...filter, store: e.target.value })} className={SelectCls}>
           <option value="all">适用店仓</option>
           {storeOptions.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+        <select value={filter.employee} onChange={(e) => setFilter({ ...filter, employee: e.target.value })} className={SelectCls}>
+          <option value="all">适用员工</option>
+          {employeeOptions.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+        <select value={filter.user} onChange={(e) => setFilter({ ...filter, user: e.target.value })} className={SelectCls}>
+          <option value="all">适用用户</option>
+          {userOptions.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
@@ -323,8 +336,10 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                 <th className="whitespace-nowrap px-4 py-3 font-medium">预警分组</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">预警条数</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">重要程度</th>
-                <th className="whitespace-nowrap px-4 py-3 font-medium">适用部门</th>
-                <th className="whitespace-nowrap px-4 py-3 font-medium">适用人员</th>
+                <th className="whitespace-nowrap px-4 py-3 font-medium">适用店仓</th>
+                <th className="whitespace-nowrap px-4 py-3 font-medium">适用员工</th>
+                <th className="whitespace-nowrap px-4 py-3 font-medium">适用用户</th>
+                <th className="whitespace-nowrap px-4 py-3 font-medium">接收人</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">创建人</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">创建时间</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">已过时间</th>
@@ -386,7 +401,9 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                           {lv.label}（{a.level ?? 'warn'}级）
                         </span>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-gray-600">{a.dept || '—'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-gray-600">{recipientNames(a, 'store').join('、') || '—'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-gray-600">{recipientNames(a, 'employee').join('、') || '—'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-gray-600">{recipientNames(a, 'person').join('、') || '—'}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-[13px] text-gray-600">
                         {a.handoffTo ? (
                           <span>{a.handoffTo}<span className="ml-1 text-[11px] text-gray-400">（转交）</span></span>
@@ -433,7 +450,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                     </tr>
                     {openId === a.id && count > 0 ? (
                       <tr className="bg-gray-50/50">
-                        <td colSpan={11} className="px-6 py-3">
+                        <td colSpan={15} className="px-6 py-3">
                           {a.preview?.recipients?.length ? (
                             <div className="mb-2 space-y-1 rounded border border-amber-100 bg-amber-50/60 px-3 py-2 text-[11px]">
                               {renderRecipients(a.preview.recipients)}
