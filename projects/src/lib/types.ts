@@ -985,6 +985,14 @@ export interface ManageScope {
   value?: string;
   /** 冗余展示说明（如 "华东大区 门店人员"） */
   desc?: string;
+  /** 机构管理范围：依据的店仓属性 id */
+  storeAttrId?: string;
+  /** 机构管理范围：依据的店仓属性名（如 区部 / 销售区域） */
+  storeAttrName?: string;
+  /** 机构管理范围：选中的属性值（可单选/多选） */
+  storeAttrValues?: string[];
+  /** 机构管理范围：实际管辖的门店 id 列表 */
+  storeIds?: string[];
 }
 
 /** 人员（挂到组织节点下，可设上级/职位/管理范围） */

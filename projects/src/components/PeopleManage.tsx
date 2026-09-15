@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 
 export function PeopleManage() {
   const { state, addPerson, updatePerson, removePerson, addOrg, updateOrg, removeOrg, moveOrg } = useStore();
-  const { orgs, persons, tables, hrAttributes } = state;
+  const { orgs, persons, hrAttributes } = state;
   const [activeOrg, setActiveOrg] = useState<string | null>(null);
   const [editing, setEditing] = useState<Person | null>(null);
   const [showEditor, setShowEditor] = useState(false);
@@ -226,7 +226,8 @@ export function PeopleManage() {
           initial={editing}
           orgs={orgList}
           persons={persons}
-          tables={tables}
+          stores={state.stores}
+          storeAttrs={state.hrAttributes.filter((a) => (a.category ?? 'person') === 'store')}
           jobLabels={jobLabels}
           postLabels={postLabels}
           onCancel={() => setShowEditor(false)}
@@ -268,7 +269,8 @@ function PersonEditor({
   initial,
   orgs,
   persons,
-  tables,
+  stores,
+  storeAttrs,
   jobLabels,
   postLabels,
   onCancel,
@@ -277,7 +279,8 @@ function PersonEditor({
   initial: Person | null;
   orgs: Organization[];
   persons: Person[];
-  tables: { id: string; name: string; columns?: { key: string; name?: string }[] }[];
+  stores: { id: string; name: string; attrs?: Record<string, string> }[];
+  storeAttrs: { id: string; name: string; items: { id: string; name: string }[] }[];
   jobLabels: { id: string; name: string }[];
   postLabels: { id: string; name: string }[];
   onCancel: () => void;
@@ -295,14 +298,19 @@ function PersonEditor({
   const [address, setAddress] = useState(initial?.address || '');
   const [birthday, setBirthday] = useState(initial?.birthday || '');
   const [password, setPassword] = useState(initial?.password || '');
-  const [scopeTable, setScopeTable] = useState(initial?.manageScope?.tableId || '');
-  const [scopeField, setScopeField] = useState(initial?.manageScope?.field || '');
-  const [scopeValue, setScopeValue] = useState(initial?.manageScope?.value || '');
+  const [scopeAttrId, setScopeAttrId] = useState(initial?.manageScope?.storeAttrId || '');
+  const [scopeAttrValues, setScopeAttrValues] = useState<string[]>(initial?.manageScope?.storeAttrValues || []);
+  const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>(initial?.manageScope?.storeIds || []);
   const [enabled, setEnabled] = useState(initial ? initial.enabled : true);
 
-  const table = tables.find((t) => t.id === scopeTable);
-  const sampleValues = table ? ['华东大区', '华南大区', '总部直营', '河南分公司'] : [];
-  const scopeDesc = [scopeField, scopeValue].filter(Boolean).join('=');
+  const scopeAttr = storeAttrs.find((a) => a.id === scopeAttrId);
+  const matchedStores = useMemo(() => {
+    if (!scopeAttr || scopeAttrValues.length === 0) return [];
+    return stores.filter((s) => scopeAttrValues.includes(s.attrs?.[scopeAttr.name] ?? ''));
+  }, [scopeAttr, scopeAttrValues, stores]);
+  const sectionStores = matchedStores.length > 0 ? matchedStores : stores;
+  const visibleStores = scopeAttrId ? sectionStores : [];
+  const scopeDesc = scopeAttr && scopeAttrValues.length ? `${scopeAttr.name}（${scopeAttrValues.join('、')}）` : '';
   const valid = name.trim().length > 0;
 
   return (
@@ -355,22 +363,72 @@ function PersonEditor({
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-gray-500">管理范围（关联数据表字段 / 分类）</label>
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">机构管理范围（按店仓属性筛选 → 勾选管辖门店）</label>
             <div className="grid grid-cols-3 gap-2">
-              <select value={scopeTable} onChange={(e) => { setScopeTable(e.target.value); setScopeField(''); }} className="rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs outline-none focus:border-gray-900">
-                <option value="">数据表</option>
-                {tables.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              <select
+                value={scopeAttrId}
+                onChange={(e) => { setScopeAttrId(e.target.value); setScopeAttrValues([]); setSelectedStoreIds([]); }}
+                className="rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs outline-none focus:border-gray-900"
+              >
+                <option value="">店仓属性</option>
+                {storeAttrs.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
-              <select value={scopeField} onChange={(e) => setScopeField(e.target.value)} className="rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs outline-none focus:border-gray-900">
-                <option value="">数据表字段</option>
-                {(table?.columns || []).map((c) => <option key={c.key} value={c.key}>{c.name || c.key}</option>)}
-              </select>
-              <input value={scopeValue} onChange={(e) => setScopeValue(e.target.value)} list="scope-values" placeholder="分类值" className="rounded-lg border border-gray-300 px-2 py-2 text-xs outline-none focus:border-gray-900" />
+              <div className="col-span-2 flex flex-wrap items-center gap-1.5 rounded-lg border border-gray-200 px-2 py-1.5">
+                {scopeAttr?.items.length ? (
+                  scopeAttr.items.map((it) => {
+                    const on = scopeAttrValues.includes(it.name);
+                    return (
+                      <button
+                        key={it.id}
+                        type="button"
+                        onClick={() => setScopeAttrValues((v) => (on ? v.filter((x) => x !== it.name) : [...v, it.name]))}
+                        className={`rounded-md px-2 py-0.5 text-xs transition ${on ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                      >
+                        {it.name}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <span className="text-[11px] text-gray-400">请先选择店仓属性</span>
+                )}
+              </div>
             </div>
-            <datalist id="scope-values">
-              {sampleValues.map((v) => <option key={v} value={v} />)}
-            </datalist>
-            {scopeDesc && <p className="mt-1.5 text-[11px] text-gray-400">管理范围：{scopeField} = {scopeValue}</p>}
+            {visibleStores.length > 0 && (
+              <div className="mt-2 rounded-lg border border-gray-200">
+                <div className="flex items-center justify-between border-b border-gray-100 px-2.5 py-1.5">
+                  <span className="text-[11px] text-gray-400">筛选出 {matchedStores.length}/{stores.length} 家门店，选择管辖门店：</span>
+                  <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={visibleStores.every((s) => selectedStoreIds.includes(s.id)) && visibleStores.length > 0}
+                      onChange={(e) => setSelectedStoreIds(e.target.checked ? visibleStores.map((s) => s.id) : [])}
+                      className="accent-gray-900"
+                    />
+                    全选
+                  </label>
+                </div>
+                <div className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto p-2">
+                  {visibleStores.map((s) => {
+                    const on = selectedStoreIds.includes(s.id);
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setSelectedStoreIds((v) => (on ? v.filter((x) => x !== s.id) : [...v, s.id]))}
+                        className={`rounded-md border px-2 py-0.5 text-xs transition ${on ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                      >
+                        {s.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {scopeDesc && (
+              <p className="mt-1.5 text-[11px] text-gray-400">
+                管理范围：{scopeDesc}，共 {selectedStoreIds.length} 家门店
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -430,7 +488,10 @@ function PersonEditor({
                 title: title.trim() || undefined,
                 post: post.trim() || undefined,
                 supervisorId: supervisorId || undefined,
-                manageScope: scopeField && scopeValue ? { tableId: scopeTable, field: scopeField, value: scopeValue, desc: `${scopeField} = ${scopeValue}` } : initial?.manageScope,
+                manageScope:
+                  scopeAttr && scopeAttrValues.length
+                    ? { storeAttrId: scopeAttr.id, storeAttrName: scopeAttr.name, storeAttrValues: scopeAttrValues, storeIds: selectedStoreIds, desc: `${scopeAttr.name}（${scopeAttrValues.join('、')}）` }
+                    : initial?.manageScope,
                 phone: phone.trim() || undefined,
                 email: email.trim() || undefined,
                 username: username.trim() || undefined,
