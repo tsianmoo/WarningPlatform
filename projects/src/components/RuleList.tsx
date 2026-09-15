@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Plus, BellRing, ArrowLeft, Trash2, Users, CalendarClock, Table2, Pencil, PlayCircle, PauseCircle, Copy } from 'lucide-react';
-import type { AlertRule } from '@/lib/types';
+import type { AlertRule, RuleGroup } from '@/lib/types';
 import { useStore, formatDateTime } from '@/lib/store';
 import { toast } from 'sonner';
 import {
@@ -32,10 +32,13 @@ export function RuleList({
   onEdit: (id: string) => void;
   onHome?: () => void;
 }) {
-  const { state, removeRule, updateRule, addRule, activateRule } = useStore();
+  const { state, removeRule, updateRule, addRule, activateRule, addRuleGroup, removeRuleGroup, updateRuleGroup } = useStore();
   const [detailId, setDetailId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [categoryId, setCategoryId] = useState<string>('all');
   const [confirm, setConfirm] = useState<{ kind: 'delete' | 'copy'; rule: AlertRule } | null>(null);
+  const [catMgr, setCatMgr] = useState<{ open: boolean; editing: RuleGroup | null; name: string }>({ open: false, editing: null, name: '' });
+  const ruleGroups = state.ruleGroups ?? [];
 
   const doCopy = (r: AlertRule) => {
     const copy = JSON.parse(JSON.stringify(r)) as AlertRule;
@@ -57,8 +60,42 @@ export function RuleList({
     }
   }
 
+  const catOf = (r: AlertRule) => ruleGroups.find((g) => g.id === r.groupId) ?? null;
+
+  const visibleRules = categoryId === 'all' ? state.rules : state.rules.filter((r) => r.groupId === categoryId);
+
   return (
     <div className="flex h-full flex-col overflow-y-auto px-8 pb-10 pt-6">
+      {ruleGroups.length > 0 && (
+        <div className="mb-5 flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setCategoryId('all')}
+            className={`rounded-full px-3 py-1.5 text-sm transition ${
+              categoryId === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            全部
+          </button>
+          {ruleGroups.map((g) => (
+            <button
+              key={g.id}
+              onClick={() => setCategoryId(g.id)}
+              className={`rounded-full px-3 py-1.5 text-sm transition ${
+                categoryId === g.id ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {g.name}
+            </button>
+          ))}
+          <button
+            onClick={() => setCatMgr({ open: true, editing: null, name: '' })}
+            className="inline-flex items-center gap-1 rounded-full border border-dashed border-gray-300 px-3 py-1.5 text-sm text-gray-500 transition hover:border-gray-400 hover:text-gray-700"
+          >
+            <Pencil size={13} /> 管理分类
+          </button>
+        </div>
+      )}
+
       <header className="mb-7 flex flex-wrap items-end justify-between gap-4">
         <div>
           <div className="flex items-center gap-1.5 text-xs text-gray-400">
@@ -88,20 +125,22 @@ export function RuleList({
         </div>
       </header>
 
-      {state.rules.length === 0 ? (
+      {visibleRules.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed bg-white py-20 text-center">
           <BellRing size={44} strokeWidth={1.2} className="text-gray-300" />
-          <div className="text-sm text-gray-500">还没有预警规则</div>
-          <button
-            onClick={onNew}
-            className="rounded-lg bg-blue-50 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-100"
-          >
-            立即创建
-          </button>
+          <div className="text-sm text-gray-500">{ruleGroups.length === 0 ? '还没有预警规则' : '该分类下暂无预警规则'}</div>
+          {ruleGroups.length === 0 && (
+            <button
+              onClick={onNew}
+              className="rounded-lg bg-blue-50 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-100"
+            >
+              立即创建
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {state.rules.map((r) => {
+          {visibleRules.map((r) => {
             const st = RULE_STATUS[r.status];
             const tablesUsed = state.tables.filter((t) => r.tableIds?.includes(t.id));
             const pendingCount = r.executions.filter((e) => e.status === 'pending').length;
@@ -118,6 +157,9 @@ export function RuleList({
                             {pendingCount} 项待处理
                           </span>
                         )}
+                        {(() => { const g = catOf(r); return g ? (
+                          <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-xs text-indigo-600">{g.name}</span>
+                        ) : null; })()}
                       </div>
                       <div className="mt-1.5 truncate text-base font-semibold text-gray-800">{r.name}</div>
                       {r.description && <div className="mt-0.5 line-clamp-2 text-xs text-gray-400">{r.description}</div>}
@@ -256,6 +298,64 @@ export function RuleList({
                 确认删除
               </AlertDialogAction>
             )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={catMgr.open} onOpenChange={(v) => !v && setCatMgr((s) => ({ ...s, open: false, editing: null, name: '' }))}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{catMgr.editing ? '编辑预警分类' : '新增预警分类'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              预警分类可作为规则分组与筛选标签，区分不同预警场景。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="mb-4">
+            <input
+              value={catMgr.name}
+              onChange={(e) => setCatMgr((s) => ({ ...s, name: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && catMgr.name.trim()) {
+                  if (catMgr.editing) updateRuleGroup(catMgr.editing.id, catMgr.name.trim());
+                  else addRuleGroup(catMgr.name.trim());
+                  setCatMgr((s) => ({ ...s, name: '', editing: null }));
+                  toast.success('已保存预警分类');
+                }
+              }}
+              placeholder="输入分类名称，回车保存"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="max-h-60 space-y-1 overflow-y-auto">
+            {ruleGroups.length === 0 && <p className="py-2 text-center text-sm text-gray-400">暂无预警分类</p>}
+            {ruleGroups.map((g) => {
+              const cnt = state.rules.filter((r) => r.groupId === g.id).length;
+              return (
+                <div key={g.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
+                  <span className="font-medium text-gray-700">{g.name} <span className="text-gray-400">({cnt} 条规则)</span></span>
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={() => setCatMgr({ open: true, editing: g, name: g.name })}
+                      className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-blue-600"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      onClick={() => {
+                        removeRuleGroup(g.id);
+                        toast.success(`已删除分类「${g.name}」`);
+                      }}
+                      className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-red-600"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setCatMgr((s) => ({ ...s, open: false, editing: null, name: '' }))}>关闭</AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

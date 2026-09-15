@@ -319,6 +319,7 @@ type StoreApi = {
   updateAlertStatus: (id: string, patch: Partial<AlertTask>) => void;
   // groups
   addRuleGroup: (name: string) => RuleGroup;
+  updateRuleGroup: (id: string, name: string) => void;
   removeRuleGroup: (id: string) => void;
   // organizations
   addOrg: (o: Omit<Organization, 'id' | 'createdAt'>) => Organization;
@@ -555,6 +556,12 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
         ruleGroups: state.ruleGroups.filter((g) => g.id !== id),
         rules: state.rules.map((r) => (r.groupId === id ? { ...r, groupId: '' } : r)),
       };
+    }
+    case 'UPDATE_RULE_GROUP': {
+      const { id, name } = action.payload as { id: string; name: string };
+      const n = String(name ?? '').trim();
+      if (!id || !n) return state;
+      return { ...state, ruleGroups: state.ruleGroups.map((g) => (g.id === id ? { ...g, name: n } : g)) };
     }
     case 'REPLACE_GROUPS':
       return { ...state, ruleGroups: Array.isArray(action.payload) ? (action.payload as RuleGroup[]) : state.ruleGroups };
@@ -849,6 +856,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return g;
       },
       removeRuleGroup: (id) => dispatch('REMOVE_RULE_GROUP', id),
+      updateRuleGroup: (id, name) => dispatch('UPDATE_RULE_GROUP', { id, name }),
       addAlert: (alert) => dispatch('ADD_ALERT', { alert }),
       updateAlertStatus: (alertId, patch) => dispatch('UPDATE_ALERT', { alertId, patch }),
       addOrg: (o) => {
