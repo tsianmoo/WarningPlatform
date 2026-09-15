@@ -84,10 +84,16 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
           });
         }
         const enabled = !/停用|禁用|0|否/i.test(String(r['状态'] ?? '启用'));
+        const codeStr = String(r['经销商编号'] ?? '').trim();
+        const nameStr = String(r['经销商名称'] ?? '').trim();
         if (kind === 'dealer') {
+          if (!codeStr || !nameStr) {
+            skipped.push(`经销商编号/名称缺失（${codeStr || '-'}）`);
+            return;
+          }
           addDealer({
-            code: String(r['经销商编号'] ?? '').trim() || undefined,
-            name: String(r['经销商名称']).trim(),
+            code: codeStr || undefined,
+            name: nameStr,
             attrs,
             enabled,
             sort: 0,
