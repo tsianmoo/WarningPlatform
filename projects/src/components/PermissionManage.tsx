@@ -70,7 +70,7 @@ export default function PermissionManage() {
   const [draft, setDraft] = useState<RolePerm | null>(null);
   const [newPostName, setNewPostName] = useState('');
   const [subjectTab, setSubjectTab] = useState<'post' | 'dealer' | 'store' | 'employee'>('post');
-  const [empQ, setEmpQ] = useState('');
+  const ALL = 'all';
 
   const allPosts = useMemo(() => {
     const fromPersons = Array.from(new Set(state.persons.map((p) => p.post).filter(Boolean) as string[]));
@@ -162,19 +162,13 @@ export default function PermissionManage() {
   }, [state.stores]);
 
   const subjectList: Record<'post' | 'dealer' | 'store' | 'employee', { key: string; label: string }[]> = useMemo(() => {
-    const dealers = state.dealers.filter((d) => d.enabled !== false).map((d) => ({ key: d.code || d.name || '', label: d.code ? `${d.name}(${d.code})` : d.name }));
-    const stores = state.stores.filter((s) => s.enabled !== false).map((s) => ({ key: s.code || s.name || '', label: s.code ? `${s.name}(${s.code})` : s.name }));
-    const employees = state.employees
-      .filter((e) => e.enabled !== false && (!empQ || (e.name ?? '').includes(empQ) || (e.code ?? '').includes(empQ)))
-      .slice(0, 300)
-      .map((e) => ({ key: e.code || e.name || '', label: e.code ? `${e.name}(${e.code})` : e.name }));
     return {
       post: effectivePosts.map((p) => ({ key: p, label: p })),
-      dealer: dealers,
-      store: stores,
-      employee: employees,
+      dealer: [{ key: ALL, label: '所有经销商' }],
+      store: [{ key: ALL, label: '所有店仓' }],
+      employee: [{ key: ALL, label: '所有员工' }],
     };
-  }, [state.dealers, state.stores, state.employees, empQ, effectivePosts]);
+  }, [effectivePosts]);
 
   const subjectHasRole = (kind: 'post' | 'dealer' | 'store' | 'employee', key: string) =>
     state.permissions.some((r) => (r.subjectKind ?? 'post') === kind && r.post === key);
@@ -224,16 +218,6 @@ export default function PermissionManage() {
             </button>
           )}
         </div>
-        {subjectTab === 'employee' && (
-          <div className="px-2 pb-2">
-            <input
-              value={empQ}
-              onChange={(e) => setEmpQ(e.target.value)}
-              placeholder="搜索员工姓名/编号"
-              className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs"
-            />
-          </div>
-        )}
         <div className="flex-1 overflow-auto px-2 pb-2">
           {subjectList[subjectTab].map((it) => (
             <button

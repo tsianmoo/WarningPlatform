@@ -94,6 +94,9 @@ export interface AuthSubject {
 }
 
 /** 在角色表中按主体类型 + 标识查找（缺省 subjectKind 视为 'post'） */
+/** 经销商/店仓/员工 三类的通用权限键：同一类型的所有账号共用一套模板 */
+export const COMMON_KEY = 'all';
+
 export function findRoleBySubject(roles: RolePerm[], kind: 'post' | 'dealer' | 'store' | 'employee', key: string): RolePerm | undefined {
   return roles.find((r) => (r.subjectKind ?? 'post') === kind && r.post === key && !!key);
 }
@@ -162,21 +165,21 @@ export function resolveAuthAccount(
   const d = dealers.find((x) => !!(x.name && x.name === meName) || !!(x.code && x.code === meName));
   if (d) {
     return {
-      subject: { kind: 'dealer', key: d.code || d.name || '' },
+      subject: { kind: 'dealer', key: COMMON_KEY },
       scopePerson: { id: d.id, name: meName, orgId: '', dealerId: d.id, enabled: true, sort: 0, createdAt: 0 },
     };
   }
   const s = stores.find((x) => !!(x.name && x.name === meName) || !!(x.code && x.code === meName));
   if (s) {
     return {
-      subject: { kind: 'store', key: s.code || s.name || '' },
+      subject: { kind: 'store', key: COMMON_KEY },
       scopePerson: { id: s.id, name: meName, orgId: '', dealerId: s.dealerId, storeId: s.id, enabled: true, sort: 0, createdAt: 0 },
     };
   }
   const e = employees.find((x) => !!(x.name && x.name === meName) || !!(x.code && x.code === meName));
   if (e) {
     return {
-      subject: { kind: 'employee', key: e.code || e.name || '' },
+      subject: { kind: 'employee', key: COMMON_KEY },
       scopePerson: { id: e.id, name: meName, orgId: '', dealerId: e.dealerId, storeId: e.storeId, enabled: true, sort: 0, createdAt: 0 },
     };
   }
