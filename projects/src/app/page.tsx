@@ -17,7 +17,7 @@ import { DealerStoreManage } from '@/components/DealerStoreManage';
 import EmployeeManage from '@/components/EmployeeManage';
 import { HomeConfig } from '@/components/HomeConfig';
 
-type View = 'home' | 'tables' | 'rules' | 'new' | 'edit' | 'alerts' | 'people' | 'attrs' | 'dealer' | 'store' | 'dattrs' | 'sattrs' | 'emp' | 'homecfg';
+type View = 'home' | 'tables' | 'rules' | 'new' | 'edit' | 'alerts' | 'people' | 'attrs' | 'dealer' | 'store' | 'dattrs' | 'sattrs' | 'emp' | 'eattrs' | 'homecfg';
 
 function Shell() {
   const { state, updatePerson } = useStore();
@@ -97,6 +97,8 @@ function Shell() {
     content = <AttrManage category="dealer" title="经销商属性" parent="组织架构" hint="先给属性命名，再在属性下添加子标签（如 经销商级别 / 区域 → 标签）" />;
   } else if (view === 'sattrs') {
     content = <AttrManage category="store" title="店仓属性" parent="组织架构" hint="先给属性命名，再在属性下添加子标签（如 门店类型 / 仓库 → 标签）" />;
+  } else if (view === 'eattrs') {
+    content = <AttrManage category="employee" title="员工属性" parent="组织架构" hint="先给属性命名，再在属性下添加子标签（如 岗位 / 喜好 → 标签）" />;
   } else if (view === 'people') {
     content = <PeopleManage />;
   } else if (view === 'attrs') {
@@ -108,7 +110,7 @@ function Shell() {
   }
 
   // 预警配置页（new / edit）隐藏左侧导航栏，聚焦画布编辑
-  const withSidebar = view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts' || view === 'people' || view === 'attrs' || view === 'dealer' || view === 'store' || view === 'dattrs' || view === 'sattrs' || view === 'emp';
+  const withSidebar = view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts' || view === 'people' || view === 'attrs' || view === 'dealer' || view === 'store' || view === 'dattrs' || view === 'sattrs' || view === 'emp' || view === 'eattrs';
   const currentView = view;
   const pendingAlerts = state.alerts.filter((a) => a.status === 'new' || a.status === 'processing').length;
 
@@ -154,6 +156,13 @@ function Shell() {
                 icon={<span className="text-gray-400">·</span>}
                 label="员工管理"
                 onClick={() => setView('emp')}
+              />
+              <NavItem
+                nested
+                active={currentView === 'eattrs'}
+                icon={<span className="text-gray-400">·</span>}
+                label="员工属性"
+                onClick={() => setView('eattrs')}
               />
               <NavItem
                 nested

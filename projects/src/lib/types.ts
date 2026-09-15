@@ -1029,7 +1029,7 @@ export interface HrAttributeItem {
 }
 
 /** 属性字典分类：person=人事人员，dealer=经销商，store=店仓 */
-export type AttrCategory = 'person' | 'dealer' | 'store';
+export type AttrCategory = 'person' | 'dealer' | 'store' | 'employee';
 
 /** 人事属性字典（如：部门管理 / 职位管理 / 岗位管理），每个属性下含多条条目 */
 export interface HrAttribute {
