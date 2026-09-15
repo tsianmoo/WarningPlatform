@@ -64,8 +64,13 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
       if (!rows.length) return toast.error('模板中没有数据');
       let ok = 0;
       const noStatus: string[] = [];
+      const skipped: string[] = [];
       for (const r of rows) {
-        if (!r['经销商名称'] && !r['店仓名称']) continue;
+        const required = kind === 'dealer'
+          ? ['经销商名称']
+          : ['店仓编号', '店仓名称', '所属经销商', '主营品牌', '分公司', '部门', '销售区域', '区部', '是否允许零售', '状态'];
+        const missing = required.filter((col) => String(r[col] ?? '').trim() === '');
+        if (missing.length) { skipped.push(`${kind === 'store' ? '店仓档案' : '经销商档案'}行缺:${missing.join('/')}`); continue; }
         const attrs: Record<string, string> = {};
         if (kind === 'dealer') {
           const lv = String(r['经销商等级'] ?? '').trim();
@@ -112,6 +117,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
         ok++;
       }
       if (noStatus.length) toast.warning(`以下店仓未匹配到所属经销商：${noStatus.join('、')}`);
+      if (skipped.length) toast.warning(`跳过 ${skipped.length} 行（缺少必填项）：${skipped.slice(0, 5).join('；')}${skipped.length > 5 ? ' 等' : ''}`);
       if (ok) toast.success(`成功导入 ${ok} 条${unit}`);
     } else {
       toast.error('请上传 .xlsx / .xls / .xlsm 文件');
