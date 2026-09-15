@@ -314,38 +314,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                 const st = STATUS_META[a.status];
                 const count = a.preview?.storeMessages?.length ?? a.preview?.rows?.length ?? 0;
                 const stores = a.preview?.storeMessages ?? [];
-                const actions: { label: string; fn: () => void; cls: string }[] = [];
-                if (a.status === 'new') {
-                  actions.push({
-                    label: '接受',
-                    fn: () => updateAlertStatus(a.id, { status: 'accepted', assignee: a.assignee || '当前用户', updatedAt: Date.now() }),
-                    cls: 'bg-gray-800 text-white hover:bg-gray-700',
-                  });
-                } else if (a.status === 'accepted') {
-                  actions.push({
-                    label: '开始处理',
-                    fn: () => updateAlertStatus(a.id, { status: 'processing', updatedAt: Date.now() }),
-                    cls: 'bg-gray-800 text-white hover:bg-gray-700',
-                  });
-                } else if (a.status === 'processing') {
-                  actions.push({
-                    label: '已处理',
-                    fn: () => updateAlertStatus(a.id, { status: 'done', updatedAt: Date.now() }),
-                    cls: 'bg-gray-800 text-white hover:bg-gray-700',
-                  });
-                }
-                if (a.status === 'new' || a.status === 'accepted' || a.status === 'processing') {
-                  actions.push({
-                    label: '转交',
-                    fn: () => setHandoffId(a.id),
-                    cls: 'border border-gray-200 bg-white text-gray-500 hover:bg-gray-50',
-                  });
-                  actions.push({
-                    label: '无法完成',
-                    fn: () => updateAlertStatus(a.id, { status: 'failed', updatedAt: Date.now() }),
-                    cls: 'border border-gray-100 bg-white text-gray-300 hover:bg-gray-50',
-                  });
-                }
+                const actions = buildActions(a, updateAlertStatus, setHandoffId);
                 return (
                   <Fragment key={a.id}>
                     <tr className="align-middle transition-colors last:border-0 hover:bg-gray-50/70">
@@ -393,7 +362,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                           )) : null}
                           {count > 0 ? (
                             <button
-                              onClick={() => setOpenId(openId === a.id ? null : a.id)}
+                              onClick={() => setOpenId(a.id)}
                               className="inline-flex items-center gap-1 whitespace-nowrap rounded border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-500 transition-colors hover:bg-gray-50"
                             >
                               <Eye size={12} /> 查看
@@ -402,58 +371,6 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                         </div>
                       </td>
                     </tr>
-                    {openId === a.id && count > 0 ? (
-                      <tr className="bg-gray-50/50">
-                        <td colSpan={9} className="px-6 py-3">
-                          {a.preview?.recipients?.length ? (
-                            <div className="mb-2 space-y-1 rounded border border-amber-100 bg-amber-50/60 px-3 py-2 text-[11px]">
-                              {renderRecipients(a.preview.recipients)}
-                            </div>
-                          ) : null}
-                          {stores.length ? (
-                            <div className="max-h-72 overflow-auto">
-                              <table className="w-full border-collapse text-[12px]">
-                                <thead>
-                                  <tr className="text-left text-[11px] text-gray-400">
-                                    <th className="whitespace-nowrap border-b border-gray-100 px-3 py-1.5 font-medium">店仓</th>
-                                    <th className="whitespace-nowrap border-b border-gray-100 px-3 py-1.5 font-medium">预警消息</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {stores.map((s, si) => (
-                                    <tr key={si} className="align-top">
-                                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-1.5 font-medium text-gray-600">{s.store || '—'}</td>
-                                      <td className="border-b border-gray-100 px-3 py-1.5 text-gray-600">{s.message}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          ) : a.preview?.rows ? (
-                            <div className="max-h-60 overflow-auto rounded border border-gray-100">
-                              <table className="w-full border-collapse text-[11px]">
-                                <thead>
-                                  <tr className="border-b bg-gray-50 text-left text-gray-400">
-                                    {a.preview.columns.map((c) => (
-                                      <th key={c} className="whitespace-nowrap px-2.5 py-1.5 font-medium">{c}</th>
-                                    ))}
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {a.preview.rows.slice(0, 100).map((r, ri) => (
-                                    <tr key={ri} className="border-b border-gray-100">
-                                      {a.preview!.columns.map((c) => (
-                                        <td key={c} className="whitespace-nowrap px-2.5 py-1.5 text-gray-500">{String(r[c] ?? '')}</td>
-                                      ))}
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          ) : null}
-                        </td>
-                      </tr>
-                    ) : null}
                   </Fragment>
                 );
               })}
@@ -529,6 +446,131 @@ export function AlertList({ onBack }: { onBack: () => void }) {
         </div>
       )}
 
+      {/* 查看弹窗 */}
+      {(() => {
+        const open = openId ? alerts.find((a) => a.id === openId) ?? null : null;
+        if (!open) return null;
+        const lv = LEVEL_META[(open.level ?? 'warn') as keyof typeof LEVEL_META] ?? LEVEL_META.warn;
+        const st = STATUS_META[open.status];
+        const stores = open.preview?.storeMessages ?? [];
+        const recipient = open.handoffTo ? (
+          <span>{open.handoffTo}<span className="ml-1 text-[11px] text-gray-400">（转交）</span></span>
+        ) : open.assignee ? (
+          open.assignee
+        ) : (
+          <span className="text-gray-300">待分配</span>
+        );
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/25 p-4 backdrop-blur-sm"
+            onClick={() => setOpenId(null)}
+          >
+            <div
+              className="alert-pop flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-2xl shadow-gray-900/10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <style>{`@keyframes alertPop{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}.alert-pop{animation:alertPop .18s ease-out}`}</style>
+              {/* 头部 */}
+              <div className="flex items-start gap-3 px-6 pt-5 pb-4">
+                <span className={`mt-0.5 inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-medium ${lv.bg}`}>
+                  <i className={`h-1.5 w-1.5 shrink-0 rounded-full ${lv.dot}`} />
+                  {lv.label}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate text-[15px] font-medium leading-snug text-gray-900">{open.title || '—'}</h3>
+                  {open.ruleName ? <p className="mt-0.5 truncate text-xs text-gray-400">{open.ruleName}</p> : null}
+                </div>
+                <button
+                  onClick={() => setOpenId(null)}
+                  className="rounded p-1 text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              {/* 元信息 */}
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2 border-y border-gray-100 bg-gray-50/40 px-6 py-3 text-xs sm:grid-cols-4">
+                <div><dt className="text-gray-400">接收人</dt><dd className="mt-0.5 truncate text-gray-700">{recipient}</dd></div>
+                <div><dt className="text-gray-400">状态</dt><dd className={`mt-0.5 font-medium ${st.text}`}>{st.label}</dd></div>
+                <div><dt className="text-gray-400">预警分组</dt><dd className="mt-0.5 truncate text-gray-700">{groupOf.get(open.ruleId) || '—'}</dd></div>
+                <div><dt className="text-gray-400">已过时间</dt><dd className="mt-0.5">　<ElapsedCell createdAt={open.createdAt} /></dd></div>
+              </div>
+              {/* 正文 */}
+              <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
+                <p className="text-[13px] leading-relaxed text-gray-600">{open.content || open.reason || '规则命中产生预警。'}</p>
+                {open.preview?.recipients?.length ? (
+                  <div className="mt-4">
+                    <h4 className="mb-2 text-xs font-medium text-gray-400">通知对象</h4>
+                    <div className="space-y-1">{renderRecipients(open.preview.recipients)}</div>
+                  </div>
+                ) : null}
+                {stores.length ? (
+                  <div className="mt-4">
+                    <h4 className="mb-2 text-xs font-medium text-gray-400">判断命中明细</h4>
+                    <div className="overflow-hidden rounded-lg border border-gray-100">
+                      <table className="w-full border-collapse text-[12px]">
+                        <thead>
+                          <tr className="bg-gray-50/40 text-left text-[11px] text-gray-400">
+                            <th className="whitespace-nowrap px-3 py-2 font-medium">店仓</th>
+                            <th className="whitespace-nowrap px-3 py-2 font-medium">命中消息</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {stores.map((s, si) => (
+                            <tr key={si} className="align-top last:border-0">
+                              <td className="whitespace-nowrap border-t border-gray-50 px-3 py-2 font-medium text-gray-600">{s.store || '—'}</td>
+                              <td className="border-t border-gray-50 px-3 py-2 text-gray-600">{s.message}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : open.preview?.rows?.length ? (
+                  <div className="mt-4">
+                    <h4 className="mb-2 text-xs font-medium text-gray-400">判断命中明细</h4>
+                    <div className="overflow-auto rounded-lg border border-gray-100">
+                      <table className="w-full border-collapse text-[11px]">
+                        <thead>
+                          <tr className="bg-gray-50/40 text-left text-gray-400">
+                            {open.preview.columns.map((c) => (
+                              <th key={c} className="whitespace-nowrap px-2.5 py-2 font-medium">{c}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {open.preview.rows.slice(0, 100).map((r, ri) => (
+                            <tr key={ri} className="border-t border-gray-50">
+                              {open.preview!.columns.map((c) => (
+                                <td key={c} className="whitespace-nowrap px-2.5 py-2 text-gray-500">{String(r[c] ?? '')}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              {/* 操作 */}
+              <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-6 py-4">
+                <span className="mr-auto text-[11px] text-gray-300">点击操作后将更新该条预警状态</span>
+                {canHandle ? (
+                  buildActions(open, updateAlertStatus, setHandoffId).map((x) => (
+                    <button
+                      key={x.label}
+                      onClick={x.fn}
+                      className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${x.cls}`}
+                    >
+                      {x.label}
+                    </button>
+                  ))
+                ) : null}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* 转交弹窗 */}
       {handoffId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/20 p-4 backdrop-blur-sm" onClick={() => setHandoffId(null)}>
@@ -565,6 +607,28 @@ export function AlertList({ onBack }: { onBack: () => void }) {
       )}
     </div>
   );
+}
+
+type AlertAction = { label: string; cls: string; fn: () => void };
+function buildActions(
+  a: AlertTask,
+  update: (id: string, patch: Partial<AlertTask>) => void,
+  handoff: (id: string) => void
+): AlertAction[] {
+  const upd = (patch: Partial<AlertTask>) => update(a.id, { ...patch, updatedAt: Date.now() });
+  const acts: AlertAction[] = [];
+  if (a.status === 'new') {
+    acts.push({ label: '接受', cls: 'bg-gray-800 text-white hover:bg-gray-700', fn: () => upd({ status: 'accepted', assignee: a.assignee || '当前用户' }) });
+  } else if (a.status === 'accepted') {
+    acts.push({ label: '开始处理', cls: 'bg-gray-800 text-white hover:bg-gray-700', fn: () => upd({ status: 'processing' }) });
+  } else if (a.status === 'processing') {
+    acts.push({ label: '已处理', cls: 'bg-gray-800 text-white hover:bg-gray-700', fn: () => upd({ status: 'done' }) });
+  }
+  if (a.status === 'new' || a.status === 'accepted' || a.status === 'processing') {
+    acts.push({ label: '转交', cls: 'border border-gray-200 bg-white text-gray-500 hover:bg-gray-50', fn: () => handoff(a.id) });
+    acts.push({ label: '无法完成', cls: 'border border-transparent text-gray-300 hover:bg-gray-50 hover:text-gray-500', fn: () => upd({ status: 'failed' }) });
+  }
+  return acts;
 }
 
 const MODE_LABEL: Record<NotifyMode, string> = {
