@@ -301,14 +301,14 @@ export function RuleList({
       </AlertDialog>
 
       <AlertDialog open={catMgr.open} onOpenChange={(v) => !v && setCatMgr((s) => ({ ...s, open: false, editing: null, name: '' }))}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>{catMgr.editing ? '编辑预警分类' : '新增预警分类'}</AlertDialogTitle>
             <AlertDialogDescription>
               预警分类可作为规则分组与筛选标签，区分不同预警场景。
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="mb-4">
+          <div className="mb-4 flex items-center gap-2">
             <input
               value={catMgr.name}
               onChange={(e) => setCatMgr((s) => ({ ...s, name: e.target.value }))}
@@ -320,9 +320,23 @@ export function RuleList({
                   toast.success('已保存预警分类');
                 }
               }}
-              placeholder="输入分类名称，回车保存"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="输入分类名称"
+              className="flex-1 min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <button
+              onClick={() => {
+                const name = catMgr.name.trim();
+                if (!name) return;
+                if (catMgr.editing) updateRuleGroup(catMgr.editing.id, name);
+                else addRuleGroup(name);
+                setCatMgr((s) => ({ ...s, name: '', editing: null }));
+                toast.success('已保存预警分类');
+              }}
+              disabled={!catMgr.name.trim()}
+              className="shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              保存
+            </button>
           </div>
           <div className="max-h-60 space-y-1 overflow-y-auto">
             {ruleGroups.length === 0 && <p className="py-2 text-center text-sm text-gray-400">暂无预警分类</p>}
