@@ -140,7 +140,7 @@ export function AttrManage({
               </div>
             </div>
             <div className="mt-3 space-y-1">
-              {attr.items.map((it, idx) => (
+              {(attr.items || []).map((it, idx) => (
                 <div key={it.id} className="flex items-center gap-1.5 rounded-md bg-gray-50 px-2 py-1 text-xs text-gray-700">
                   <span className="w-4 shrink-0 text-center text-[10px] text-gray-400">{idx + 1}</span>
                   <span className="flex-1 truncate">{it.name}</span>
@@ -154,7 +154,7 @@ export function AttrManage({
                   </button>
                   <button
                     onClick={() => moveItem(attr, idx, 1)}
-                    disabled={idx === attr.items.length - 1}
+                    disabled={idx === (attr.items || []).length - 1}
                     className="text-gray-400 hover:text-gray-700 disabled:opacity-30"
                     title="右移"
                   >
@@ -174,7 +174,7 @@ export function AttrManage({
                   </button>
                 </div>
               ))}
-              {attr.items.length === 0 && <span className="text-xs text-gray-300">暂无标签</span>}
+              {(attr.items || []).length === 0 && <span className="text-xs text-gray-300">暂无标签</span>}
             </div>
           </div>
         ))}
