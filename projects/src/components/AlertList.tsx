@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Bell, ClipboardList, Eye, History, MessageSquare, Plus, RotateCcw, Send, X } from 'lucide-react';
+import { ArrowLeft, Bell, ClipboardList, Eye, History, MessageSquare, RotateCcw, Send, X } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { resolvePerm, canView, filterAlertsByScope } from '@/lib/perm';
 import type { AlertStatus, AlertTask, NotifyMode } from '@/lib/types';
@@ -110,7 +110,7 @@ function quickRange(key: string): { start: string; end: string } {
 }
 
 export function AlertList({ onBack }: { onBack: () => void }) {
-  const { state, addAlert, updateAlertStatus } = useStore();
+  const { state, updateAlertStatus } = useStore();
   const PEOPLE = PERSONNEL as unknown as { name: string; dept: string }[];
   const [meName] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : ''));
   const me = state.persons.find((p) => p.name === meName) ?? null;
@@ -122,12 +122,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
   );
   const pending = alerts.filter((a) => a.status === 'new' || a.status === 'accepted' || a.status === 'processing').length;
 
-  const [creating, setCreating] = useState(false);
-  const [ruleId, setRuleId] = useState(state.rules[0]?.id ?? '');
-  const [level, setLevel] = useState<AlertTask['level']>('warn');
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [reason, setReason] = useState('');
+  
   const [handoffId, setHandoffId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [showHist, setShowHist] = useState(false);
@@ -199,24 +194,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
     setFilter({ ...filter, start: r.start, end: r.end });
   };
 
-  const createAlert = () => {
-    const rule = rules.find((r) => r.id === ruleId);
-    addAlert({
-      ruleId: rule?.id ?? '',
-      ruleName: rule?.name ?? '未命名规则',
-      level,
-      title: title.trim() || (rule?.name ?? '预警') + ' - 触发告警',
-      content: content.trim() || '规则命中，产生一条预警，请及时处理。',
-      reason: reason.trim() || `基于「${rule?.name ?? '手动'}」规则人工生成预警`,
-      dept: '零售运营',
-      assignee: '',
-      status: 'new',
-    });
-    setCreating(false);
-    setTitle('');
-    setContent('');
-    setReason('');
-  };
+  
 
   const SelectCls =
     'h-7 whitespace-nowrap rounded border border-gray-200 bg-white px-2 text-xs text-gray-600 outline-none transition-colors hover:border-gray-300 focus:border-gray-400';
@@ -230,14 +208,6 @@ export function AlertList({ onBack }: { onBack: () => void }) {
         </button>
         <h1 className="text-sm font-semibold text-gray-800">预警列表</h1>
         {pending > 0 && <span className="text-xs font-medium text-gray-400">{pending} 条待处理</span>}
-        <div className="ml-auto">
-          <button
-            onClick={() => setCreating(true)}
-            className="inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50"
-          >
-            <Plus size={14} /> 生成预警
-          </button>
-        </div>
       </div>
 
       {/* 筛选栏 */}
@@ -276,37 +246,34 @@ export function AlertList({ onBack }: { onBack: () => void }) {
         >
           <RotateCcw size={12} /> 重置
         </button>
+        <div className="mx-2 h-4 w-px bg-gray-100" />
+        {QUICK_TAGS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => applyQuick(t.key)}
+            className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+              quickKey === t.key ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+        <button
+          onClick={() => {
+            setQuickKey('');
+            setFilter({ ...filter, start: '', end: '' });
+          }}
+          className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+            quickKey === '' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+          }`}
+        >
+          全部
+        </button>
         <span className="ml-auto text-xs tabular-nums text-gray-400">{filtered.length} 条</span>
       </div>
 
-      {/* 快捷日期 + 统计 */}
+      {/* 统计 */}
       <div className="border-b border-gray-100 bg-white px-6 py-2.5">
-        <div className="mb-2 flex flex-wrap items-center gap-1.5">
-          {QUICK_TAGS.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => applyQuick(t.key)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                quickKey === t.key
-                  ? 'bg-gray-800 text-white'
-                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-          <button
-            onClick={() => {
-              setQuickKey('');
-              setFilter({ ...filter, start: '', end: '' });
-            }}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-              quickKey === '' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-            }`}
-          >
-            全部
-          </button>
-        </div>
         <div className="grid grid-cols-4 gap-3">
           {[
             { label: '预警条数', value: stats.total, text: 'text-gray-800', sub: `${filtered.length} 条` },
@@ -329,7 +296,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
           <div className="mt-24 flex flex-col items-center gap-2 text-center text-sm text-gray-400">
             <Bell size={30} className="text-gray-300" />
             <p>暂无预警。</p>
-            <p className="text-xs">调整筛选条件，或点击右上角「生成预警」。</p>
+            <p className="text-xs">调整筛选条件，或查看预警后处理。</p>
           </div>
         ) : (
           <table className="w-full border-collapse bg-white text-xs">
@@ -411,73 +378,6 @@ export function AlertList({ onBack }: { onBack: () => void }) {
           </table>
         )}
       </div>
-
-      {/* 生成弹窗 */}
-      {creating && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/20 p-4 backdrop-blur-sm" onClick={() => setCreating(false)}>
-          <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-5 shadow-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-800">生成预警</h3>
-              <button onClick={() => setCreating(false)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
-                <X size={15} />
-              </button>
-            </div>
-            <label className="mb-1 block text-xs text-gray-500">关联规则</label>
-            <select
-              value={ruleId}
-              onChange={(e) => setRuleId(e.target.value)}
-              className="mb-3 w-full rounded border border-gray-200 px-3 py-2 text-sm outline-none transition-colors focus:border-gray-400"
-            >
-              {rules.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
-            <label className="mb-1 block text-xs text-gray-500">级别</label>
-            <div className="mb-3 flex gap-2">
-              {(Object.keys(LEVEL_META) as AlertTask['level'][]).map((lv) => (
-                <button
-                  key={lv}
-                  onClick={() => setLevel(lv)}
-                  className={`rounded border px-3 py-1 text-xs transition-colors ${
-                    level === lv ? 'border-gray-800 bg-gray-800 text-white' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-                  }`}
-                >
-                  {LEVEL_META[lv as keyof typeof LEVEL_META]?.label ?? lv}
-                </button>
-              ))}
-            </div>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="预警标题（默认取规则名）"
-              className="mb-2 w-full rounded border border-gray-200 px-3 py-2 text-sm outline-none transition-colors focus:border-gray-400"
-            />
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="预警内容 / 说明"
-              rows={3}
-              className="mb-2 w-full resize-none rounded border border-gray-200 px-3 py-2 text-sm outline-none transition-colors focus:border-gray-400"
-            />
-            <textarea
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="为什么预警（触发原因，可填如上月未开单天数达到阈值等）"
-              rows={2}
-              className="mb-4 w-full resize-none rounded border border-gray-200 px-3 py-2 text-sm outline-none transition-colors focus:border-gray-400"
-            />
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setCreating(false)} className="rounded px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100">取消</button>
-              <button
-                onClick={createAlert}
-                className="inline-flex items-center gap-1.5 rounded bg-gray-800 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-gray-700"
-              >
-                <Send size={14} /> 生成
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 查看弹窗 */}
       {(() => {
