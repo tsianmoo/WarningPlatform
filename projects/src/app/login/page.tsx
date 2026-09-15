@@ -57,7 +57,8 @@ export default function LoginPage() {
       .then((j) => {
         if (j?.config) setCfg({ ...DEFAULT_HOME_CONFIG, ...j.config });
         type Row = { id?: string; username?: string; password?: string; name?: string; code?: string };
-        const toAcct = (r: Row, type: string) => ({ username: (r.username ?? r.code) || '', password: r.password || '', name: r.name || r.code || r.username || '', type, id: r.id || '' });
+        // 经销商/店仓/员工等业务账号未单独设密码时，回退到初始密码 123456，保证可登录
+        const toAcct = (r: Row, type: string) => ({ username: (r.username ?? r.code) || '', password: r.password || '123456', name: r.name || r.code || r.username || '', type, id: r.id || '' });
         const all = [
           ...(Array.isArray(j?.persons) ? (j.persons as Row[]).map((p) => toAcct(p, 'person')) : []),
           ...(Array.isArray(j?.dealers) ? (j.dealers as Row[]).map((d) => toAcct(d, 'dealer')) : []),
