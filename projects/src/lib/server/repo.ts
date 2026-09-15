@@ -586,6 +586,7 @@ function toEmployee(r: DictRow): Employee {
     onDuty: r.on_duty ?? true,
     enabled: r.enabled ?? true,
     password: r.password ?? undefined,
+    attrs: r.attrs ?? undefined,
     sort: r.sort ?? 0,
     createdAt: r.created_at ?? 0,
   };
@@ -610,6 +611,7 @@ export async function syncEmployees(employees: Employee[]): Promise<void> {
     on_duty: e.onDuty ?? true,
     enabled: e.enabled ?? true,
     password: e.password ?? null,
+    attrs: e.attrs ?? null,
     sort: e.sort ?? 0,
     created_at: e.createdAt ?? 0,
   }));

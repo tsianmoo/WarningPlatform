@@ -1126,6 +1126,8 @@ export interface Employee {
   enabled?: boolean;
   /** 初始密码（登录用） */
   password?: string;
+  /** 员工属性（挂分类标签值） */
+  attrs?: DictAttrs;
   sort: number;
   createdAt: number;
 }
