@@ -19,6 +19,7 @@ import {
   Pencil,
   Inbox,
   FolderPlus,
+  FolderInput,
 } from 'lucide-react';
 import { useStore, formatDateTime } from '@/lib/store';
 import { resolvePerm, canOper } from '@/lib/perm';
@@ -63,6 +64,8 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
     t: DataTable;
     next: { name: string; fileName: string; fields: DataTable['fields']; previewRows: DataTable['previewRows']; rowCount: number; rows: DataTable['rows'] };
   } | null>(null);
+  const [moveTable, setMoveTable] = useState<DataTable | null>(null);
+  const [moveTarget, setMoveTarget] = useState('');
   const uploadGroupRef = useRef('');
   const uploadRef = useRef<HTMLInputElement>(null);
   const setUploadGroup = (g: string) => {
@@ -180,11 +183,41 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
     const g = state.tableGroups.find((x) => x.name === gname);
     if (!g) return;
     const cnt = state.tables.filter((t) => t.group === gname).length;
-    const ok = window.confirm(cnt > 0 ? `删除分组「${gname}」？组内 ${cnt} 张数据表将移回未分组（表本身不会被删除）。` : `删除分组「${gname}」？`);
-    if (ok) {
+    if (cnt > 0) {
+      toast.error(`分组「${gname}」下有 ${cnt} 张数据表，请先移出或删除数据后再删除分组`);
+      return;
+    }
+    if (window.confirm(`删除分组「${gname}」？`)) {
       removeTableGroup(g.id);
       toast.success(`已删除分组「${gname}」`);
     }
+  };
+
+  const renameTable = (t: DataTable) => {
+    const name = window.prompt('重命名数据表', t.name);
+    const n = String(name ?? '').trim();
+    if (!n || n === t.name) return;
+    if (state.tables.some((x) => x.id !== t.id && x.name === n)) {
+      toast.error(`数据表「${n}」已存在`);
+      return;
+    }
+    updateTable(t.id, { name: n });
+    toast.success(`已重命名「${t.name}」→「${n}」`);
+  };
+
+  const openMove = (t: DataTable) => {
+    setMoveTable(t);
+    setMoveTarget(t.group || '');
+  };
+
+  const doMove = () => {
+    if (!moveTable) return;
+    if (moveTarget !== moveTable.group) {
+      updateTable(moveTable.id, { group: moveTarget });
+      toast.success(`已将「${moveTable.name}」移动到 ${moveTarget ? `「${moveTarget}」` : '未分组'}`);
+    }
+    setMoveTable(null);
+    setMoveTarget('');
   };
 
   // 文件夹：每个分组实体一条，未分组的孤儿表（含 group 为空或不属于任何分组）归入「未分组」伪节点
@@ -386,9 +419,13 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
                                 重命名
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem onSelect={() => deleteGroup(node.name)} className="text-red-500 focus:text-red-600">
+                              <DropdownMenuItem
+                                onSelect={() => deleteGroup(node.name)}
+                                disabled={node.tables.length > 0}
+                                className={node.tables.length ? 'text-red-300 focus:text-red-300' : 'text-red-500 focus:text-red-600'}
+                              >
                                 <Trash2 size={14} className="mr-2" />
-                                删除
+                                {node.tables.length ? `删除（组内 ${node.tables.length} 张需先移出）` : '删除'}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -421,48 +458,66 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
                                     </div>
                                   </div>
                                 </div>
-                                <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
-                                  {t.prev && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        undoUpdate(t);
-                                      }}
-                                      className="rounded-md p-1 text-gray-400 transition hover:bg-amber-50 hover:text-amber-600"
-                                      title="返回上一步"
+                                <div className="flex shrink-0 items-center gap-0.5">
+                                  <div className="flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+                                    {t.prev && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          undoUpdate(t);
+                                        }}
+                                        className="rounded-md p-1 text-gray-400 transition hover:bg-amber-50 hover:text-amber-600"
+                                        title="返回上一步"
+                                      >
+                                        <Undo2 size={14} />
+                                      </button>
+                                    )}
+                                    <label
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="cursor-pointer rounded-md p-1 text-gray-400 transition hover:bg-violet-50 hover:text-violet-600"
+                                      title="更新数据表（重新上传覆盖）"
                                     >
-                                      <Undo2 size={14} />
-                                    </button>
-                                  )}
-                                  <label
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="cursor-pointer rounded-md p-1 text-gray-400 transition hover:bg-violet-50 hover:text-violet-600"
-                                    title="更新数据表（重新上传覆盖）"
-                                  >
-                                    <RefreshCw size={14} />
-                                    <input
-                                      type="file"
-                                      accept=".xlsx,.xls,.xlsm,.csv,.txt"
-                                      className="hidden"
-                                      onChange={(e) => {
-                                        const f = e.target.files?.[0];
-                                        if (f) void handleUpdate(t, f);
-                                        e.target.value = '';
-                                      }}
-                                    />
-                                  </label>
-                                  {can('delete', t.id) && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        tryDelete(t);
-                                      }}
-                                      className="rounded-md p-1 text-gray-300 transition hover:bg-red-50 hover:text-red-500"
-                                      title="删除数据表"
-                                    >
-                                      <Trash2 size={14} />
-                                    </button>
-                                  )}
+                                      <RefreshCw size={14} />
+                                      <input
+                                        type="file"
+                                        accept=".xlsx,.xls,.xlsm,.csv,.txt"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                          const f = e.target.files?.[0];
+                                          if (f) void handleUpdate(t, f);
+                                          e.target.value = '';
+                                        }}
+                                      />
+                                    </label>
+                                  </div>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <button
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="rounded-md p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+                                        title="数据表操作"
+                                      >
+                                        <MoreVertical size={14} />
+                                      </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="min-w-[140px]">
+                                      <DropdownMenuItem onSelect={() => renameTable(t)}>
+                                        <Pencil size={14} className="mr-2 text-gray-400" />
+                                        重命名
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onSelect={() => openMove(t)}>
+                                        <FolderInput size={14} className="mr-2 text-gray-400" />
+                                        移动到…
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                      {can('delete', t.id) && (
+                                        <DropdownMenuItem onSelect={() => tryDelete(t)} className="text-red-500 focus:text-red-600">
+                                          <Trash2 size={14} className="mr-2" />
+                                          删除
+                                        </DropdownMenuItem>
+                                      )}
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                 </div>
                               </div>
                             ))
@@ -769,6 +824,36 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
             <AlertDialogCancel onClick={() => setOpenUpdate(null)}>取消</AlertDialogCancel>
             <AlertDialogAction className="bg-violet-600 text-white hover:bg-violet-700" onClick={applyUpdate}>
               确认更新
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!moveTable} onOpenChange={(v) => !v && setMoveTable(null)}>
+        <AlertDialogContent className="sm:max-w-[380px]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>移动「{moveTable?.name}」</AlertDialogTitle>
+            <AlertDialogDescription>选择要将该数据表移动到哪个文件夹：</AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid gap-2">
+            <label className="text-sm font-medium text-gray-700">目标文件夹</label>
+            <select
+              value={moveTarget}
+              onChange={(e) => setMoveTarget(e.target.value)}
+              className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 outline-none focus:border-violet-300"
+            >
+              <option value="">未分组</option>
+              {state.tableGroups.map((g) => (
+                <option key={g.id} value={g.name}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setMoveTable(null)}>取消</AlertDialogCancel>
+            <AlertDialogAction className="bg-violet-600 text-white hover:bg-violet-700" onClick={doMove}>
+              移动
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
