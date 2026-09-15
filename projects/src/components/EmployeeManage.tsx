@@ -105,15 +105,40 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <select value={f.dealerId} onChange={(e) => setF({ ...f, dealerId: e.target.value })} className={sel + ' w-40'}><option value="">全部经销商</option>{dealers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
-        <select value={f.storeId} onChange={(e) => setF({ ...f, storeId: e.target.value })} className={sel + ' w-40'}><option value="">全部店仓</option>{stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-        <input value={f.code} onChange={(e) => setF({ ...f, code: e.target.value })} placeholder="员工编号" className={input + ' w-36'} />
-        <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="员工姓名" className={input + ' w-32'} />
-        <select value={f.post} onChange={(e) => setF({ ...f, post: e.target.value })} className={sel + ' w-32'}><option value="">全部岗位</option>{(empAttrs.find((a) => a.name === '岗位')?.items ?? []).map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}</select>
-        <select value={f.onDuty} onChange={(e) => setF({ ...f, onDuty: e.target.value })} className={sel + ' w-28'}><option value="">在职状态</option><option value="1">在职</option><option value="0">离职</option></select>
-        <select value={f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.value })} className={sel + ' w-28'}><option value="">可用状态</option><option value="1">可用</option><option value="0">停用</option></select>
-        <button onClick={() => setF({ dealerId: '', storeId: '', code: '', name: '', post: '', onDuty: '', enabled: '' })} className="rounded border border-gray-300 px-3 py-1 text-sm text-gray-600 hover:bg-gray-100">重置</button>
+      <div className="rounded-md border border-gray-200 bg-white px-3 py-2.5">
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:grid-cols-4 xl:grid-cols-8">
+          <div>
+            <label className={label}>所属经销商</label>
+            <select value={f.dealerId} onChange={(e) => setF({ ...f, dealerId: e.target.value })} className={sel}><option value="">全部</option>{dealers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
+          </div>
+          <div>
+            <label className={label}>所属店仓</label>
+            <select value={f.storeId} onChange={(e) => setF({ ...f, storeId: e.target.value })} className={sel}><option value="">全部</option>{stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+          </div>
+          <div>
+            <label className={label}>员工编号</label>
+            <input value={f.code} onChange={(e) => setF({ ...f, code: e.target.value })} placeholder="编号" className={input} />
+          </div>
+          <div>
+            <label className={label}>员工姓名</label>
+            <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="姓名" className={input} />
+          </div>
+          <div>
+            <label className={label}>岗位</label>
+            <select value={f.post} onChange={(e) => setF({ ...f, post: e.target.value })} className={sel}><option value="">全部</option>{(empAttrs.find((a) => a.name === '岗位')?.items ?? []).map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}</select>
+          </div>
+          <div>
+            <label className={label}>在职状态</label>
+            <select value={f.onDuty} onChange={(e) => setF({ ...f, onDuty: e.target.value })} className={sel}><option value="">全部</option><option value="1">在职</option><option value="0">离职</option></select>
+          </div>
+          <div>
+            <label className={label}>可用状态</label>
+            <select value={f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.value })} className={sel}><option value="">全部</option><option value="1">可用</option><option value="0">停用</option></select>
+          </div>
+          <div className="flex items-end">
+            <button onClick={() => setF({ dealerId: '', storeId: '', code: '', name: '', post: '', onDuty: '', enabled: '' })} className="h-[34px] w-full rounded border border-gray-300 text-sm text-gray-600 hover:bg-gray-100">重置</button>
+          </div>
+        </div>
       </div>
 
       <div className="max-h-[calc(100vh-200px)] overflow-auto rounded border border-gray-200">

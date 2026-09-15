@@ -7,6 +7,7 @@ import type {
   DataTable,
   ExecutionRecord,
   HrAttribute,
+  HrAttributeItem,
   Dealer,
   Store,
   Employee,
@@ -27,6 +28,19 @@ import type { ActionNodeData, ConditionItem, ConditionNodeData, FlowNode } from 
 export function isBlankAlert(a: Partial<AlertTask> | null | undefined): boolean {
   if (!a) return true;
   return !(a.title?.trim() || a.ruleName?.trim());
+}
+
+/** 归一化属性标签：容忍历史遗留的字符串数组（如 ["店长"]），统一转成 {id,name} 对象数组，避免 key 冲突与渲染崩溃 */
+export function normalizeHrAttrs(attrs: unknown[]): HrAttribute[] {
+  return (attrs ?? []).map((raw) => {
+    const a = raw as HrAttribute;
+    const items: HrAttributeItem[] = (Array.isArray(a.items) ? a.items : []).map((it, idx) => {
+      if (typeof it === 'string') return { id: `itm_${idx}_${a.id}`, name: it };
+      const o = it as HrAttributeItem;
+      return { id: o.id ?? `itm_${idx}_${a.id}`, name: o.name ?? String(o) };
+    });
+    return { ...a, items };
+  });
 }
 
 /** 拼接“为什么预警”的判断规则描述，如：如果未开单天数大于平均未开单天数，提醒 */
@@ -310,7 +324,7 @@ function migrateState(raw: AppState | null): AppState {
           : [];
     return { ...r, tableIds };
   });
-  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [], hrAttributes: (Array.isArray(raw.hrAttributes) ? raw.hrAttributes : []).filter((a) => (a.category ?? 'person') !== ('org' as never)), dealers: Array.isArray(raw.dealers) ? raw.dealers : [], stores: Array.isArray(raw.stores) ? raw.stores : [], employees: Array.isArray(raw.employees) ? raw.employees : [], config: normalizeHomeConfig(raw.config) };
+  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [], hrAttributes: normalizeHrAttrs((Array.isArray(raw.hrAttributes) ? raw.hrAttributes : []).filter((a) => (a.category ?? 'person') !== ('org' as never))), dealers: Array.isArray(raw.dealers) ? raw.dealers : [], stores: Array.isArray(raw.stores) ? raw.stores : [], employees: Array.isArray(raw.employees) ? raw.employees : [], config: normalizeHomeConfig(raw.config) };
 }
 
 function loadInitial(): AppState {
@@ -709,7 +723,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           alerts: (remote.alerts ?? []).filter((a) => !isBlankAlert(a)),
           orgs: remote.orgs ?? [],
           persons: remote.persons ?? [],
-          hrAttributes: (remote.hrAttributes ?? []).filter((a) => (a.category ?? 'person') !== ('org' as never)),
+          hrAttributes: normalizeHrAttrs((remote.hrAttributes ?? []).filter((a) => (a.category ?? 'person') !== ('org' as never))),
           dealers: remote.dealers ?? [],
           stores: remote.stores ?? [],
           employees: remote.employees ?? [],
