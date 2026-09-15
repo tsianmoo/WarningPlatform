@@ -34,6 +34,12 @@ interface AlertRow {
   assignee: string | null;
   status: string | null;
   handoff_to: string | null;
+  accepted_at: number | null;
+  started_at: number | null;
+  handled_at: number | null;
+  resolution: string | null;
+  failed_reason: string | null;
+  comments: Array<{ id: string; by: string; text: string; at: number }> | null;
   created_at: number;
   updated_at: number;
 }
@@ -54,6 +60,12 @@ function toAlertTask(r: AlertRow): AlertTask {
     assignee: r.assignee ?? '',
     status: (r.status as AlertStatus) ?? 'new',
     handoffTo: r.handoff_to ?? undefined,
+    acceptedAt: r.accepted_at ?? undefined,
+    startedAt: r.started_at ?? undefined,
+    handledAt: r.handled_at ?? undefined,
+    resolution: r.resolution ?? undefined,
+    failedReason: r.failed_reason ?? undefined,
+    comments: r.comments ?? undefined,
     createdAt: r.created_at ?? Date.now(),
     updatedAt: r.updated_at ?? Date.now(),
   };
@@ -87,6 +99,12 @@ export async function syncAlerts(alerts: AlertTask[]): Promise<void> {
     assignee: a.assignee,
     status: a.status,
     handoff_to: a.handoffTo ?? null,
+    accepted_at: a.acceptedAt ?? null,
+    started_at: a.startedAt ?? null,
+    handled_at: a.handledAt ?? null,
+    resolution: a.resolution ?? null,
+    failed_reason: a.failedReason ?? null,
+    comments: a.comments ?? null,
     created_at: a.createdAt ?? Date.now(),
     updated_at: a.updatedAt ?? Date.now(),
   }));

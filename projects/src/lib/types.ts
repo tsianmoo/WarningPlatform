@@ -942,8 +942,28 @@ export interface AlertTask {
   notified?: string[];
   status: AlertStatus;
   handoffTo?: string;
+  /** 接受时间（准备处理） */
+  acceptedAt?: number;
+  /** 开始处理时间（处理计时起点） */
+  startedAt?: number;
+  /** 完成/结束时间 */
+  handledAt?: number;
+  /** 处理方案（完成必填） */
+  resolution?: string;
+  /** 无法完成原因 */
+  failedReason?: string;
+  /** 针对该预警的沟通交流消息（含管理者意见），按时间正序 */
+  comments?: AlertComment[];
   createdAt: number;
   updatedAt: number;
+}
+
+/** 预警沟通交流消息 */
+export interface AlertComment {
+  id: string;
+  by: string;
+  text: string;
+  at: number;
 }
 
 /** 聚合函数选项 */

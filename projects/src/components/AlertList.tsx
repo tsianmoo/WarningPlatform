@@ -1,9 +1,9 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Bell, Eye, Plus, RotateCcw, Send, X } from 'lucide-react';
+import { ArrowLeft, Bell, Eye, MessageSquare, Plus, RotateCcw, Send, X } from 'lucide-react';
 import { useStore } from '@/lib/store';
-import { resolvePerm, canOper, filterAlertsByScope } from '@/lib/perm';
+import { resolvePerm, canOper, canView, filterAlertsByScope } from '@/lib/perm';
 import type { AlertStatus, AlertTask, NotifyMode } from '@/lib/types';
 import { PERSONNEL } from '@/lib/types';
 
@@ -33,6 +33,17 @@ function formatElapsed(from: number, now: number): string {
   const d = Math.floor(h / 24);
   if (d < 1) return `${h} 小时 ${m} 分`;
   return `${d} 天 ${h % 24} 小时`;
+}
+
+/** 预警处理时长：process 中实时计时，完成/失败后按起止统计 */
+function formatDur(start: number, end: number): string {
+  const s = Math.max(0, Math.floor((end - start) / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h >= 1) return `${h} 小时 ${m} 分`;
+  if (m >= 1) return `${m} 分 ${sec} 秒`;
+  return `${sec} 秒`;
 }
 
 function ElapsedCell({ createdAt }: { createdAt: number }) {
@@ -99,6 +110,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
   const me = state.persons.find((p) => p.name === meName) ?? null;
   const perm = resolvePerm(me, state.config);
   const canHandle = canOper(perm, 'alerts', 'handle');
+  const isManager = canView(perm, 'perms');
   const alerts = useMemo(
     () => filterAlertsByScope(state.alerts ?? [], me, perm.dataScope, state.stores ?? []),
     [state.alerts, me, perm.dataScope, state.stores]
@@ -113,6 +125,18 @@ export function AlertList({ onBack }: { onBack: () => void }) {
   const [reason, setReason] = useState('');
   const [handoffId, setHandoffId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<null | { title: string; desc?: string; needText?: boolean; required?: boolean; placeholder?: string; onOk: (t: string) => void }>(null);
+  const [chatDraft, setChatDraft] = useState('');
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const [confirmText, setConfirmText] = useState('');
+  const openConfirm = (c: NonNullable<typeof confirm>) => {
+    setConfirmText('');
+    setConfirm(c);
+  };
   const [filter, setFilter] = useState(emptyFilter);
   const [quickKey, setQuickKey] = useState('');
   const rules = state.rules;
@@ -304,6 +328,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                 <th className="whitespace-nowrap px-4 py-3 font-medium">条数</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">接收人</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">已过时间</th>
+                <th className="whitespace-nowrap px-4 py-3 font-medium">处理耗时</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">状态</th>
                 <th className="whitespace-nowrap px-4 py-3 pr-6 font-medium">操作</th>
               </tr>
@@ -314,7 +339,8 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                 const st = STATUS_META[a.status];
                 const count = a.preview?.storeMessages?.length ?? a.preview?.rows?.length ?? 0;
                 const stores = a.preview?.storeMessages ?? [];
-                const actions = buildActions(a, updateAlertStatus, setHandoffId);
+                const actions = buildActions(a, updateAlertStatus, setHandoffId, openConfirm);
+                const dur = a.startedAt ? formatDur(a.startedAt, a.handledAt ?? now) : null;
                 return (
                   <Fragment key={a.id}>
                     <tr className="align-middle transition-colors last:border-0 hover:bg-gray-50/70">
@@ -342,6 +368,9 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs">
                         <ElapsedCell createdAt={a.createdAt} />
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-xs tabular-nums text-gray-600">
+                        {dur ? <span className={a.status === 'processing' ? 'text-violet-500' : ''}>{dur}</span> : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
                         <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[13px] font-medium">
@@ -466,6 +495,19 @@ export function AlertList({ onBack }: { onBack: () => void }) {
         ) : (
           <span className="text-gray-300">待分配</span>
         );
+        const comments = open.comments ?? [];
+        const sendMsg = () => {
+          const text = (chatDraft || '').trim();
+          if (!text) return;
+          updateAlertStatus(open.id, {
+            comments: [...comments, { id: `c${Date.now()}`, by: meName || '当前用户', text, at: Date.now() }],
+            updatedAt: Date.now(),
+          });
+          setChatDraft('');
+        };
+        const onEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+          if (e.key === 'Enter') { e.preventDefault(); sendMsg(); }
+        };
         return (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/25 p-4 backdrop-blur-sm"
@@ -476,6 +518,8 @@ export function AlertList({ onBack }: { onBack: () => void }) {
               onClick={(e) => e.stopPropagation()}
             >
               <style>{`@keyframes alertPop{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}.alert-pop{animation:alertPop .18s ease-out}`}</style>
+              <div className="flex min-h-0 flex-1">
+                <div className="flex min-w-0 flex-1 flex-col">
               {/* 头部 */}
               <div className="flex items-start gap-3 px-6 pt-5 pb-4">
                 <span className={`mt-0.5 inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-medium ${lv.bg}`}>
@@ -494,11 +538,12 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                 </button>
               </div>
               {/* 元信息 */}
-              <div className="grid grid-cols-2 gap-x-6 gap-y-2 border-y border-gray-100 bg-gray-50/40 px-6 py-3 text-xs sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2 border-y border-gray-100 bg-gray-50/40 px-6 py-3 text-xs sm:grid-cols-5">
                 <div><dt className="text-gray-400">接收人</dt><dd className="mt-0.5 truncate text-gray-700">{recipient}</dd></div>
                 <div><dt className="text-gray-400">状态</dt><dd className={`mt-0.5 font-medium ${st.text}`}>{st.label}</dd></div>
                 <div><dt className="text-gray-400">预警分组</dt><dd className="mt-0.5 truncate text-gray-700">{groupOf.get(open.ruleId) || '—'}</dd></div>
                 <div><dt className="text-gray-400">已过时间</dt><dd className="mt-0.5">　<ElapsedCell createdAt={open.createdAt} /></dd></div>
+                <div><dt className="text-gray-400">处理时长</dt><dd className="mt-0.5 tabular-nums text-gray-700">{open.startedAt ? formatDur(open.startedAt, open.handledAt ?? now) : '—'}</dd></div>
               </div>
               {/* 正文 */}
               <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
@@ -551,12 +596,27 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                     ) : null}
                   </div>
                 ) : null}
+                {(open.resolution || open.failedReason) ? (
+                  <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50/40 px-3 py-2">
+                    {open.failedReason ? (
+                      <div className="text-[12px]">
+                        <span className="font-medium text-rose-500">无法完成原因</span>
+                        <p className="mt-1 leading-relaxed text-gray-600">{open.failedReason}</p>
+                      </div>
+                    ) : open.resolution ? (
+                      <div className="text-[12px]">
+                        <span className="font-medium text-emerald-600">处理方案</span>
+                        <p className="mt-1 leading-relaxed text-gray-600">{open.resolution}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
               {/* 操作 */}
               <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-6 py-4">
                 <span className="mr-auto text-[11px] text-gray-300">点击操作后将更新该条预警状态</span>
                 {canHandle ? (
-                  buildActions(open, updateAlertStatus, setHandoffId).map((x) => (
+                  buildActions(open, updateAlertStatus, setHandoffId, openConfirm).map((x) => (
                     <button
                       key={x.label}
                       onClick={x.fn}
@@ -566,6 +626,51 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                     </button>
                   ))
                 ) : null}
+              </div>
+                </div>
+                <div className="ml-4 hidden w-80 shrink-0 flex-col rounded-xl border border-gray-100 xl:flex">
+                  <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+                    <div className="flex items-center gap-2 text-sm font-medium text-gray-800">
+                      <MessageSquare size={15} className="text-gray-400" />
+                      沟通交流
+                    </div>
+                    <span className="text-xs text-gray-400">{comments.length}</span>
+                  </div>
+                  <div className="min-h-0 flex-1 space-y-3 overflow-auto px-4 py-3">
+                    {comments.length === 0 ? (
+                      <p className="pt-6 text-center text-xs text-gray-300">暂无沟通记录，可在下方留言。</p>
+                    ) : (
+                      comments.map((c) => (
+                        <div key={c.id} className="flex flex-col items-start">
+                          <div className={`flex w-full items-baseline gap-2 ${c.by === meName ? 'justify-end' : ''}`}>
+                            <span className={`rounded-lg px-2.5 py-1.5 text-[13px] leading-relaxed ${c.by === meName ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-700'}`}>
+                              {c.text}
+                            </span>
+                          </div>
+                          <span className={`mt-0.5 text-[10px] text-gray-300 ${c.by === meName ? 'self-end' : ''}`}>{c.by} · {new Date(c.at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="border-t border-gray-100 p-3">
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={chatDraft}
+                        onChange={(e) => setChatDraft(e.target.value)}
+                        onKeyDown={onEnter}
+                        placeholder={isManager ? '发表你的意见或建议…' : '请输入沟通内容…'}
+                        className="h-9 flex-1 rounded-md border border-gray-200 bg-gray-50 px-3 text-[13px] text-gray-700 outline-none transition focus:border-gray-300 focus:bg-white"
+                      />
+                      <button
+                        onClick={sendMsg}
+                        disabled={!chatDraft.trim()}
+                        className="inline-flex h-9 items-center gap-1 rounded-md bg-gray-800 px-2.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-40"
+                      >
+                        <Send size={13} /> 发送
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -606,28 +711,68 @@ export function AlertList({ onBack }: { onBack: () => void }) {
           </div>
         </div>
       )}
+
+      {/* 操作二次确认弹窗 */}
+      {confirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-gray-900/20 p-4 backdrop-blur-sm" onClick={() => setConfirm(null)}>
+          <div className="alert-pop w-full max-w-md rounded-xl border border-gray-200 bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-[15px] font-semibold text-gray-900">{confirm.title}</h3>
+            {confirm.desc ? <p className="mt-1.5 text-[13px] leading-relaxed text-gray-500">{confirm.desc}</p> : null}
+            {confirm.needText ? (
+              <textarea
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                rows={3}
+                placeholder={confirm.placeholder}
+                autoFocus
+                className="mt-3 w-full resize-none rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-[13px] text-gray-700 outline-none transition focus:border-gray-300 focus:bg-white"
+              />
+            ) : null}
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setConfirm(null)} className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-50">
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  const need = confirm.needText && confirm.required;
+                  if (need && !confirmText.trim()) return;
+                  setConfirm(null);
+                  confirm.onOk(confirmText.trim());
+                }}
+                disabled={confirm.needText && confirm.required && !confirmText.trim()}
+                className="rounded-md bg-gray-800 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-40"
+              >
+                确认
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 type AlertAction = { label: string; cls: string; fn: () => void };
+type ConfirmReq = { title: string; desc?: string; needText?: boolean; required?: boolean; placeholder?: string; onOk: (t: string) => void };
 function buildActions(
   a: AlertTask,
   update: (id: string, patch: Partial<AlertTask>) => void,
-  handoff: (id: string) => void
+  handoff: (id: string) => void,
+  ask: (c: ConfirmReq) => void
 ): AlertAction[] {
-  const upd = (patch: Partial<AlertTask>) => update(a.id, { ...patch, updatedAt: Date.now() });
+  const N = Date.now();
+  const upd = (patch: Partial<AlertTask>) => update(a.id, { ...patch, updatedAt: N });
   const acts: AlertAction[] = [];
   if (a.status === 'new') {
-    acts.push({ label: '接受', cls: 'bg-gray-800 text-white hover:bg-gray-700', fn: () => upd({ status: 'accepted', assignee: a.assignee || '当前用户' }) });
+    acts.push({ label: '接受', cls: 'bg-gray-800 text-white hover:bg-gray-700', fn: () => ask({ title: '确认接受该预警？', desc: '接受后你将成为该预警的接收人，准备开始处理。', onOk: () => upd({ status: 'accepted', acceptedAt: Date.now(), assignee: a.assignee || '当前用户' }) }) });
   } else if (a.status === 'accepted') {
-    acts.push({ label: '开始处理', cls: 'bg-gray-800 text-white hover:bg-gray-700', fn: () => upd({ status: 'processing' }) });
+    acts.push({ label: '开始处理', cls: 'bg-gray-800 text-white hover:bg-gray-700', fn: () => ask({ title: '确认开始处理该预警？', desc: '确认后将开始计算处理时长。', onOk: () => upd({ status: 'processing', startedAt: Date.now() }) }) });
   } else if (a.status === 'processing') {
-    acts.push({ label: '已处理', cls: 'bg-gray-800 text-white hover:bg-gray-700', fn: () => upd({ status: 'done' }) });
+    acts.push({ label: '完成', cls: 'bg-gray-800 text-white hover:bg-gray-700', fn: () => ask({ title: '标记为已处理', needText: true, required: true, placeholder: '请填写处理方案：如何处理、如何解决该预警。（必填）', onOk: (t) => upd({ status: 'done', handledAt: Date.now(), resolution: t }) }) });
   }
   if (a.status === 'new' || a.status === 'accepted' || a.status === 'processing') {
     acts.push({ label: '转交', cls: 'border border-gray-200 bg-white text-gray-500 hover:bg-gray-50', fn: () => handoff(a.id) });
-    acts.push({ label: '无法完成', cls: 'border border-transparent text-gray-300 hover:bg-gray-50 hover:text-gray-500', fn: () => upd({ status: 'failed' }) });
+    acts.push({ label: '无法完成', cls: 'border border-transparent text-gray-300 hover:bg-gray-50 hover:text-gray-500', fn: () => ask({ title: '标记为无法完成', needText: true, required: true, placeholder: '请说明无法完成的原因。（必填）', onOk: (t) => upd({ status: 'failed', handledAt: Date.now(), failedReason: t }) }) });
   }
   return acts;
 }
