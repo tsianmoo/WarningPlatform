@@ -745,6 +745,8 @@ export interface TargetSetting {
   personIds?: string[];
   /** person（按用户）模式下进一步按职位筛选（职位标签，含督导等） */
   personPositions?: string[];
+  /** person（按用户）模式下进一步按岗位筛选（岗位标签） */
+  personPosts?: string[];
 }
 
 // ============ 执行跟踪 ============

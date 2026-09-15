@@ -184,6 +184,8 @@ export function buildAlertsForRule(
         if (!byScope) return false;
         const posFilter = notify?.personPositions ?? [];
         if (posFilter.length && !(p.title && posFilter.includes(p.title))) return false;
+        const postFilter = notify?.personPosts ?? [];
+        if (postFilter.length && !(p.post && postFilter.includes(p.post))) return false;
         return true;
       });
       recipients = [{ mode: m, names: pers.map((p) => p.name) }];

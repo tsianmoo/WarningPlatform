@@ -2599,6 +2599,13 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
         ? targets.personPositions.filter((x) => x !== pos)
         : [...(targets.personPositions ?? []), pos],
     });
+  const togglePersonPost = (p: string) =>
+    onChange({
+      ...targets,
+      personPosts: targets.personPosts?.includes(p)
+        ? targets.personPosts.filter((x) => x !== p)
+        : [...(targets.personPosts ?? []), p],
+    });
   const { state } = useStore();
   const [selDept, setSelDept] = useState<string>('');
   const orgs = state.orgs ?? [];
@@ -2608,6 +2615,7 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
   const deptOrgs = orgs.filter((o) => o.kind === '部门');
   const deptPersons = persons.filter((p) => p.orgId === selDept && p.enabled !== false);
   const positions = Array.from(new Set(persons.map((p) => p.title).filter(Boolean) as string[])).sort();
+  const posts = Array.from(new Set(persons.map((p) => p.post).filter(Boolean) as string[])).sort();
   const groupLabel = 'mb-1 text-[10px] text-gray-400';
   return (
     <div className="mt-1.5 rounded-lg border border-amber-200/70 bg-amber-50/50 p-1.5">
@@ -2657,7 +2665,7 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
             <span className="text-gray-700">当前用户 {persons.length} 人</span>
           </div>
           <div>
-            <div className={groupLabel}>按职位筛选推送用户（含督导，可不选）</div>
+            <div className={groupLabel}>按职位筛选推送用户（可不选）</div>
             <div className="flex flex-wrap gap-1">
               {positions.length === 0 && (
                 <span className="text-[10px] text-gray-400">暂无职位，请先在「用户管理」为用户设置职位</span>
@@ -2678,7 +2686,30 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
                 );
               })}
             </div>
-            <div className="mt-1 text-[10px] text-gray-400">不选 = 推送范围内全部用户；选中 = 仅推送给职位匹配的用户</div>
+            <div className="mt-1 text-[10px] text-gray-400">职位、岗位可不选；均不选 = 推送范围内全部用户，选中则仅推送给匹配的用户</div>
+          </div>
+          <div className="mt-1.5">
+            <div className={groupLabel}>按岗位筛选推送用户（可不选）</div>
+            <div className="flex flex-wrap gap-1">
+              {posts.length === 0 && (
+                <span className="text-[10px] text-gray-400">暂无岗位，请先在「用户管理」为用户设置岗位</span>
+              )}
+              {posts.map((post) => {
+                const on = targets.personPosts?.includes(post) ?? false;
+                return (
+                  <button
+                    key={post}
+                    type="button"
+                    onClick={() => togglePersonPost(post)}
+                    className={`rounded px-1.5 py-0.5 text-[10px] transition ${
+                      on ? 'bg-sky-500 text-white' : 'bg-white text-gray-500 hover:bg-sky-100'
+                    }`}
+                  >
+                    {post}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
