@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { ChevronDown, ChevronUp, Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { useStore } from '@/lib/store';
 import { toast } from 'sonner';
 import type { AttrCategory, Dealer, HrAttribute, Store } from '@/lib/types';
+import { parseExcel } from '@/lib/parser';
 
 type Kind = 'dealer' | 'store';
 
@@ -24,6 +26,8 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
   const [activeId, setActiveId] = useState<string>(list[0]?.id || '');
   const [dictForm, setDictForm] = useState<{ item: (Dealer | Store) | null } | null>(null);
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [loading, setLoading] = useState(false);
 
   const categoryAttrs = hrAttributes.filter((a) => (a.category ?? 'person') === KIND_CATEGORY[kind]);
 
@@ -40,6 +44,83 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
     }
   };
 
+  const TEMPLATE_COLS = kind === 'dealer'
+    ? ['经销商编号', '经销商名称', '经销商等级', '经销商分类', '状态', '联系人', '电话', '地址', '密码', '生日']
+    : ['店仓编号', '店仓名称', '所属经销商', '主营品牌', '分公司', '部门', '销售区域', '区部', '是否允许零售', '状态', '联系人', '电话', '地址'];
+
+  const downloadTemplate = () => {
+    const aoa = [TEMPLATE_COLS];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '模板');
+    XLSX.writeFile(wb, `${unit}导入模板.xlsx`);
+  };
+
+  const handleImport = async (file: File) => {
+    setLoading(true);
+    try {
+      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.xlsm')) {
+      const { rows } = await parseExcel(file);
+      if (!rows.length) return toast.error('模板中没有数据');
+      let ok = 0;
+      const noStatus: string[] = [];
+      for (const r of rows) {
+        if (!r['经销商名称'] && !r['店仓名称']) continue;
+        const attrs: Record<string, string> = {};
+        if (kind === 'dealer') {
+          const lv = String(r['经销商等级'] ?? '').trim();
+          const cat = String(r['经销商分类'] ?? '').trim();
+          if (lv) attrs['经销商等级'] = lv;
+          if (cat) attrs['经销商分类'] = cat;
+        } else {
+          ['主营品牌', '分公司', '部门', '销售区域', '区部'].forEach((col) => {
+            const v = String(r[col] ?? '').trim();
+            if (v) attrs[col] = v;
+          });
+        }
+        const enabled = !/停用|禁用|0|否/i.test(String(r['状态'] ?? '启用'));
+        if (kind === 'dealer') {
+          addDealer({
+            code: String(r['经销商编号'] ?? '').trim() || undefined,
+            name: String(r['经销商名称']).trim(),
+            attrs,
+            enabled,
+            sort: 0,
+            contact: String(r['联系人'] ?? '').trim() || undefined,
+            phone: String(r['电话'] ?? '').trim() || undefined,
+            address: String(r['地址'] ?? '').trim() || undefined,
+            password: String(r['密码'] ?? '').trim() || undefined,
+            birthday: String(r['生日'] ?? '').trim() || undefined,
+          } as never);
+        } else {
+          const dealerName = String(r['所属经销商'] ?? '').trim();
+          const dealer = dealers.find((x) => x.name === dealerName);
+          if (!dealer) noStatus.push(String(r['店仓名称'] ?? ''));
+          addStore({
+            code: String(r['店仓编号'] ?? '').trim() || undefined,
+            name: String(r['店仓名称']).trim(),
+            attrs,
+            dealerId: dealer?.id,
+            allowRetail: !/否|0|不允许/i.test(String(r['是否允许零售'] ?? '是')),
+            enabled,
+            sort: 0,
+            contact: String(r['联系人'] ?? '').trim() || undefined,
+            phone: String(r['电话'] ?? '').trim() || undefined,
+            address: String(r['地址'] ?? '').trim() || undefined,
+          } as never);
+        }
+        ok++;
+      }
+      if (noStatus.length) toast.warning(`以下店仓未匹配到所属经销商：${noStatus.join('、')}`);
+      if (ok) toast.success(`成功导入 ${ok} 条${unit}`);
+    } else {
+      toast.error('请上传 .xlsx / .xls / .xlsm 文件');
+    }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* 列表：经销商 / 店仓 宽表格 */}
@@ -49,7 +130,12 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
             <span>{META[kind].label}</span>
             <span className="rounded-full bg-gray-100 px-1.5 text-[11px] text-gray-500">{list.length}</span>
           </div>
-          <button onClick={() => setDictForm({ item: null })} title={`新增${unit}`} className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><Plus size={15} />新增{unit}</button>
+          <div className="flex items-center gap-1.5">
+            <button onClick={downloadTemplate} title="下载模板" className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><Download size={15} />模板</button>
+            <button onClick={() => fileRef.current?.click()} disabled={loading} title={`导入${unit}`} className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-60"><Upload size={15} />{loading ? '导入中…' : '导入'}</button>
+            <button onClick={() => setDictForm({ item: null })} title={`新增${unit}`} className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><Plus size={15} />新增{unit}</button>
+            <input ref={fileRef} type="file" accept=".xlsx,.xls,.xlsm" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImport(f); e.target.value = ''; }} />
+          </div>
         </div>
 
         <div className="flex-1 overflow-auto">
