@@ -343,7 +343,6 @@ export function PeopleManage() {
 function PersonEditor({
   initial,
   orgs,
-  persons,
   stores,
   storeAttrs,
   jobLabels,
@@ -365,7 +364,6 @@ function PersonEditor({
   const [orgId, setOrgId] = useState(initial?.orgId || '');
   const [title, setTitle] = useState(initial?.title || '');
   const [post, setPost] = useState(initial?.post || '');
-  const [supervisorId, setSupervisorId] = useState(initial?.supervisorId || '');
   const [phone, setPhone] = useState(initial?.phone || '');
   const [email, setEmail] = useState(initial?.email || '');
   const [username, setUsername] = useState(initial?.username || '');
@@ -430,7 +428,7 @@ function PersonEditor({
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-500">归属部门 *</label>
-              <select value={orgId} onChange={(e) => { setOrgId(e.target.value); setSupervisorId(''); }} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900">
+              <select value={orgId} onChange={(e) => setOrgId(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900">
                 <option value="">请选择部门</option>
                 {orgs.map((o) => (
                   <option key={o.id} value={o.id}>{o.name}</option>
@@ -454,15 +452,6 @@ function PersonEditor({
           </div>
 
           <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-500">上级</label>
-              <select value={supervisorId} onChange={(e) => setSupervisorId(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900">
-                <option value="">（无上级，本部门最高层）</option>
-                {persons.filter((p) => p.orgId === orgId && p.id !== initial?.id).map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-500">邮箱</label>
               <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="邮箱" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
@@ -619,7 +608,6 @@ function PersonEditor({
                 orgId,
                 title: title.trim() || undefined,
                 post: post.trim() || undefined,
-                supervisorId: supervisorId || undefined,
                 manageScope:
                   activeDesc
                     ? { filters: filters.map((f) => ({ attrName: storeAttrs.find((a) => a.id === f.attrId)?.name || '', values: f.values })).filter((f) => f.attrName && f.values.length > 0), storeIds: selectedStoreIds, desc: activeDesc }
