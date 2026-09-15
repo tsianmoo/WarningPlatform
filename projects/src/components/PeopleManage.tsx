@@ -298,19 +298,35 @@ function PersonEditor({
   const [address, setAddress] = useState(initial?.address || '');
   const [birthday, setBirthday] = useState(initial?.birthday || '');
   const [password, setPassword] = useState(initial?.password || '');
-  const [scopeAttrId, setScopeAttrId] = useState(initial?.manageScope?.storeAttrId || '');
-  const [scopeAttrValues, setScopeAttrValues] = useState<string[]>(initial?.manageScope?.storeAttrValues || []);
+  const [filters, setFilters] = useState<{ attrId: string; values: string[] }[]>(
+    initial?.manageScope?.filters?.map((f) => ({ attrId: storeAttrs.find((a) => a.name === f.attrName)?.id || '', values: f.values })) ??
+      (initial?.manageScope?.storeAttrId ? [{ attrId: initial.manageScope.storeAttrId, values: initial.manageScope.storeAttrValues ?? [] }] : [])
+  );
   const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>(initial?.manageScope?.storeIds || []);
   const [enabled, setEnabled] = useState(initial ? initial.enabled : true);
 
-  const scopeAttr = storeAttrs.find((a) => a.id === scopeAttrId);
   const matchedStores = useMemo(() => {
-    if (!scopeAttr || scopeAttrValues.length === 0) return [];
-    return stores.filter((s) => scopeAttrValues.includes(s.attrs?.[scopeAttr.name] ?? ''));
-  }, [scopeAttr, scopeAttrValues, stores]);
-  const sectionStores = matchedStores.length > 0 ? matchedStores : stores;
-  const visibleStores = scopeAttrId ? sectionStores : [];
-  const scopeDesc = scopeAttr && scopeAttrValues.length ? `${scopeAttr.name}（${scopeAttrValues.join('、')}）` : '';
+    const activeFilters = filters.filter((f) => {
+      const a = storeAttrs.find((x) => x.id === f.attrId);
+      return a && f.values.length > 0;
+    });
+    if (activeFilters.length === 0) return [];
+    return stores.filter((s) =>
+      activeFilters.every((f) => {
+        const a = storeAttrs.find((x) => x.id === f.attrId);
+        return f.values.includes(s.attrs?.[a!.name] ?? '');
+      })
+    );
+  }, [filters, stores, storeAttrs]);
+  const visibleStores = filters.some((f) => f.values.length > 0) ? matchedStores : (filters.length ? stores : []);
+  const activeDesc = filters
+    .map((f) => {
+      const a = storeAttrs.find((x) => x.id === f.attrId);
+      return a && f.values.length ? `${a.name}（${f.values.join('、')}）` : null;
+    })
+    .filter(Boolean)
+    .join('；');
+  const scopeDesc = activeDesc;
   const valid = name.trim().length > 0;
 
   return (
@@ -363,71 +379,112 @@ function PersonEditor({
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-gray-500">机构管理范围（按店仓属性筛选 → 勾选管辖门店）</label>
-            <div className="grid grid-cols-3 gap-2">
-              <select
-                value={scopeAttrId}
-                onChange={(e) => { setScopeAttrId(e.target.value); setScopeAttrValues([]); setSelectedStoreIds([]); }}
-                className="rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs outline-none focus:border-gray-900"
-              >
-                <option value="">店仓属性</option>
-                {storeAttrs.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
-              <div className="col-span-2 flex flex-wrap items-center gap-1.5 rounded-lg border border-gray-200 px-2 py-1.5">
-                {scopeAttr?.items.length ? (
-                  scopeAttr.items.map((it) => {
-                    const on = scopeAttrValues.includes(it.name);
-                    return (
-                      <button
-                        key={it.id}
-                        type="button"
-                        onClick={() => setScopeAttrValues((v) => (on ? v.filter((x) => x !== it.name) : [...v, it.name]))}
-                        className={`rounded-md px-2 py-0.5 text-xs transition ${on ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                      >
-                        {it.name}
-                      </button>
-                    );
-                  })
-                ) : (
-                  <span className="text-[11px] text-gray-400">请先选择店仓属性</span>
-                )}
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">机构管理范围（多个筛选条件组合筛选 → 勾选管辖门店）</label>
+            <div className="space-y-2 rounded-lg border border-gray-200 p-2">
+              {filters.map((fl, fi) => {
+                const attr = storeAttrs.find((a) => a.id === fl.attrId);
+                return (
+                  <div key={fi} className="grid grid-cols-[150px_1fr_28px] items-center gap-2">
+                    <select
+                      value={fl.attrId}
+                      onChange={(e) => {
+                        const nf = [...filters];
+                        nf[fi] = { attrId: e.target.value, values: [] };
+                        setFilters(nf);
+                        setSelectedStoreIds([]);
+                      }}
+                      className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-gray-900"
+                    >
+                      <option value="">选择条件</option>
+                      {storeAttrs.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                    <div className="flex flex-wrap items-center gap-1 rounded-md border border-gray-200 px-2 py-1">
+                      {attr?.items.length ? (
+                        attr.items.map((it) => {
+                          const on = fl.values.includes(it.name);
+                          return (
+                            <button
+                              key={it.id}
+                              type="button"
+                              onClick={() => {
+                                const nf = [...filters];
+                                nf[fi] = { ...fl, values: on ? fl.values.filter((x) => x !== it.name) : [...fl.values, it.name] };
+                                setFilters(nf);
+                              }}
+                              className={`rounded px-2 py-0.5 text-[11px] transition ${on ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                            >
+                              {it.name}
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <span className="text-[11px] text-gray-400">请先选择筛选条件</span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setFilters(filters.filter((_, i) => i !== fi)); setSelectedStoreIds([]); }}
+                      className="text-gray-300 hover:text-red-500"
+                      title="移除条件"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                );
+              })}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFilters([...filters, { attrId: '', values: [] }])}
+                  className="rounded-md border border-dashed border-gray-300 px-2.5 py-1 text-[11px] text-gray-500 hover:bg-gray-50"
+                >
+                  + 添加筛选条件
+                </button>
+                <span className="text-[11px] text-gray-300">支持 主营品牌 / 分公司 / 部门 等店仓属性组合筛选</span>
               </div>
             </div>
-            {visibleStores.length > 0 && (
+            {scopeDesc && (
+              <p className="mt-1.5 text-[11px] text-blue-500">筛选：{scopeDesc}</p>
+            )}
+            {filters.length > 0 && (
               <div className="mt-2 rounded-lg border border-gray-200">
                 <div className="flex items-center justify-between border-b border-gray-100 px-2.5 py-1.5">
                   <span className="text-[11px] text-gray-400">筛选出 {matchedStores.length}/{stores.length} 家门店，选择管辖门店：</span>
-                  <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-gray-600">
-                    <input
-                      type="checkbox"
-                      checked={visibleStores.every((s) => selectedStoreIds.includes(s.id)) && visibleStores.length > 0}
-                      onChange={(e) => setSelectedStoreIds(e.target.checked ? visibleStores.map((s) => s.id) : [])}
-                      className="accent-gray-900"
-                    />
-                    全选
-                  </label>
+                  {visibleStores.length > 0 && (
+                    <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-gray-600">
+                      <input
+                        type="checkbox"
+                        checked={visibleStores.every((s) => selectedStoreIds.includes(s.id)) && visibleStores.length > 0}
+                        onChange={(e) => setSelectedStoreIds(e.target.checked ? visibleStores.map((s) => s.id) : [])}
+                        className="accent-gray-900"
+                      />
+                      全选
+                    </label>
+                  )}
                 </div>
                 <div className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto p-2">
-                  {visibleStores.map((s) => {
-                    const on = selectedStoreIds.includes(s.id);
-                    return (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => setSelectedStoreIds((v) => (on ? v.filter((x) => x !== s.id) : [...v, s.id]))}
-                        className={`rounded-md border px-2 py-0.5 text-xs transition ${on ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                      >
-                        {s.name}
-                      </button>
-                    );
-                  })}
+                  {visibleStores.length ? (
+                    visibleStores.map((s) => {
+                      const on = selectedStoreIds.includes(s.id);
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => setSelectedStoreIds((v) => (on ? v.filter((x) => x !== s.id) : [...v, s.id]))}
+                          className={`rounded-md border px-2 py-0.5 text-xs transition ${on ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                        >
+                          {s.name}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <span className="px-2 py-1 text-[11px] text-gray-400">请设置筛选条件并选择属性值</span>
+                  )}
                 </div>
               </div>
             )}
-            {scopeDesc && (
-              <p className="mt-1.5 text-[11px] text-gray-400">
-                管理范围：{scopeDesc}，共 {selectedStoreIds.length} 家门店
-              </p>
+            {selectedStoreIds.length > 0 && (
+              <p className="mt-1.5 text-[11px] text-gray-400">已选 {selectedStoreIds.length} 家管辖门店</p>
             )}
           </div>
 
@@ -489,8 +546,8 @@ function PersonEditor({
                 post: post.trim() || undefined,
                 supervisorId: supervisorId || undefined,
                 manageScope:
-                  scopeAttr && scopeAttrValues.length
-                    ? { storeAttrId: scopeAttr.id, storeAttrName: scopeAttr.name, storeAttrValues: scopeAttrValues, storeIds: selectedStoreIds, desc: `${scopeAttr.name}（${scopeAttrValues.join('、')}）` }
+                  activeDesc
+                    ? { filters: filters.map((f) => ({ attrName: storeAttrs.find((a) => a.id === f.attrId)?.name || '', values: f.values })).filter((f) => f.attrName && f.values.length > 0), storeIds: selectedStoreIds, desc: activeDesc }
                     : initial?.manageScope,
                 phone: phone.trim() || undefined,
                 email: email.trim() || undefined,

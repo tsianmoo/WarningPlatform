@@ -991,6 +991,8 @@ export interface ManageScope {
   storeAttrName?: string;
   /** 机构管理范围：选中的属性值（可单选/多选） */
   storeAttrValues?: string[];
+  /** 机构管理范围：多个筛选条件组合（AND），每个条件=店仓属性名+选中的值 */
+  filters?: { attrName: string; values: string[] }[];
   /** 机构管理范围：实际管辖的门店 id 列表 */
   storeIds?: string[];
 }
