@@ -578,7 +578,16 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                   <h3 className="truncate text-[15px] font-medium leading-snug text-gray-900">{open.title || '—'}</h3>
                   {open.ruleName ? <p className="mt-0.5 truncate text-xs text-gray-400">{open.ruleName}</p> : null}
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                  {buildActions(open, updateAlertStatus, setHandoffId, openConfirm).map((x) => (
+                    <button
+                      key={x.label}
+                      onClick={x.fn}
+                      className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${x.cls}`}
+                    >
+                      {x.label}
+                    </button>
+                  ))}
                   <button
                     onClick={() => setShowHist((v) => !v)}
                     className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50"
@@ -726,22 +735,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                   </div>
                 </div>
               </div>
-              {/* 操作 */}
-              <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-6 py-4">
-                <span className="mr-auto text-[11px] text-gray-300">点击操作后将更新该条预警状态</span>
-                {canHandle ? (
-                  buildActions(open, updateAlertStatus, setHandoffId, openConfirm).map((x) => (
-                    <button
-                      key={x.label}
-                      onClick={x.fn}
-                      className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${x.cls}`}
-                    >
-                      {x.label}
-                    </button>
-                  ))
-                ) : null}
               </div>
-                </div>
               </div>
             </div>
         );
@@ -832,18 +826,21 @@ function buildActions(
 ): AlertAction[] {
   const N = Date.now();
   const upd = (patch: Partial<AlertTask>) => update(a.id, { ...patch, updatedAt: N });
-  const acts: AlertAction[] = [];
-  if (a.status === 'new') {
-    acts.push({ label: '接受', cls: 'bg-gray-800 text-white hover:bg-gray-700', fn: () => ask({ title: '确认接受该预警？', desc: '接受后你将成为该预警的接收人，准备开始处理。', onOk: () => upd({ status: 'accepted', acceptedAt: Date.now(), assignee: a.assignee || '当前用户' }) }) });
-  } else if (a.status === 'accepted') {
-    acts.push({ label: '开始处理', cls: 'bg-gray-800 text-white hover:bg-gray-700', fn: () => ask({ title: '确认开始处理该预警？', desc: '确认后将开始计算处理时长。', onOk: () => upd({ status: 'processing', startedAt: Date.now() }) }) });
-  } else if (a.status === 'processing') {
-    acts.push({ label: '完成', cls: 'bg-gray-800 text-white hover:bg-gray-700', fn: () => ask({ title: '标记为已处理', needText: true, required: true, placeholder: '请填写处理方案：如何处理、如何解决该预警。（必填）', onOk: (t) => upd({ status: 'done', handledAt: Date.now(), resolution: t }) }) });
-  }
-  if (a.status === 'new' || a.status === 'accepted' || a.status === 'processing') {
-    acts.push({ label: '转交', cls: 'border border-gray-200 bg-white text-gray-500 hover:bg-gray-50', fn: () => handoff(a.id) });
-    acts.push({ label: '无法完成', cls: 'border border-transparent text-gray-300 hover:bg-gray-50 hover:text-gray-500', fn: () => ask({ title: '标记为无法完成', needText: true, required: true, placeholder: '请说明无法完成的原因。（必填）', onOk: (t) => upd({ status: 'failed', handledAt: Date.now(), failedReason: t }) }) });
-  }
+  // 已完成/不可用 → 灰色；未完成且可操作 → 蓝色
+  const blue = 'bg-blue-600 text-white shadow-sm hover:bg-blue-600/90';
+  const gray = 'cursor-default bg-gray-100 text-gray-400';
+  const okAccept = a.status === 'new';
+  const okStart = a.status === 'accepted';
+  const okDone = a.status === 'processing';
+  const okFail = a.status === 'new' || a.status === 'accepted' || a.status === 'processing';
+  const okHandoff = okFail;
+  const acts: AlertAction[] = [
+    { label: '接受', cls: okAccept ? blue : gray, fn: okAccept ? () => ask({ title: '确认接受该预警？', desc: '接受后你将成为该预警的接收人，准备开始处理。', onOk: () => upd({ status: 'accepted', acceptedAt: Date.now(), assignee: a.assignee || '当前用户' }) }) : () => {} },
+    { label: '开始处理', cls: okStart ? blue : gray, fn: okStart ? () => ask({ title: '确认开始处理该预警？', desc: '确认后将开始计算处理时长。', onOk: () => upd({ status: 'processing', startedAt: Date.now() }) }) : () => {} },
+    { label: '完成', cls: okDone ? blue : gray, fn: okDone ? () => ask({ title: '标记为已处理', needText: true, required: true, placeholder: '请填写处理方案：如何处理、如何解决该预警。（必填）', onOk: (t) => upd({ status: 'done', handledAt: Date.now(), resolution: t }) }) : () => {} },
+    { label: '转交', cls: okHandoff ? 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50' : gray, fn: okHandoff ? () => handoff(a.id) : () => {} },
+    { label: '无法完成', cls: okFail ? blue : gray, fn: okFail ? () => ask({ title: '标记为无法完成', needText: true, required: true, placeholder: '请说明无法完成的原因。（必填）', onOk: (t) => upd({ status: 'failed', handledAt: Date.now(), failedReason: t }) }) : () => {} },
+  ];
   return acts;
 }
 
