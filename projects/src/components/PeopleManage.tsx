@@ -331,17 +331,30 @@ function PersonEditor({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
-        <h3 className="text-base font-semibold text-gray-900">{initial ? '编辑人员' : '新增人员'}</h3>
+      <div className="flex max-h-[calc(100vh-32px)] w-full max-w-5xl flex-col rounded-xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <h3 className="text-base font-semibold text-gray-900">{initial ? '编辑人员' : '新增人员'}</h3>
+        </div>
 
-        <div className="mt-5 grid grid-cols-1 gap-4">
-          <div className="grid grid-cols-2 gap-4">
+        <div className="grid flex-1 grid-cols-1 gap-3 overflow-y-auto px-6 py-4">
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">账号</label>
+              <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="登录账号" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+            </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-500">姓名 *</label>
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="人员姓名" autoFocus className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-500">部门 *</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">电话</label>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="联系电话" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">归属部门 *</label>
               <select value={orgId} onChange={(e) => { setOrgId(e.target.value); setSupervisorId(''); }} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900">
                 <option value="">请选择部门</option>
                 {orgs.map((o) => (
@@ -349,9 +362,6 @@ function PersonEditor({
                 ))}
               </select>
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-500">职位</label>
               <input value={title} onChange={(e) => setTitle(e.target.value)} list="job-options" placeholder={jobLabels.length ? '请选择或输入职位' : '如 运营经理 / 区域督导'} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
@@ -368,14 +378,47 @@ function PersonEditor({
             </div>
           </div>
 
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-gray-500">上级</label>
-            <select value={supervisorId} onChange={(e) => setSupervisorId(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900">
-              <option value="">（无上级，本部门最高层）</option>
-              {persons.filter((p) => p.orgId === orgId && p.id !== initial?.id).map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">上级</label>
+              <select value={supervisorId} onChange={(e) => setSupervisorId(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900">
+                <option value="">（无上级，本部门最高层）</option>
+                {persons.filter((p) => p.orgId === orgId && p.id !== initial?.id).map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">邮箱</label>
+              <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="邮箱" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">{initial ? '重置密码' : '初始密码'}</label>
+              <input value={password} onChange={(e) => setPassword(e.target.value)} type="text" placeholder={initial ? '留空保持原密码' : '设置初始登录密码'} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">身份证号</label>
+              <input value={idCard} onChange={(e) => setIdCard(e.target.value)} placeholder="身份证号" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">生日</label>
+              <input value={birthday} onChange={(e) => setBirthday(e.target.value)} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">联系地址</label>
+              <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="联系地址" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-6 rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-2.5">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-600">
+              <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="accent-gray-900" />
+              启用（参与预警通知）
+            </label>
+            <span className="text-xs text-gray-400">状态：{enabled ? '启用' : '停用'}</span>
           </div>
 
           <div>
@@ -488,52 +531,9 @@ function PersonEditor({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-500">手机</label>
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="联系电话" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-500">邮箱</label>
-              <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="邮箱" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
-            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-500">账号</label>
-              <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="登录账号" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-500">{initial ? '重置密码' : '初始密码'}</label>
-              <input value={password} onChange={(e) => setPassword(e.target.value)} type="text" placeholder={initial ? '留空保持原密码' : '设置初始登录密码'} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-500">身份证号</label>
-              <input value={idCard} onChange={(e) => setIdCard(e.target.value)} placeholder="身份证号" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-500">生日</label>
-              <input value={birthday} onChange={(e) => setBirthday(e.target.value)} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
-            </div>
-            <div className="col-span-2">
-              <label className="mb-1.5 block text-xs font-medium text-gray-500">联系地址</label>
-              <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="联系地址" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-600">
-              <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="accent-gray-900" />
-              启用（参与预警通知）
-            </label>
-          </div>
-        </div>
-
-        <div className="mt-6 flex justify-end gap-2">
+        <div className="flex justify-end gap-2 border-t border-gray-100 px-6 py-3">
           <button onClick={onCancel} className="rounded-lg border border-gray-200 px-3.5 py-2 text-sm text-gray-600 hover:bg-gray-50">取消</button>
           <button
             disabled={!valid}
