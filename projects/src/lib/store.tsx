@@ -888,7 +888,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           const hit = state.alerts.find(
             (x) => x.ruleId === a.ruleId && x.level === a.level && x.title === a.title && x.dept === a.dept && x.assignee === a.assignee
           );
-          if (hit) dispatch('UPDATE_ALERT', { id: hit.id, patch: { ...a, updatedAt: Date.now() } });
+          if (hit) {
+            // 重新构建的预警仅刷新可再生数据；保留已产生的处理状态与内容(状态/处理人/时间/方案/留言/计划)
+            const { status: _s, assignee: _as, acceptedAt: _ac, startedAt: _sa, handledAt: _ha, resolution: _rs, failedReason: _fr, comments: _cm, plan: _pl, ...fresh } = a;
+            dispatch('UPDATE_ALERT', { id: hit.id, patch: { ...fresh, updatedAt: Date.now() } });
+          }
           else dispatch('ADD_ALERT', a);
         }
         if (rule.status !== 'active') dispatch('UPDATE_RULE', { id, patch: { status: 'active' } });
