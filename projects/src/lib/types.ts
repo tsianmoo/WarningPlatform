@@ -729,7 +729,12 @@ export interface Schedule {
 
 // ============ 通知对象 ============
 
+/** 通知对象来源方式 */
+export type NotifyMode = 'manual' | 'store' | 'employee' | 'person';
+
 export interface TargetSetting {
+  /** 通知方式：manual=手动勾选；store=按店仓（命中门店全收）；employee=按员工（命中门店的员工）；person=按人员（管理了命中门店/员工的人员汇总） */
+  mode?: NotifyMode;
   /** 适用部门 */
   departments: string[];
   /** 适用人员 */
@@ -918,6 +923,8 @@ export interface AlertTask {
     createdBy?: string;
     /** 每个店铺/店仓的预警消息（逐行渲染 action 消息模板） */
     storeMessages?: { store: string; message: string }[];
+    /** 解析出的通知对象（按 store/employee/person 模式展开的门店/员工/人员），供列表与详情展示 */
+    recipients?: { mode: NotifyMode; names: string[] }[];
   };
   /** 创建人（展示用，持久化于 preview.createdBy） */
   createdBy?: string;

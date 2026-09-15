@@ -16,6 +16,7 @@ import type {
   RuleGroup,
   Schedule,
   TargetSetting,
+  NotifyMode,
   HomeConfig,
 } from './types';
 import { uid, OPERATOR_OPTIONS, DEFAULT_HOME_CONFIG, normalizeHomeConfig } from './types';
@@ -85,9 +86,16 @@ function buildConditionDesc(nodes: FlowNode[]): string {
 }
 
 /** 依据规则里配置的预警动作节点生成预警工单（不含 id/时间戳，由 ADD_ALERT 落库时补齐） */
+export interface BuildAlertCtx {
+  stores?: Store[];
+  employees?: Employee[];
+  persons?: Person[];
+}
+
 export function buildAlertsForRule(
   rule: AlertRule,
-  tables?: DataTable[]
+  tables?: DataTable[],
+  ctx?: BuildAlertCtx
 ): Omit<AlertTask, 'id' | 'createdAt' | 'updatedAt'>[] {
   const base: { id: string; data: ActionNodeData }[] = [];
   for (const nd of rule.flow.nodes) {
@@ -147,6 +155,35 @@ export function buildAlertsForRule(
     if (content && hit && hitRows.length && hit.columns) {
       content = renderMsg(hitRows[0] as Record<string, unknown>, content);
     }
+    // 按通知方式（mode）解析通知对象：store=命中门店；employee=命中门店所属员工；person=管理了命中门店/员工的人员
+    let recipients: { mode: NotifyMode; names: string[] }[] | undefined;
+    const m = notify?.mode ?? 'manual';
+    const hitStoreNames = Array.from(
+      new Set((storeMessages ?? []).map((s) => s.store).filter(Boolean))
+    );
+    const storesList = ctx?.stores ?? [];
+    const hitStoreById = hitStoreNames.length
+      ? storesList.filter((s) => hitStoreNames.includes(s.name))
+      : storesList;
+    if (m === 'store') {
+      const names = Array.from(
+        new Set(hitStoreById.length ? hitStoreById.map((s) => s.name) : hitStoreNames)
+      );
+      recipients = [{ mode: m, names }];
+    } else if (m === 'employee') {
+      const emps = (ctx?.employees ?? []).filter(
+        (e) => e.enabled !== false && (!hitStoreById.length || e.storeId === undefined || hitStoreById.some((s) => s.id === e.storeId))
+      );
+      recipients = [{ mode: m, names: emps.map((e) => e.name) }];
+    } else if (m === 'person') {
+      const pers = (ctx?.persons ?? []).filter((p) => {
+        if (p.enabled === false) return false;
+        const ids = p.manageScope?.storeIds ?? [];
+        if (!ids.length) return false;
+        return hitStoreById.length === 0 || hitStoreById.some((s) => ids.includes(s.id));
+      });
+      recipients = [{ mode: m, names: pers.map((p) => p.name) }];
+    }
     return {
       ruleId: rule.id,
       ruleName: rule.name,
@@ -156,10 +193,12 @@ export function buildAlertsForRule(
       content: content || `${rule.name} · ${actionTitle} 已触发，请及时处理`,
       reason: rule.description || `${rule.name} 命中「${actionTitle}」预警动作，达到触发条件`,
       conditionDesc: conditionDesc || undefined,
-      preview,
+      preview: recipients ? { ...(preview ?? { columns: [], rows: [] }), recipients } : preview,
       createdBy: '系统',
       dept: notify?.departments?.[0] ?? targets?.departments?.[0] ?? '',
-      assignee: notify?.personnel?.[0] ?? targets?.personnel?.[0] ?? '',
+      assignee: (m === 'store' || m === 'employee' || m === 'person') && recipients && recipients[0].names.length
+        ? `${recipients[0].names.slice(0, 3).join('、')}${recipients[0].names.length > 3 ? ' 等' : ''}`
+        : (notify?.personnel?.[0] ?? targets?.personnel?.[0] ?? ''),
       status: 'new' as const,
     };
   });
@@ -781,7 +820,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       activateRule: (id) => {
         const rule = state.rules.find((r) => r.id === id);
         if (!rule) return;
-        const alerts = buildAlertsForRule(rule, state.tables);
+        const alerts = buildAlertsForRule(rule, state.tables, { stores: state.stores ?? [], employees: state.employees ?? [], persons: state.persons ?? [] });
         const seen = new Set<string>();
         for (const a of alerts) {
           const key = `${a.ruleId}|${a.level}|${a.title}|${a.dept ?? ''}|${a.assignee ?? ''}`;

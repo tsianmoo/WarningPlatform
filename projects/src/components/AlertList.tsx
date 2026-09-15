@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Bell, Eye, Plus, RotateCcw, Send, X } from 'lucide-react';
 import { useStore } from '@/lib/store';
-import type { AlertStatus, AlertTask } from '@/lib/types';
+import type { AlertStatus, AlertTask, NotifyMode } from '@/lib/types';
 import { PERSONNEL } from '@/lib/types';
 
 const LEVEL_META: Record<string, { label: string; text: string; dot: string }> = {
@@ -434,6 +434,11 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                     {openId === a.id && count > 0 ? (
                       <tr className="bg-gray-50/50">
                         <td colSpan={11} className="px-6 py-3">
+                          {a.preview?.recipients?.length ? (
+                            <div className="mb-2 space-y-1 rounded border border-amber-100 bg-amber-50/60 px-3 py-2 text-[11px]">
+                              {renderRecipients(a.preview.recipients)}
+                            </div>
+                          ) : null}
                           {stores.length ? (
                             <div className="max-h-72 overflow-auto">
                               <table className="w-full border-collapse text-[12px]">
@@ -589,4 +594,22 @@ export function AlertList({ onBack }: { onBack: () => void }) {
       )}
     </div>
   );
+}
+
+const MODE_LABEL: Record<NotifyMode, string> = {
+  manual: '手动',
+  store: '按店仓',
+  employee: '按员工',
+  person: '按人员',
+};
+
+function renderRecipients(recipients: { mode: NotifyMode; names: string[] }[]) {
+  return recipients.map((r, i) => (
+    <div key={i} className="flex items-start gap-2">
+      <span className="shrink-0 rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">{MODE_LABEL[r.mode] ?? r.mode}</span>
+      <span className="flex-1 leading-relaxed text-gray-600">
+        {r.names.length ? r.names.join('、') : <span className="text-gray-400">该预警无命中通知对象</span>}
+      </span>
+    </div>
+  ));
 }

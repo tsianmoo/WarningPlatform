@@ -42,6 +42,7 @@ import {
   type ExprToken,
   type Schedule,
   type TargetSetting,
+  type NotifyMode,
   type RepeatType,
   type RankNodeData,
   type RankItem,
@@ -2350,7 +2351,7 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
   const prio = d.priority ?? 'ImportantNotUrgent';
   const typeMeta = ACTION_TYPES.find((t) => t.value === type);
   // 通知对象独立保存
-  const notify = d.notify ?? { departments: [] as string[], personnel: [] as string[] };
+  const notify = d.notify ?? { mode: 'manual' as const, departments: [] as string[], personnel: [] as string[] };
   // 可插入字段：优先用 evaluateFlow 的真实输出列（=预览数据字段，保证完整），失败时回退 inferNodeCols 推断
   // 只依赖"其它节点的配置数据 + edges 结构"，用内容签名缓存：action 自身 content/title 输入不触发重算，
   // 避免每次敲键都全量 evaluate 导致输入卡顿
@@ -2574,8 +2575,10 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
   );
 });
 
-/** 通知对象配置（部门 + 人员），供预警动作节点内嵌 */
+/** 通知对象配置（按店仓/按员工/按人员/手动），供预警动作节点内嵌 */
 function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: (t: TargetSetting) => void }) {
+  const mode: NotifyMode = targets.mode ?? 'manual';
+  const setMode = (m: NotifyMode) => onChange({ ...targets, mode: m });
   const toggleDept = (d: string) =>
     onChange({
       ...targets,
@@ -2611,6 +2614,8 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
   };
   const { state } = useStore();
   const orgs = state.orgs ?? [];
+  const stores = state.stores ?? [];
+  const employees = state.employees ?? [];
   const persons = state.persons ?? [];
   const orgMember = (orgId: string) => persons.filter((p) => p.orgId === orgId && p.enabled !== false).map((p) => p.name);
   const groupLabel = 'mb-1 text-[10px] text-gray-400';
@@ -2619,7 +2624,51 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
       <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-amber-700">
         <Users size={11} /> 通知对象
       </div>
-      <div className="mb-1.5">
+      <div className="mb-1 flex flex-wrap gap-1">
+        {(
+          [
+            { value: 'manual' as const, label: '手动' },
+            { value: 'store' as const, label: '按店仓' },
+            { value: 'employee' as const, label: '按员工' },
+            { value: 'person' as const, label: '按人员' },
+          ]
+        ).map((m) => (
+          <button
+            key={m.value}
+            type="button"
+            onClick={() => setMode(m.value)}
+            className={`rounded px-1.5 py-0.5 text-[10px] transition ${
+              mode === m.value ? 'bg-amber-500 text-white' : 'bg-white text-gray-500 hover:bg-amber-100'
+            }`}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+      {mode === 'store' && (
+        <div className="mb-1.5 rounded bg-white/60 p-1.5 text-[10px] leading-relaxed text-gray-500">
+          触发时，判断条件命中的所有门店都会收到通知。
+          <br />
+          <span className="text-gray-700">当前店仓档案 {stores.length} 家</span>
+        </div>
+      )}
+      {mode === 'employee' && (
+        <div className="mb-1.5 rounded bg-white/60 p-1.5 text-[10px] leading-relaxed text-gray-500">
+          触发时，判断条件命中的门店所属员工都会收到通知。
+          <br />
+          <span className="text-gray-700">当前员工 {employees.length} 人</span>
+        </div>
+      )}
+      {mode === 'person' && (
+        <div className="mb-1.5 rounded bg-white/60 p-1.5 text-[10px] leading-relaxed text-gray-500">
+          触发时，管理了命中门店/员工的人员汇总收到通知。
+          <br />
+          <span className="text-gray-700">当前人员 {persons.length} 人</span>
+        </div>
+      )}
+      {mode === 'manual' && (
+        <>
+          <div className="mb-1.5">
         <div className={groupLabel}>按组织选择（组织架构）</div>
         <div className="flex flex-wrap gap-1">
           {orgs.length === 0 && <span className="text-[10px] text-gray-400">暂未配置组织架构</span>}
@@ -2677,6 +2726,8 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
           ))}
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }
