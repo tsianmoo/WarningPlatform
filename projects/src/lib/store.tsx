@@ -115,7 +115,7 @@ export function buildAlertsForRule(
     }
   }
   const conditionDesc = buildConditionDesc(rule.flow.nodes);
-  return base.map((a) => {
+  return base.flatMap((a) => {
     const notify = a.data.notify;
     const actionTitle = a.data.title?.trim() || rule.name;
     const hit = a.id ? evalMap?.[a.id] : undefined;
@@ -190,23 +190,41 @@ export function buildAlertsForRule(
       });
       recipients = [{ mode: m, names: pers.map((p) => p.name) }];
     }
-    return {
-      ruleId: rule.id,
-      ruleName: rule.name,
-      level: lv,
-      priority: type === 'alert' ? priority : undefined,
-      title: actionTitle,
-      content: content || `${rule.name} · ${actionTitle} 已触发，请及时处理`,
-      reason: rule.description || `${rule.name} 命中「${actionTitle}」预警动作，达到触发条件`,
-      conditionDesc: conditionDesc || undefined,
-      preview: recipients ? { ...(preview ?? { columns: [], rows: [] }), recipients } : preview,
-      createdBy: '系统',
-      dept: notify?.departments?.[0] ?? targets?.departments?.[0] ?? '',
-      assignee: (m === 'store' || m === 'employee' || m === 'person') && recipients && recipients[0].names.length
-        ? `${recipients[0].names.slice(0, 3).join('、')}${recipients[0].names.length > 3 ? ' 等' : ''}`
-        : (notify?.personnel?.[0] ?? targets?.personnel?.[0] ?? ''),
-      status: 'new' as const,
+    const mk = (title: string, storeMsg?: { store?: string; message?: string; }) => {
+      const curStores = storeMsg
+        ? [{ store: storeMsg.store || actionTitle, message: storeMsg.message || content || `${rule.name} · ${actionTitle} 已触发，请及时处理` }]
+        : (storeMessages ?? []);
+      const curNames =
+        m === 'store' && curStores.length
+          ? Array.from(new Set(curStores.map((s) => s.store).filter(Boolean)))
+          : (recipients?.[0]?.names ?? []);
+      return {
+        ruleId: rule.id,
+        ruleName: rule.name,
+        level: lv,
+        priority: type === 'alert' ? priority : undefined,
+        title: storeMsg && storeMsg.store ? `${actionTitle} · ${storeMsg.store}` : actionTitle,
+        content: storeMsg?.message || content || `${rule.name} · ${actionTitle} 已触发，请及时处理`,
+        reason: rule.description || `${rule.name} 命中「${actionTitle}」预警动作，达到触发条件`,
+        conditionDesc: conditionDesc || undefined,
+        preview: {
+          columns: preview?.columns ?? [],
+          rows: preview?.rows ?? [],
+          ...(curStores.length ? { storeMessages: curStores } : {}),
+          ...(recipients ? { recipients: [{ mode: m, names: curNames }] } : {}),
+        },
+        createdBy: '系统',
+        dept: notify?.departments?.[0] ?? targets?.departments?.[0] ?? '',
+        assignee: curNames.length
+          ? `${curNames.slice(0, 3).join('、')}${curNames.length > 3 ? ' 等' : ''}`
+          : (notify?.personnel?.[0] ?? targets?.personnel?.[0] ?? ''),
+        status: 'new' as const,
+      };
     };
+    if (m === 'store' && storeMessages?.length) {
+      return storeMessages.map((sm) => mk(actionTitle, sm));
+    }
+    return [mk(actionTitle)];
   });
 }
 
