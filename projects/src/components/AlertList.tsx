@@ -116,7 +116,6 @@ export function AlertList({ onBack }: { onBack: () => void }) {
   const me = state.persons.find((p) => p.name === meName) ?? null;
   const perm = resolvePerm(me, state.config);
   const canHandle = canOper(perm, 'alerts', 'handle');
-  const isManager = canView(perm, 'perms');
   const alerts = useMemo(
     () => filterAlertsByScope(state.alerts ?? [], me, perm.dataScope, state.stores ?? []),
     [state.alerts, me, perm.dataScope, state.stores]
@@ -664,6 +663,47 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                     ) : null}
                   </div>
                 ) : null}
+                {/* 留言：所有看到此预警的人都可留言，展示在数据表下方 */}
+                <div className="mt-4 border-t border-gray-100 pt-4">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-gray-400">
+                    <MessageSquare size={13} />
+                    留言（{comments.length}）
+                  </div>
+                  <div className="mt-2.5 space-y-3">
+                    {comments.length === 0 ? (
+                      <p className="text-xs text-gray-300">暂无留言，所有看到此预警的人均可留言。</p>
+                    ) : (
+                      comments.map((c) => (
+                        <div key={c.id} className="flex items-start gap-2">
+                          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-800/90 text-[9px] font-semibold text-white">{c.by.charAt(0) || '?'}</span>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[11px]">
+                              <span className="font-medium text-gray-700">{c.by}</span>
+                              <span className="ml-1.5 text-gray-300">{new Date(c.at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                            <p className="mt-0.5 text-[13px] leading-relaxed text-gray-700">{c.text}</p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="mt-2.5 flex items-center gap-2">
+                    <input
+                      value={chatDraft}
+                      onChange={(e) => setChatDraft(e.target.value)}
+                      onKeyDown={onEnter}
+                      placeholder="写下你的留言…"
+                      className="h-9 flex-1 rounded-md border border-gray-200 bg-gray-50 px-3 text-[13px] text-gray-700 outline-none transition focus:border-gray-300 focus:bg-white"
+                    />
+                    <button
+                      onClick={sendMsg}
+                      disabled={!chatDraft.trim()}
+                      className="inline-flex h-9 items-center gap-1 rounded-md bg-gray-800 px-3 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-40"
+                    >
+                      <Send size={13} /> 留言
+                    </button>
+                  </div>
+                </div>
               </div>
               {/* 操作 */}
               <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-6 py-4">
@@ -680,49 +720,6 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                   ))
                 ) : null}
               </div>
-                </div>
-                <div className="ml-4 hidden w-80 shrink-0 flex-col rounded-xl border border-gray-100 xl:flex">
-                  <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-                    <div className="flex items-center gap-2 text-sm font-medium text-gray-800">
-                      <MessageSquare size={15} className="text-gray-400" />
-                      沟通交流
-                    </div>
-                    <span className="text-xs text-gray-400">{comments.length}</span>
-                  </div>
-                  <div className="min-h-0 flex-1 space-y-3 overflow-auto px-4 py-3">
-                    {comments.length === 0 ? (
-                      <p className="pt-6 text-center text-xs text-gray-300">暂无沟通记录，可在下方留言。</p>
-                    ) : (
-                      comments.map((c) => (
-                        <div key={c.id} className="flex flex-col items-start">
-                          <div className={`flex w-full items-baseline gap-2 ${c.by === meName ? 'justify-end' : ''}`}>
-                            <span className={`rounded-lg px-2.5 py-1.5 text-[13px] leading-relaxed ${c.by === meName ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-700'}`}>
-                              {c.text}
-                            </span>
-                          </div>
-                          <span className={`mt-0.5 text-[10px] text-gray-300 ${c.by === meName ? 'self-end' : ''}`}>{c.by} · {new Date(c.at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  <div className="border-t border-gray-100 p-3">
-                    <div className="flex items-center gap-2">
-                      <input
-                        value={chatDraft}
-                        onChange={(e) => setChatDraft(e.target.value)}
-                        onKeyDown={onEnter}
-                        placeholder={isManager ? '发表你的意见或建议…' : '请输入沟通内容…'}
-                        className="h-9 flex-1 rounded-md border border-gray-200 bg-gray-50 px-3 text-[13px] text-gray-700 outline-none transition focus:border-gray-300 focus:bg-white"
-                      />
-                      <button
-                        onClick={sendMsg}
-                        disabled={!chatDraft.trim()}
-                        className="inline-flex h-9 items-center gap-1 rounded-md bg-gray-800 px-2.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-40"
-                      >
-                        <Send size={13} /> 发送
-                      </button>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
