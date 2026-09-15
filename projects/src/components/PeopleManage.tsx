@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react';
 import { Users, Phone, Plus, Pencil, Trash2, Crosshair, KeyRound } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import type { Organization, Person } from '@/lib/types';
-import { ORG_KIND_OPTIONS } from '@/lib/types';
 import { toast } from 'sonner';
 
 export function PeopleManage() {
@@ -671,7 +670,6 @@ function OrgModal({
 }) {
   const isNew = initial.id === '__new';
   const [name, setName] = useState(initial.name || '');
-  const [kind, setKind] = useState<Organization['kind']>(initial.kind || '部门');
   const [parentId, setParentId] = useState<string>(initial.parentId || '');
   const valid = name.trim().length > 0;
 
@@ -703,24 +701,12 @@ function OrgModal({
               ))}
             </select>
           </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-gray-500">分类</label>
-            <select
-              value={kind}
-              onChange={(e) => setKind(e.target.value as Organization['kind'])}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900"
-            >
-              {ORG_KIND_OPTIONS.map((k) => (
-                <option key={k.value} value={k.value}>{k.label}</option>
-              ))}
-            </select>
-          </div>
         </div>
         <div className="mt-6 flex justify-end gap-2">
           <button onClick={onCancel} className="rounded-lg border border-gray-200 px-3.5 py-2 text-sm text-gray-600 hover:bg-gray-50">取消</button>
           <button
             disabled={!valid}
-            onClick={() => onSave({ ...initial, name: name.trim(), kind, parentId: parentId || undefined })}
+            onClick={() => onSave({ ...initial, name: name.trim(), kind: '部门', parentId: parentId || undefined })}
             className="rounded-lg bg-gray-900 px-3.5 py-2 text-sm text-white transition-colors hover:bg-gray-700 disabled:opacity-40"
           >
             保存
