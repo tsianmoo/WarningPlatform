@@ -66,8 +66,7 @@ export function RuleList({
 
   return (
     <div className="flex h-full flex-col overflow-y-auto px-8 pb-10 pt-6">
-      {ruleGroups.length > 0 && (
-        <div className="mb-5 flex flex-wrap items-center gap-2">
+      <div className="mb-5 flex flex-wrap items-center gap-2">
           <button
             onClick={() => setCategoryId('all')}
             className={`rounded-full px-3 py-1.5 text-sm transition ${
@@ -94,7 +93,6 @@ export function RuleList({
             <Pencil size={13} /> 管理分类
           </button>
         </div>
-      )}
 
       <header className="mb-7 flex flex-wrap items-end justify-between gap-4">
         <div>
