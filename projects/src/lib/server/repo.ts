@@ -40,7 +40,7 @@ interface AlertRow {
   resolution: string | null;
   failed_reason: string | null;
   plan: string | null;
-  comments: Array<{ id: string; by: string; text: string; at: number }> | null;
+  comments: Array<{ id: string; by: string; text: string; at: number; replies?: Array<{ id: string; by: string; text: string; at: number }> }> | null;
   created_at: number;
   updated_at: number;
 }

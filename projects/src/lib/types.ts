@@ -960,12 +960,14 @@ export interface AlertTask {
   updatedAt: number;
 }
 
-/** 预警沟通交流消息 */
+/** 预警留言消息 */
 export interface AlertComment {
   id: string;
   by: string;
   text: string;
   at: number;
+  /** 针对该留言的回复 */
+  replies?: { id: string; by: string; text: string; at: number }[];
 }
 
 /** 聚合函数选项 */

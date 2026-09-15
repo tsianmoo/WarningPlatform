@@ -134,6 +134,8 @@ export function AlertList({ onBack }: { onBack: () => void }) {
   const [confirm, setConfirm] = useState<null | { title: string; desc?: string; needText?: boolean; required?: boolean; placeholder?: string; onOk: (t: string) => void }>(null);
   const [chatDraft, setChatDraft] = useState('');
   const [planDraft, setPlanDraft] = useState('');
+  const [replyTarget, setReplyTarget] = useState<string | null>(null);
+  const [replyDraft, setReplyDraft] = useState('');
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -517,6 +519,26 @@ export function AlertList({ onBack }: { onBack: () => void }) {
           });
           setChatDraft('');
         };
+        const sendReply = (cid: string) => {
+          const text = (replyDraft || '').trim();
+          if (!text) return;
+          updateAlertStatus(open.id, {
+            comments: comments.map((c) =>
+              c.id === cid ? { ...c, replies: [...(c.replies ?? []), { id: `r${Date.now()}`, by: meName || '当前用户', text, at: Date.now() }] } : c
+            ),
+            updatedAt: Date.now(),
+          });
+          setReplyDraft('');
+          setReplyTarget(null);
+        };
+        const personMeta = (name: string) => {
+          const p = state.persons.find((x) => x.name === name);
+          return {
+            dept: p ? (state.orgs.find((o) => o.id === p.orgId)?.name ?? '') : '',
+            title: p?.title ?? '',
+            post: p?.post ?? '',
+          };
+        };
         const onEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
           if (e.key === 'Enter') { e.preventDefault(); sendMsg(); }
         };
@@ -703,18 +725,69 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                     {comments.length === 0 ? (
                       <p className="text-xs text-gray-300">暂无留言，所有看到此预警的人均可留言。</p>
                     ) : (
-                      comments.map((c) => (
-                        <div key={c.id} className="flex items-start gap-2">
-                          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-800/90 text-[9px] font-semibold text-white">{c.by.charAt(0) || '?'}</span>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-[11px]">
-                              <span className="font-medium text-gray-700">{c.by}</span>
-                              <span className="ml-1.5 text-gray-300">{new Date(c.at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                      comments.map((c) => {
+                        const meta = personMeta(c.by);
+                        const btns = [meta.dept, meta.title, meta.post].filter(Boolean).join(' · ');
+                        return (
+                          <div key={c.id} className="rounded-md border border-gray-100 bg-white p-2.5">
+                            <div className="flex items-start gap-2">
+                              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-800/90 text-[10px] font-semibold text-white">{c.by.charAt(0) || '?'}</span>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 text-[11px]">
+                                  <span className="font-medium text-gray-700">{c.by}</span>
+                                  {btns ? <span className="text-gray-400">{btns}</span> : null}
+                                  <span className="ml-auto shrink-0 text-gray-300">{new Date(c.at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                </div>
+                                <p className="mt-1 text-[13px] leading-relaxed text-gray-700">{c.text}</p>
+                              </div>
                             </div>
-                            <p className="mt-0.5 text-[13px] leading-relaxed text-gray-700">{c.text}</p>
+                            <div className="mt-1.5 pl-8">
+                              <button
+                                onClick={() => { setReplyTarget(replyTarget === c.id ? null : c.id); setReplyDraft(''); }}
+                                className="text-[11px] text-gray-400 transition-colors hover:text-gray-600"
+                              >回复</button>
+                              {replyTarget === c.id ? (
+                                <div className="mt-1.5 flex items-center gap-2">
+                                  <input
+                                    autoFocus
+                                    value={replyDraft}
+                                    onChange={(e) => setReplyDraft(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') sendReply(c.id); }}
+                                    placeholder="回复留言…"
+                                    className="h-7 flex-1 rounded border border-gray-200 bg-gray-50 px-2 text-xs text-gray-700 outline-none transition focus:border-gray-300 focus:bg-white"
+                                  />
+                                  <button
+                                    onClick={() => sendReply(c.id)}
+                                    disabled={!replyDraft.trim()}
+                                    className="inline-flex h-7 items-center rounded bg-gray-800 px-2 text-xs text-white transition-colors hover:bg-gray-700 disabled:opacity-40"
+                                  >回复</button>
+                                </div>
+                              ) : null}
+                              {c.replies && c.replies.length > 0 ? (
+                                <div className="mt-2 space-y-1.5 border-l-2 border-gray-100 pl-2">
+                                  {c.replies.map((r) => {
+                                    const rm = personMeta(r.by);
+                                    const rbtns = [rm.dept, rm.title, rm.post].filter(Boolean).join(' · ');
+                                    return (
+                                      <div key={r.id} className="flex items-start gap-1.5">
+                                        <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-gray-300 text-[8px] font-semibold text-white">{r.by.charAt(0) || '?'}</span>
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex items-center gap-1.5 text-[10px]">
+                                            <span className="font-medium text-gray-500">{r.by}</span>
+                                            {rbtns ? <span className="text-gray-300">{rbtns}</span> : null}
+                                            <span className="ml-auto shrink-0 text-gray-300">{new Date(r.at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                          </div>
+                                          <p className="mt-0.5 text-[12px] leading-relaxed text-gray-600">{r.text}</p>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : null}
+                            </div>
                           </div>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                   <div className="mt-2.5 flex items-center gap-2">
