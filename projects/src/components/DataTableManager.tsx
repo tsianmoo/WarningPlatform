@@ -152,6 +152,17 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
 
   const groupNames = useMemo(() => groups.map((g) => g[0]).filter(Boolean), [groups]);
 
+  // 更新 diff：逐字段区分 新增/保留/删除，便于用户确认新列加入与旧列移除的影响面
+  const fieldDiff = useMemo(() => {
+    if (!openUpdate) return { added: [], kept: [], removed: [] };
+    const oldMap = new Map(openUpdate.t.fields.map((f) => [f.key, f]));
+    const nextSet = new Set(openUpdate.next.fields.map((f) => f.key));
+    const added = openUpdate.next.fields.filter((f) => !oldMap.has(f.key));
+    const removed = openUpdate.t.fields.filter((f) => !nextSet.has(f.key));
+    const kept = openUpdate.next.fields.filter((f) => oldMap.has(f.key)).map((f) => ({ f, old: oldMap.get(f.key)! }));
+    return { added, kept, removed };
+  }, [openUpdate]);
+
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
@@ -533,11 +544,6 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
                       <td className="px-3 py-2 text-gray-700">{openUpdate?.next.rowCount.toLocaleString()}</td>
                     </tr>
                     <tr className="border-t border-gray-100">
-                      <td className="px-3 py-2 text-gray-500">字段</td>
-                      <td className="px-3 py-2 text-gray-700">{openUpdate?.t.fields.map((f) => f.key).join('、')}</td>
-                      <td className="px-3 py-2 text-gray-700">{openUpdate?.next.fields.map((f) => f.key).join('、')}</td>
-                    </tr>
-                    <tr className="border-t border-gray-100">
                       <td className="px-3 py-2 text-gray-500">首行样例</td>
                       <td className="px-3 py-2 text-gray-500">{Object.values(openUpdate?.t.previewRows[0] ?? {}).slice(0, 5).join(' · ') || '—'}</td>
                       <td className="px-3 py-2 text-gray-500">{Object.values(openUpdate?.next.previewRows[0] ?? {}).slice(0, 5).join(' · ') || '—'}</td>
@@ -545,7 +551,62 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
                   </tbody>
                 </table>
               </div>
-              <span className="mt-3 block text-gray-500">覆盖后不可由当前的“返回上一步”之外的方式还原，确认要更新吗？</span>
+
+              <div className="mt-4 overflow-hidden rounded-xl border border-gray-150">
+                <div className="flex items-center gap-3 border-b border-gray-100 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500">
+                  字段对比
+                  <span className="text-emerald-600">新增 +{fieldDiff.added.length}</span>
+                  <span className="text-gray-400">保留 {fieldDiff.kept.length}</span>
+                  <span className="text-red-500">删除 -{fieldDiff.removed.length}</span>
+                </div>
+                {fieldDiff.added.length + fieldDiff.removed.length + fieldDiff.kept.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-xs text-gray-400">无字段变化</div>
+                ) : (
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 text-left text-gray-500">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">变化</th>
+                        <th className="px-3 py-2 font-medium">字段</th>
+                        <th className="px-3 py-2 font-medium">说明</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fieldDiff.added.map((f) => (
+                        <tr key={f.key} className="border-t border-gray-100">
+                          <td className="px-3 py-2">
+                            <span className="inline-flex rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-600">新增</span>
+                          </td>
+                          <td className="px-3 py-2 font-mono text-gray-700">{f.key}</td>
+                          <td className="px-3 py-2 text-gray-500">类型自动推断为「{TYPE_LABEL[f.type]}」，标签默认等于列名，可到右侧详情修改后用于规则配置</td>
+                        </tr>
+                      ))}
+                      {fieldDiff.kept.map(({ f, old }) => (
+                        <tr key={f.key} className="border-t border-gray-100">
+                          <td className="px-3 py-2">
+                            <span className="inline-flex rounded bg-gray-100 px-1.5 py-0.5 text-gray-500">保留</span>
+                          </td>
+                          <td className="px-3 py-2 font-mono text-gray-700">{f.key}</td>
+                          <td className="px-3 py-2 text-gray-500">
+                            {old.alias && old.alias !== f.key
+                              ? `沿用已配置标签「${old.alias}」与类型「${TYPE_LABEL[old.type]}」`
+                              : `沿用已配置类型「${TYPE_LABEL[old.type]}」`}
+                          </td>
+                        </tr>
+                      ))}
+                      {fieldDiff.removed.map((f) => (
+                        <tr key={f.key} className="border-t border-gray-100">
+                          <td className="px-3 py-2">
+                            <span className="inline-flex rounded bg-red-50 px-1.5 py-0.5 text-red-500">删除</span>
+                          </td>
+                          <td className="px-3 py-2 font-mono text-gray-700">{f.key}</td>
+                          <td className="px-3 py-2 text-gray-500">更新后将从字段列表移除；若该列已被预警规则引用（判断字段或通知模板），请同步调整相关规则</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+              <span className="mt-3 block text-gray-500">确认后覆盖更新，可通过“返回上一步”还原；新增列需在右侧详情设置标签值/类型后才能用于规则配置。</span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
