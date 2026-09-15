@@ -600,7 +600,7 @@ const MODE_LABEL: Record<NotifyMode, string> = {
   manual: '手动',
   store: '按店仓',
   employee: '按员工',
-  person: '按人员',
+  person: '按用户',
 };
 
 function renderRecipients(recipients: { mode: NotifyMode; names: string[] }[]) {

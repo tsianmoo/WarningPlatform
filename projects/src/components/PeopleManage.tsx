@@ -78,9 +78,9 @@ export function PeopleManage() {
             <span>/</span>
             <span className="text-gray-500">人事管理</span>
             <span>/</span>
-            <span>人员管理</span>
+            <span>用户管理</span>
           </div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-gray-900">人员管理</h1>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-gray-900">用户管理</h1>
           <p className="mt-1 text-sm text-gray-400">添加人员：选择部门 / 职位 / 岗位，填写基础信息与管理范围</p>
         </div>
         <button

@@ -202,7 +202,7 @@ function Shell() {
                 nested
                 active={currentView === 'people'}
                 icon={<span className="text-gray-400">·</span>}
-                label="人员管理"
+                label="用户管理"
                 onClick={() => setView('people')}
               />
               <NavItem

@@ -2574,7 +2574,7 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
   );
 });
 
-/** 通知对象配置（按店仓/按员工/按人员/手动），供预警动作节点内嵌 */
+/** 通知对象配置（按店仓/按员工/按用户/手动），供预警动作节点内嵌 */
 function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: (t: TargetSetting) => void }) {
   const mode: NotifyMode = targets.mode ?? 'manual';
   const setMode = (m: NotifyMode) => onChange({ ...targets, mode: m });
@@ -2612,7 +2612,7 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
             { value: 'manual' as const, label: '手动' },
             { value: 'store' as const, label: '按店仓' },
             { value: 'employee' as const, label: '按员工' },
-            { value: 'person' as const, label: '按人员' },
+            { value: 'person' as const, label: '按用户' },
           ]
         ).map((m) => (
           <button
@@ -2643,9 +2643,9 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
       )}
       {mode === 'person' && (
         <div className="mb-1.5 rounded bg-white/60 p-1.5 text-[10px] leading-relaxed text-gray-500">
-          触发时，管理了命中门店/员工的人员汇总收到通知。
+          触发时，管理了命中门店/员工的用户汇总收到通知。
           <br />
-          <span className="text-gray-700">当前人员 {persons.length} 人</span>
+          <span className="text-gray-700">当前用户 {persons.length} 人</span>
         </div>
       )}
       {mode === 'manual' && (
@@ -2653,7 +2653,7 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
           <div className="mb-1.5">
         <div className={groupLabel}>适用部门（人员管理部门列表）</div>
         <div className="flex flex-wrap gap-1">
-          {deptOrgs.length === 0 && <span className="text-[10px] text-gray-400">暂无部门，请先到「人员管理」新增</span>}
+          {deptOrgs.length === 0 && <span className="text-[10px] text-gray-400">暂无部门，请先到「用户管理」新增</span>}
           {deptOrgs.map((o) => {
             const on = o.id === selDept;
             return (
