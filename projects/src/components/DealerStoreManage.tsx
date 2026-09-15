@@ -43,6 +43,17 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
     if (active) {
       field({ ...(active as object), ...(draft as object) } as Dealer);
     } else {
+      const code = (draft as { code?: string }).code?.trim() ?? '';
+      const name = (draft as { name?: string }).name?.trim() ?? '';
+      const dup = list.find(
+        (x) =>
+          (kind === 'dealer' && ((code && x.code === code) || x.name === name)) ||
+          (kind === 'store' && ((code && x.code === code) || x.name === name))
+      );
+      if (dup) {
+        toast('已存在重复的' + (kind === 'dealer' ? '经销商编号或名称' : '店仓编号或名称') + '，不能新增');
+        return;
+      }
       (kind === 'dealer' ? addDealer : addStore)(draft as never);
     }
   };
