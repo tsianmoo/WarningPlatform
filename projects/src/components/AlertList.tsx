@@ -502,7 +502,9 @@ export function AlertList({ onBack }: { onBack: () => void }) {
               </div>
               {/* 正文 */}
               <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
-                <p className="text-[13px] leading-relaxed text-gray-600">{open.content || open.reason || '规则命中产生预警。'}</p>
+                <div className="rounded-lg border-l-2 border-violet-400 bg-violet-50/50 px-3 py-2">
+                  <p className="text-[14px] font-medium leading-relaxed text-gray-800">{open.content || open.reason || '规则命中产生预警。'}</p>
+                </div>
                 {open.preview?.recipients?.length ? (
                   <div className="mt-4">
                     <h4 className="mb-2 text-xs font-medium text-gray-400">通知对象</h4>
@@ -512,7 +514,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                 {open.preview?.columns?.length || stores.length ? (
                   <div className="mt-4">
                     <div className="mb-2 flex items-end justify-between">
-                      <h4 className="text-xs font-medium text-gray-400">判断命中明细</h4>
+                      <h4 className="text-sm font-semibold text-violet-600">判断命中明细</h4>
                       {detailRows.length ? (
                         <span className="text-[11px] text-gray-300">命中 {detailRows.length} 行</span>
                       ) : null}
@@ -533,7 +535,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                             {detailRows.slice(0, 100).map((r, ri) => (
                               <tr key={ri} className="border-t border-gray-50">
                                 {open.preview!.columns.map((c) => (
-                                  <td key={c} className="whitespace-normal break-words px-2.5 py-2 align-top text-gray-500">{String(r[c] ?? '')}</td>
+                                  <td key={c} className="whitespace-nowrap px-2.5 py-2 text-gray-500">{String(r[c] ?? '')}</td>
                                 ))}
                               </tr>
                             ))}
