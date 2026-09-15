@@ -881,7 +881,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       },
       removeRuleGroup: (id) => dispatch('REMOVE_RULE_GROUP', id),
       updateRuleGroup: (id, name) => dispatch('UPDATE_RULE_GROUP', { id, name }),
-      addAlert: (alert) => dispatch('ADD_ALERT', { alert }),
+      addAlert: (alert) => dispatch('ADD_ALERT', alert),
       updateAlertStatus: (alertId, patch) => dispatch('UPDATE_ALERT', { alertId, patch }),
       addOrg: (o) => {
         const org: Organization = { ...o, id: uid('org'), createdAt: Date.now() };
