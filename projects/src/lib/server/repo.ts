@@ -39,6 +39,7 @@ interface AlertRow {
   handled_at: number | null;
   resolution: string | null;
   failed_reason: string | null;
+  plan: string | null;
   comments: Array<{ id: string; by: string; text: string; at: number }> | null;
   created_at: number;
   updated_at: number;
@@ -65,6 +66,7 @@ function toAlertTask(r: AlertRow): AlertTask {
     handledAt: r.handled_at ?? undefined,
     resolution: r.resolution ?? undefined,
     failedReason: r.failed_reason ?? undefined,
+    plan: r.plan ?? undefined,
     comments: r.comments ?? undefined,
     createdAt: r.created_at ?? Date.now(),
     updatedAt: r.updated_at ?? Date.now(),
@@ -104,6 +106,7 @@ export async function syncAlerts(alerts: AlertTask[]): Promise<void> {
     handled_at: a.handledAt ?? null,
     resolution: a.resolution ?? null,
     failed_reason: a.failedReason ?? null,
+    plan: a.plan ?? null,
     comments: a.comments ?? null,
     created_at: a.createdAt ?? Date.now(),
     updated_at: a.updatedAt ?? Date.now(),

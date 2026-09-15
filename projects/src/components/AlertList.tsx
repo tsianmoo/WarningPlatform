@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Bell, Eye, History, MessageSquare, Plus, RotateCcw, Send, X } from 'lucide-react';
+import { ArrowLeft, Bell, ClipboardList, Eye, History, MessageSquare, Plus, RotateCcw, Send, X } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { resolvePerm, canOper, canView, filterAlertsByScope } from '@/lib/perm';
 import type { AlertStatus, AlertTask, NotifyMode } from '@/lib/types';
@@ -133,11 +133,17 @@ export function AlertList({ onBack }: { onBack: () => void }) {
   const [showHist, setShowHist] = useState(false);
   const [confirm, setConfirm] = useState<null | { title: string; desc?: string; needText?: boolean; required?: boolean; placeholder?: string; onOk: (t: string) => void }>(null);
   const [chatDraft, setChatDraft] = useState('');
+  const [planDraft, setPlanDraft] = useState('');
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
+  const openIdx = alerts.findIndex((x) => x.id === openId);
+  const openForSync = openIdx >= 0 ? alerts[openIdx] : null;
+  useEffect(() => {
+    if (openForSync) setPlanDraft(openForSync.plan || '');
+  }, [openForSync?.id]);
   const [confirmText, setConfirmText] = useState('');
   const openConfirm = (c: NonNullable<typeof confirm>) => {
     setConfirmText('');
@@ -663,6 +669,21 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                     ) : null}
                   </div>
                 ) : null}
+                {/* 预警处理方式：数据表下方、留言上方的计划输入 */}
+                <div className="mt-4 border-t border-gray-100 pt-4">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-gray-400">
+                    <ClipboardList size={13} />
+                    预警处理方式
+                  </div>
+                  <textarea
+                    value={planDraft}
+                    onChange={(e) => setPlanDraft(e.target.value)}
+                    onBlur={() => { if (planDraft !== (openForSync?.plan || '')) updateAlertStatus(open.id, { plan: planDraft }); }}
+                    rows={3}
+                    placeholder="请填写此条预警你的处理方式，你准备如何解决这条预警，写出可行方案，立刻执行，问题解决多了，就可以得到你心里想要的结果了"
+                    className="mt-2.5 w-full resize-none rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5 text-[13px] leading-relaxed text-gray-700 outline-none transition placeholder:text-gray-300 focus:border-gray-300 focus:bg-white"
+                  />
+                </div>
                 {/* 留言：所有看到此预警的人都可留言，展示在数据表下方 */}
                 <div className="mt-4 border-t border-gray-100 pt-4">
                   <div className="flex items-center gap-1.5 text-xs font-medium text-gray-400">

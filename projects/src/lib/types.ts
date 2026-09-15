@@ -950,6 +950,8 @@ export interface AlertTask {
   handledAt?: number;
   /** 处理方案（完成必填） */
   resolution?: string;
+  /** 预警处理方式（数据表下方留言上方的计划输入，非必填，随时间可改） */
+  plan?: string;
   /** 无法完成原因 */
   failedReason?: string;
   /** 针对该预警的沟通交流消息（含管理者意见），按时间正序 */
