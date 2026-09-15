@@ -171,10 +171,42 @@ export function filterAlertsByScope(
 ): AlertTask[] {
   if (!person) return alerts;
   const allow = allowedStoreIds(scope, person, stores);
-  return alerts.filter((a) => alertVisible(a, person, scope, allow));
+  const nameToId = new Map(stores.map((s) => [s.name, s.id]));
+  return alerts.filter((a) => alertVisible(a, person, scope, allow, nameToId));
 }
 
-function alertVisible(a: AlertTask, person: Person, scope: DataScope | null, allow: Set<string> | null): boolean {
+/**
+ * 预警的归属性店仓 id：
+ * 1) 优先读显式持久化的 storeIds（新规则已带）；
+ * 2) 否则从预警内容里已存的店仓名推断（preview.recipients/storeMessages/rows 中的店仓名称），
+ *    兼容历史上未落库归属列的存量预警——这些字段精确记录了该条预警命中的店仓。
+ */
+function storeIdsOf(a: AlertTask, nameToId: Map<string, string>): string[] {
+  if (a.storeIds?.length) return a.storeIds;
+  const names = new Set<string>();
+  for (const r of a.preview?.recipients ?? []) {
+    if (r.mode === 'store') (r.names ?? []).forEach((n) => n && names.add(n));
+  }
+  for (const sm of a.preview?.storeMessages ?? []) if (sm.store) names.add(sm.store);
+  for (const row of a.preview?.rows ?? []) {
+    const n = row['店仓名称'];
+    if (typeof n === 'string' && n) names.add(n);
+  }
+  const out = new Set<string>();
+  for (const n of names) {
+    const id = nameToId.get(n);
+    if (id) out.add(id);
+  }
+  return [...out];
+}
+
+function alertVisible(
+  a: AlertTask,
+  person: Person,
+  scope: DataScope | null,
+  allow: Set<string> | null,
+  nameToId: Map<string, string>
+): boolean {
   if (allow === null) return true; // all
   if (allow.size === 0) {
     // self 模式：只看本人
@@ -183,8 +215,9 @@ function alertVisible(a: AlertTask, person: Person, scope: DataScope | null, all
     }
     return false;
   }
-  if (a.storeIds && a.storeIds.length) return a.storeIds.some((id) => allow.has(id));
-  if (a.dealerIds && a.dealerIds.length) return a.dealerIds.some((d) => allow.has(d));
+  const ids = storeIdsOf(a, nameToId);
+  if (ids.length) return ids.some((id) => allow.has(id));
+  // 预警没有可判定的门店归属（旧数据且内容未带店仓名）-> 门店型数据范围下视为不可见
   return false;
 }
 
