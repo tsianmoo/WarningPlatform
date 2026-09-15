@@ -29,8 +29,9 @@ export function PeopleManage() {
   }, [sortedOrgs]);
   const rootOrgs = childrenByParent.get(undefined) ?? [];
 
-  const jobLabels = hrAttributes.find((a) => a.name.includes('职位'))?.items ?? [];
-  const postLabels = hrAttributes.find((a) => a.name.includes('岗位'))?.items ?? [];
+  const personAttrs = hrAttributes.filter((a) => (a.category ?? 'person') === 'person');
+  const jobLabels = personAttrs.find((a) => a.name.includes('职位'))?.items ?? [];
+  const postLabels = personAttrs.find((a) => a.name.includes('岗位'))?.items ?? [];
 
   const orgList = useMemo(() => {
     const list: Organization[] = [];
