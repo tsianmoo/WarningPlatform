@@ -743,6 +743,8 @@ export interface TargetSetting {
   orgIds?: string[];
   /** 适用人员（人事架构人员 id 列表） */
   personIds?: string[];
+  /** person（按用户）模式下进一步按职位筛选（职位标签，含督导等） */
+  personPositions?: string[];
 }
 
 // ============ 执行跟踪 ============

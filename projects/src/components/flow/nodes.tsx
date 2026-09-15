@@ -2592,6 +2592,13 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
       personnel: targets.personnel.includes(p) ? targets.personnel.filter((x) => x !== p) : [...targets.personnel, p],
       personIds: targets.personIds?.includes(p) ? targets.personIds.filter((x) => x !== p) : [...(targets.personIds ?? []), p],
     });
+  const togglePersonPos = (pos: string) =>
+    onChange({
+      ...targets,
+      personPositions: targets.personPositions?.includes(pos)
+        ? targets.personPositions.filter((x) => x !== pos)
+        : [...(targets.personPositions ?? []), pos],
+    });
   const { state } = useStore();
   const [selDept, setSelDept] = useState<string>('');
   const orgs = state.orgs ?? [];
@@ -2600,6 +2607,7 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
   const persons = state.persons ?? [];
   const deptOrgs = orgs.filter((o) => o.kind === '部门');
   const deptPersons = persons.filter((p) => p.orgId === selDept && p.enabled !== false);
+  const positions = Array.from(new Set(persons.map((p) => p.title).filter(Boolean) as string[])).sort();
   const groupLabel = 'mb-1 text-[10px] text-gray-400';
   return (
     <div className="mt-1.5 rounded-lg border border-amber-200/70 bg-amber-50/50 p-1.5">
@@ -2642,10 +2650,36 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
         </div>
       )}
       {mode === 'person' && (
-        <div className="mb-1.5 rounded bg-white/60 p-1.5 text-[10px] leading-relaxed text-gray-500">
-          触发时，管理了命中门店/员工的用户汇总收到通知。
-          <br />
-          <span className="text-gray-700">当前用户 {persons.length} 人</span>
+        <div className="space-y-1.5">
+          <div className="mb-1.5 rounded bg-white/60 p-1.5 text-[10px] leading-relaxed text-gray-500">
+            触发时，管理了命中门店/员工的用户汇总收到通知。
+            <br />
+            <span className="text-gray-700">当前用户 {persons.length} 人</span>
+          </div>
+          <div>
+            <div className={groupLabel}>按职位筛选推送用户（含督导，可不选）</div>
+            <div className="flex flex-wrap gap-1">
+              {positions.length === 0 && (
+                <span className="text-[10px] text-gray-400">暂无职位，请先在「用户管理」为用户设置职位</span>
+              )}
+              {positions.map((pos) => {
+                const on = targets.personPositions?.includes(pos) ?? false;
+                return (
+                  <button
+                    key={pos}
+                    type="button"
+                    onClick={() => togglePersonPos(pos)}
+                    className={`rounded px-1.5 py-0.5 text-[10px] transition ${
+                      on ? 'bg-sky-500 text-white' : 'bg-white text-gray-500 hover:bg-sky-100'
+                    }`}
+                  >
+                    {pos}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-1 text-[10px] text-gray-400">不选 = 推送范围内全部用户；选中 = 仅推送给职位匹配的用户</div>
+          </div>
         </div>
       )}
       {mode === 'manual' && (

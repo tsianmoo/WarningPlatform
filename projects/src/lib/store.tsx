@@ -180,7 +180,11 @@ export function buildAlertsForRule(
         if (p.enabled === false) return false;
         const ids = p.manageScope?.storeIds ?? [];
         if (!ids.length) return false;
-        return hitStoreById.length === 0 || hitStoreById.some((s) => ids.includes(s.id));
+        const byScope = hitStoreById.length === 0 || hitStoreById.some((s) => ids.includes(s.id));
+        if (!byScope) return false;
+        const posFilter = notify?.personPositions ?? [];
+        if (posFilter.length && !(p.title && posFilter.includes(p.title))) return false;
+        return true;
       });
       recipients = [{ mode: m, names: pers.map((p) => p.name) }];
     }
