@@ -211,7 +211,9 @@ export function buildAlertsForRule(
         conditionDesc: conditionDesc || undefined,
         preview: {
           columns: preview?.columns ?? [],
-          rows: preview?.rows ?? [],
+          rows: storeMsg?.store && storeCol
+            ? (preview?.rows ?? []).filter((r) => String(r[storeCol] ?? '') === storeMsg.store)
+            : (preview?.rows ?? []),
           ...(curStores.length ? { storeMessages: curStores } : {}),
           ...(recipients ? { recipients: [{ mode: m, names: curNames }] } : {}),
         },

@@ -503,51 +503,44 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                     <div className="space-y-1">{renderRecipients(open.preview.recipients)}</div>
                   </div>
                 ) : null}
-                {stores.length ? (
+                {open.preview?.columns?.length || stores.length ? (
                   <div className="mt-4">
-                    <h4 className="mb-2 text-xs font-medium text-gray-400">判断命中明细</h4>
-                    <div className="overflow-hidden rounded-lg border border-gray-100">
-                      <table className="w-full border-collapse text-[12px]">
-                        <thead>
-                          <tr className="bg-gray-50/40 text-left text-[11px] text-gray-400">
-                            <th className="whitespace-nowrap px-3 py-2 font-medium">店仓</th>
-                            <th className="whitespace-nowrap px-3 py-2 font-medium">命中消息</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {stores.map((s, si) => (
-                            <tr key={si} className="align-top last:border-0">
-                              <td className="whitespace-nowrap border-t border-gray-50 px-3 py-2 font-medium text-gray-600">{s.store || '—'}</td>
-                              <td className="border-t border-gray-50 px-3 py-2 text-gray-600">{s.message}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    <div className="mb-2 flex items-end justify-between">
+                      <h4 className="text-xs font-medium text-gray-400">判断命中明细</h4>
+                      {open.preview?.rows?.length ? (
+                        <span className="text-[11px] text-gray-300">命中 {open.preview.rows.length} 行</span>
+                      ) : null}
                     </div>
-                  </div>
-                ) : open.preview?.rows?.length ? (
-                  <div className="mt-4">
-                    <h4 className="mb-2 text-xs font-medium text-gray-400">判断命中明细</h4>
-                    <div className="overflow-auto rounded-lg border border-gray-100">
-                      <table className="w-full border-collapse text-[11px]">
-                        <thead>
-                          <tr className="bg-gray-50/40 text-left text-gray-400">
-                            {open.preview.columns.map((c) => (
-                              <th key={c} className="whitespace-nowrap px-2.5 py-2 font-medium">{c}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {open.preview.rows.slice(0, 100).map((r, ri) => (
-                            <tr key={ri} className="border-t border-gray-50">
-                              {open.preview!.columns.map((c) => (
-                                <td key={c} className="whitespace-nowrap px-2.5 py-2 text-gray-500">{String(r[c] ?? '')}</td>
+                    {open.conditionDesc ? <p className="mb-1 text-[11px] leading-relaxed text-gray-400">{open.conditionDesc}</p> : null}
+                    {stores[0]?.store ? <p className="mb-2 text-[11px] text-gray-400">命中店铺：{stores[0].store}</p> : null}
+                    {open.preview?.columns?.length ? (
+                      <div className="overflow-auto rounded-lg border border-gray-100">
+                        <table className="w-full border-collapse text-[11px]">
+                          <thead>
+                            <tr className="bg-gray-50/40 text-left text-gray-400">
+                              {open.preview.columns.map((c) => (
+                                <th key={c} className="whitespace-nowrap px-2.5 py-2 font-medium">{c}</th>
                               ))}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                          </thead>
+                          <tbody>
+                            {open.preview.rows.slice(0, 100).map((r, ri) => (
+                              <tr key={ri} className="border-t border-gray-50">
+                                {open.preview!.columns.map((c) => (
+                                  <td key={c} className="whitespace-nowrap px-2.5 py-2 text-gray-500">{String(r[c] ?? '')}</td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : stores.length ? (
+                      <div className="space-y-1 rounded-lg border border-gray-100 bg-gray-50/40 px-3 py-2 text-[12px] text-gray-600">
+                        {stores.map((s, si) => (
+                          <div key={si}>{s.store || '—'}：{s.message}</div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
