@@ -115,6 +115,13 @@ function fmtNum(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
 }
 
+/** 将时间戳还原为 YYYY-MM-DD（用于日期字段的 min/max 聚合结果） */
+function fmtTsDate(ts: number): string {
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '—';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 
 
 /** 计算某时间窗迄今已过去的天数（含今天，拉齐到自然日）。now 未到 start 返回0；已过 end 则取窗口内已过去天数 */
@@ -320,7 +327,13 @@ function buildGroups(
     if (!groups.has(k)) groups.set(k, { nums: metrics.map(() => []), keys, recs: [] });
     const g = groups.get(k)!;
     metrics.forEach((mt, mi) => {
-      g.nums[mi].push(toNum(r[mt.key]));
+      const m = mt as unknown as { isDate?: boolean; fn?: string };
+      if (m.isDate && (m.fn === 'min' || m.fn === 'max')) {
+        const dt = toDate(r[mt.key]);
+        g.nums[mi].push(dt instanceof Date && !isNaN(dt.getTime()) ? dt.getTime() : toNum(r[mt.key]));
+      } else {
+        g.nums[mi].push(toNum(r[mt.key]));
+      }
     });
     g.recs.push(r);
   }
@@ -1083,14 +1096,23 @@ function evalNode(
       }));
       const metricField = gd.metricField || t.fields.find((f) => f.type === 'number')?.key;
       // 多指标：优先用 metrics 列表；否则回退到单指标 metricField/metricFn
-      const metrics: { key: string; label: string; fn: string; outLabel: string }[] = (
+      const metrics: { key: string; label: string; fn: string; outLabel: string; isDate: boolean }[] = (
         Array.isArray(gd.metrics) && gd.metrics.length
           ? gd.metrics.filter((m) => m.fieldKey)
           : gd.metricField
             ? [{ id: 'legacy', fieldKey: gd.metricField, fieldLabel: gd.metricFieldLabel, fn: gd.metricFn || 'sum' }]
             : []
-      ).map((m) => ({ key: m.fieldKey as string, label: m.fieldLabel || m.fieldKey || '', fn: (m.fn || 'sum') as string, outLabel: m.resultLabel || '' }));
-      if (!metrics.length) metrics.push({ key: metricField ?? '', label: metricField ?? '', fn: 'sum', outLabel: '' });
+      ).map((m) => {
+        const key = (m.fieldKey || '') as string;
+        return {
+          key,
+          label: m.fieldLabel || key || '',
+          fn: (m.fn || 'sum') as string,
+          outLabel: m.resultLabel || '',
+          isDate: !!t.fields?.find((f) => f.key === key && f.type === 'date'),
+        };
+      });
+      if (!metrics.length) metrics.push({ key: metricField ?? '', label: metricField ?? '', fn: 'sum', outLabel: '', isDate: false });
       // 无分组维度且用户没有显式配置指标时：自动对所有数值列聚合，输出“所有列的聚合计算结果”
       const noDims = !dims.length;
       const userSetMetric = Array.isArray(gd.metrics) && gd.metrics.some((m) => m.fieldKey);
@@ -1098,7 +1120,7 @@ function evalNode(
         const numFields = t.fields.filter((f) => f.type === 'number' && f.key);
         if (numFields.length) {
           metrics.length = 0;
-          numFields.forEach((f) => metrics.push({ key: f.key || '', label: f.key || '', fn: 'sum', outLabel: `${f.key || ''}·求和` }));
+          numFields.forEach((f) => metrics.push({ key: f.key || '', label: f.key || '', fn: 'sum', outLabel: `${f.key || ''}·求和`, isDate: false }));
         }
       }
       if (metrics.length && metrics.every((mt) => !!mt.key) && (!dims.length || dims.every((x) => !!x.key))) {
@@ -1205,7 +1227,7 @@ function evalNode(
           } else {
             val = agg(fn, g.nums[mi]);
           }
-          row[mLabels[mi]] = fmtNum(val);
+          row[mLabels[mi]] = mt.isDate && (fn === 'min' || fn === 'max') && Number.isFinite(val) ? fmtTsDate(val) : fmtNum(val);
           if (cmpMode && cmpGroups) {
             const cv = cvals ? cvals[mi] : NaN;
             row[`${mLabels[mi]} · ${cmpLabel}`] = Number.isFinite(cv) ? fmtNum(cv) : '—';
