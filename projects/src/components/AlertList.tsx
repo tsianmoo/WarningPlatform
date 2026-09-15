@@ -453,6 +453,12 @@ export function AlertList({ onBack }: { onBack: () => void }) {
         const lv = LEVEL_META[(open.level ?? 'warn') as keyof typeof LEVEL_META] ?? LEVEL_META.warn;
         const st = STATUS_META[open.status];
         const stores = open.preview?.storeMessages ?? [];
+        const scopeNames = [...new Set(stores.map((s) => s.store).filter(Boolean))] as string[];
+        let detailRows = open.preview?.rows ?? [];
+        if (scopeNames.length) {
+          const keep = detailRows.filter((r) => scopeNames.some((nm) => Object.values(r).some((v) => String(v) === nm)));
+          if (keep.length) detailRows = keep;
+        }
         const recipient = open.handoffTo ? (
           <span>{open.handoffTo}<span className="ml-1 text-[11px] text-gray-400">（转交）</span></span>
         ) : open.assignee ? (
@@ -466,7 +472,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
             onClick={() => setOpenId(null)}
           >
             <div
-              className="alert-pop flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-2xl shadow-gray-900/10"
+              className="alert-pop flex max-h-[86vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-2xl shadow-gray-900/10"
               onClick={(e) => e.stopPropagation()}
             >
               <style>{`@keyframes alertPop{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}.alert-pop{animation:alertPop .18s ease-out}`}</style>
@@ -507,12 +513,12 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                   <div className="mt-4">
                     <div className="mb-2 flex items-end justify-between">
                       <h4 className="text-xs font-medium text-gray-400">判断命中明细</h4>
-                      {open.preview?.rows?.length ? (
-                        <span className="text-[11px] text-gray-300">命中 {open.preview.rows.length} 行</span>
+                      {detailRows.length ? (
+                        <span className="text-[11px] text-gray-300">命中 {detailRows.length} 行</span>
                       ) : null}
                     </div>
                     {open.conditionDesc ? <p className="mb-1 text-[11px] leading-relaxed text-gray-400">{open.conditionDesc}</p> : null}
-                    {stores[0]?.store ? <p className="mb-2 text-[11px] text-gray-400">命中店铺：{stores[0].store}</p> : null}
+                    {scopeNames.length ? <p className="mb-2 text-[11px] text-gray-400">命中店铺：{scopeNames.join('、')}</p> : null}
                     {open.preview?.columns?.length ? (
                       <div className="overflow-auto rounded-lg border border-gray-100">
                         <table className="w-full border-collapse text-[11px]">
@@ -524,10 +530,10 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                             </tr>
                           </thead>
                           <tbody>
-                            {open.preview.rows.slice(0, 100).map((r, ri) => (
+                            {detailRows.slice(0, 100).map((r, ri) => (
                               <tr key={ri} className="border-t border-gray-50">
                                 {open.preview!.columns.map((c) => (
-                                  <td key={c} className="whitespace-nowrap px-2.5 py-2 text-gray-500">{String(r[c] ?? '')}</td>
+                                  <td key={c} className="whitespace-normal break-words px-2.5 py-2 align-top text-gray-500">{String(r[c] ?? '')}</td>
                                 ))}
                               </tr>
                             ))}
