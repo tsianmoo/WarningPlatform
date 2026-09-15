@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   UploadCloud,
   Table2,
@@ -13,6 +13,12 @@ import {
   RefreshCw,
   Undo2,
   Folder,
+  FolderOpen,
+  Plus,
+  MoreVertical,
+  Pencil,
+  Inbox,
+  FolderPlus,
 } from 'lucide-react';
 import { useStore, formatDateTime } from '@/lib/store';
 import { resolvePerm, canOper } from '@/lib/perm';
@@ -29,6 +35,13 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const TYPE_LABEL: Record<FieldType, string> = {
   string: '文本',
@@ -38,17 +51,23 @@ const TYPE_LABEL: Record<FieldType, string> = {
 };
 
 export function DataTableManager({ onHome }: { onHome?: () => void }) {
-  const { state, addTable, updateTable, removeTable, setActiveTable, renameField, setFieldType } = useStore();
+  const { state, addTable, updateTable, removeTable, setActiveTable, renameField, setFieldType, addTableGroup, updateTableGroup, removeTableGroup } = useStore();
   const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
   const me = state.persons.find((p) => p.name === meName) ?? null;
   const perm = resolvePerm(me, state.config);
   const can = (op: Parameters<typeof canOper>[2], _rid?: string) => canOper(perm, 'datatables', op);
   const [dragging, setDragging] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [openDelete, setOpenDelete] = useState<{ id: string; refs: AlertRule[] } | null>(null);
   const [openUpdate, setOpenUpdate] = useState<{
     t: DataTable;
     next: { name: string; fileName: string; fields: DataTable['fields']; previewRows: DataTable['previewRows']; rowCount: number; rows: DataTable['rows'] };
   } | null>(null);
+  const uploadGroupRef = useRef('');
+  const uploadRef = useRef<HTMLInputElement>(null);
+  const setUploadGroup = (g: string) => {
+    uploadGroupRef.current = g;
+  };
   const tryDelete = (t: DataTable) => {
     // 若已被规则引用，标注引用来源并由对话框阻止删除；无引用时仍须二次确认
     setOpenDelete({ id: t.id, refs: state.rules.filter((r) => r.tableIds?.includes(t.id)) });
@@ -65,11 +84,11 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
     return { name, fileName: file.name, fields, previewRows, rowCount, rows: fullRows as DataTable['rows'] };
   };
 
-  const handleFile = async (file: File) => {
+  const handleFile = async (file: File, group = '') => {
     try {
       const next = await buildNew(file);
       if (!next) return;
-      const table: DataTable = { id: uid('tbl'), createdAt: Date.now(), group: '', ...next };
+      const table: DataTable = { id: uid('tbl'), createdAt: Date.now(), group, ...next };
       addTable(table);
       toast.success(`已导入「${table.name}」，共 ${table.rowCount} 行`);
     } catch (e) {
@@ -131,26 +150,61 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
     toast.success(`已返回上一步，恢复「${t.name}」更新前的数据`);
   };
 
-  const handleGroupChange = (t: DataTable, value: string) => {
-    if (value === '__new__') {
-      const name = window.prompt('请输入新的分组名称');
-      if (name && name.trim()) updateTable(t.id, { group: name.trim() });
+  const createGroup = () => {
+    const name = window.prompt('请输入文件夹（分组）名称');
+    const n = String(name ?? '').trim();
+    if (!n) return;
+    if (state.tableGroups.some((g) => g.name === n)) {
+      toast.error(`分组「${n}」已存在`);
       return;
     }
-    updateTable(t.id, { group: value });
+    addTableGroup(n);
+    toast.success(`已新建分组「${n}」`);
   };
 
-  const groups = useMemo(() => {
-    const map = new Map<string, DataTable[]>();
-    for (const t of state.tables) {
-      const g = t.group || '';
-      if (!map.has(g)) map.set(g, []);
-      map.get(g)!.push(t);
+  const renameGroup = (gname: string) => {
+    const g = state.tableGroups.find((x) => x.name === gname);
+    if (!g) return;
+    const name = window.prompt('重命名分组', gname);
+    const n = String(name ?? '').trim();
+    if (!n || n === gname) return;
+    if (state.tableGroups.some((x) => x.name === n)) {
+      toast.error(`分组「${n}」已存在`);
+      return;
     }
-    return [...map.entries()];
-  }, [state.tables]);
+    updateTableGroup(g.id, n);
+    toast.success(`已重命名「${gname}」→「${n}」`);
+  };
 
-  const groupNames = useMemo(() => groups.map((g) => g[0]).filter(Boolean), [groups]);
+  const deleteGroup = (gname: string) => {
+    const g = state.tableGroups.find((x) => x.name === gname);
+    if (!g) return;
+    const cnt = state.tables.filter((t) => t.group === gname).length;
+    const ok = window.confirm(cnt > 0 ? `删除分组「${gname}」？组内 ${cnt} 张数据表将移回未分组（表本身不会被删除）。` : `删除分组「${gname}」？`);
+    if (ok) {
+      removeTableGroup(g.id);
+      toast.success(`已删除分组「${gname}」`);
+    }
+  };
+
+  // 文件夹：每个分组实体一条，未分组的孤儿表（含 group 为空或不属于任何分组）归入「未分组」伪节点
+  const groupTree = useMemo(() => {
+    const byName = new Map<string, DataTable[]>();
+    for (const t of state.tables) byName.set(t.group || '', [...(byName.get(t.group || '') ?? []), t]);
+    const folders: { name: string; tables: DataTable[]; isFolder: boolean }[] = state.tableGroups.map((g) => ({ name: g.name, tables: byName.get(g.name) ?? [], isFolder: true }));
+    const orphanTables = state.tables.filter((t) => !state.tableGroups.some((g) => g.name === t.group));
+    if (orphanTables.length > 0) folders.push({ name: '', tables: orphanTables, isFolder: false });
+    return folders;
+  }, [state.tables, state.tableGroups]);
+
+  const toggleCollapsed = (name: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
 
   // 更新 diff：逐字段区分 新增/保留/删除，便于用户确认新列加入与旧列移除的影响面
   const fieldDiff = useMemo(() => {
@@ -215,98 +269,209 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
       <div className="grid min-h-0 flex-1 grid-cols-[340px_1fr] gap-6">
         {/* 左：数据表列表 */}
         <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white">
-          <div className="flex items-baseline justify-between border-b border-gray-100 px-5 py-4">
+          <input
+            ref={uploadRef}
+            type="file"
+            accept=".xlsx,.xls,.xlsm,.csv,.txt"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void handleFile(f, uploadGroupRef.current);
+              e.target.value = '';
+            }}
+          />
+          <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
             <div className="text-sm font-medium text-gray-700">数据表</div>
-            <div className="text-xs text-gray-400">{state.tables.length} 张</div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">{state.tables.length} 张</span>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex h-6 w-6 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-600" title="上传数据表 / 新建分组">
+                    <Plus size={16} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-[160px]">
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setUploadGroup('');
+                      uploadRef.current?.click();
+                    }}
+                  >
+                    <UploadCloud size={14} className="mr-2 text-gray-400" />
+                    上传数据表
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={createGroup}>
+                    <FolderPlus size={14} className="mr-2 text-gray-400" />
+                    新建分组
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
-            {state.tables.length === 0 ? (
+            {state.tables.length === 0 && state.tableGroups.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
                 <span className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-50 text-gray-300">
                   <Table2 size={22} strokeWidth={1.5} />
                 </span>
-                <p className="text-sm text-gray-400">还没有数据表</p>
+                <p className="text-sm text-gray-400">还没有数据表，点击上方「＋」上传或新建分组</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {groups.map(([g, list]) => (
-                  <div key={g}>
-                    <div className="flex items-center gap-1.5 px-1 pb-1 pt-0.5 text-[11px] font-medium uppercase tracking-wide text-gray-400">
-                      <Folder size={12} strokeWidth={1.8} />
-                      {g || '未分组'}
-                      <span className="text-gray-300">{list.length}</span>
-                    </div>
-                    <div className="space-y-1.5">
-                      {list.map((t) => (
-                        <div
-                          key={t.id}
-                          onClick={() => setActiveTable(t.id)}
-                          className={`group flex cursor-pointer items-center justify-between rounded-xl border px-3.5 py-3 transition ${
-                            t.id === activeId
-                              ? 'border-gray-300 bg-gray-50 shadow-sm'
-                              : 'border-transparent hover:border-gray-200 hover:bg-gray-50/50'
-                          }`}
+              <div className="space-y-1">
+                {groupTree.map((node) => {
+                  const isOpen = !collapsed.has(node.name);
+                  return (
+                    <div key={node.name === '' ? '__uncat' : node.name}>
+                      {/* 分组 / 未分组 节点行 */}
+                      <div className="group flex items-center gap-1 rounded-lg py-1.5 pr-1 hover:bg-gray-50">
+                        <button
+                          onClick={() => toggleCollapsed(node.name)}
+                          className="rounded p-0.5 text-gray-400 transition hover:text-gray-600"
+                          title={node.tables.length ? '展开 / 折叠' : undefined}
                         >
-                          <div className="flex min-w-0 items-center gap-3">
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500">
-                              <Table2 size={17} strokeWidth={1.7} />
-                            </span>
-                            <div className="min-w-0">
-                              <div className="truncate text-sm font-medium text-gray-800">{t.name}</div>
-                              <div className="mt-0.5 text-xs text-gray-400">
-                                {t.rowCount.toLocaleString()} 行 · {t.fields.length} 字段
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
-                            {t.prev && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  undoUpdate(t);
-                                }}
-                                className="rounded-md p-1.5 text-gray-400 transition hover:bg-amber-50 hover:text-amber-600"
-                                title="返回上一步"
-                              >
-                                <Undo2 size={15} />
-                              </button>
-                            )}
-                            <label
+                          <ChevronRight size={14} className={`transition-transform ${isOpen || !node.tables.length ? 'rotate-90' : ''}`} />
+                        </button>
+                        {node.isFolder ? (
+                          <FolderOpen size={15} className="text-amber-400" strokeWidth={1.8} />
+                        ) : (
+                          <Inbox size={15} className="text-gray-300" strokeWidth={1.8} />
+                        )}
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-700">{node.isFolder ? node.name : '未分组'}</span>
+                        <span className="shrink-0 px-0.5 text-xs text-gray-400">{node.tables.length}</span>
+                        {/* ＋：上传到当前 / 新建分组 */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
                               onClick={(e) => e.stopPropagation()}
-                              className="cursor-pointer rounded-md p-1.5 text-gray-400 transition hover:bg-violet-50 hover:text-violet-600"
-                              title="更新数据表（重新上传覆盖）"
+                              className="rounded-md p-1 text-gray-300 opacity-0 transition hover:bg-gray-100 hover:text-gray-600 group-hover:opacity-100"
+                              title={node.isFolder ? `上传到「${node.name}」/ 新建分组` : '上传到未分组 / 新建分组'}
                             >
-                              <RefreshCw size={15} />
-                              <input
-                                type="file"
-                                accept=".xlsx,.xls,.xlsm,.csv,.txt"
-                                className="hidden"
-                                onChange={(e) => {
-                                  const f = e.target.files?.[0];
-                                  if (f) void handleUpdate(t, f);
-                                  e.target.value = '';
-                                }}
-                              />
-                            </label>
-                            {can('delete', t.id) && (
+                              <Plus size={14} />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="min-w-[160px]">
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                setUploadGroup(node.isFolder ? node.name : '');
+                                uploadRef.current?.click();
+                              }}
+                            >
+                              <UploadCloud size={14} className="mr-2 text-gray-400" />
+                              上传数据表{node.isFolder ? `到「${node.name}」` : ''}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onSelect={createGroup}>
+                              <FolderPlus size={14} className="mr-2 text-gray-400" />
+                              新建分组
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        {/* ⋮：重命名 / 删除 */}
+                        {node.isFolder && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  tryDelete(t);
-                                }}
-                                className="rounded-md p-1.5 text-gray-300 transition hover:bg-red-50 hover:text-red-500"
-                                title="删除数据表"
+                                onClick={(e) => e.stopPropagation()}
+                                className="rounded-md p-1 text-gray-300 opacity-0 transition hover:bg-gray-100 hover:text-gray-600 group-hover:opacity-100"
+                                title="分组操作"
                               >
-                                <Trash2 size={15} />
+                                <MoreVertical size={14} />
                               </button>
-                            )}
-                          </div>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="min-w-[140px]">
+                              <DropdownMenuItem onSelect={() => renameGroup(node.name)}>
+                                <Pencil size={14} className="mr-2 text-gray-400" />
+                                重命名
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onSelect={() => deleteGroup(node.name)} className="text-red-500 focus:text-red-600">
+                                <Trash2 size={14} className="mr-2" />
+                                删除
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </div>
+                      {/* 分组下数据表列表 */}
+                      {node.isFolder && !isOpen ? null : (
+                        <div className="ml-4 space-y-1.5 pb-1.5 pt-0.5">
+                          {node.tables.length === 0 ? (
+                            <p className="px-2 py-1 text-xs text-gray-300">空分组</p>
+                          ) : (
+                            node.tables.map((t) => (
+                              <div
+                                key={t.id}
+                                onClick={() => setActiveTable(t.id)}
+                                className={`group flex cursor-pointer items-center justify-between rounded-xl border px-3 py-2 transition ${
+                                  t.id === activeId
+                                    ? 'border-gray-300 bg-gray-50 shadow-sm'
+                                    : 'border-transparent hover:border-gray-200 hover:bg-gray-50/50'
+                                }`}
+                              >
+                                <div className="flex min-w-0 items-center gap-2.5">
+                                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-500">
+                                    <Table2 size={14} strokeWidth={1.7} />
+                                  </span>
+                                  <div className="min-w-0">
+                                    <div className="truncate text-sm font-medium text-gray-800">{t.name}</div>
+                                    <div className="mt-0.5 text-xs text-gray-400">
+                                      {t.rowCount.toLocaleString()} 行 · {t.fields.length} 字段
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+                                  {t.prev && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        undoUpdate(t);
+                                      }}
+                                      className="rounded-md p-1 text-gray-400 transition hover:bg-amber-50 hover:text-amber-600"
+                                      title="返回上一步"
+                                    >
+                                      <Undo2 size={14} />
+                                    </button>
+                                  )}
+                                  <label
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="cursor-pointer rounded-md p-1 text-gray-400 transition hover:bg-violet-50 hover:text-violet-600"
+                                    title="更新数据表（重新上传覆盖）"
+                                  >
+                                    <RefreshCw size={14} />
+                                    <input
+                                      type="file"
+                                      accept=".xlsx,.xls,.xlsm,.csv,.txt"
+                                      className="hidden"
+                                      onChange={(e) => {
+                                        const f = e.target.files?.[0];
+                                        if (f) void handleUpdate(t, f);
+                                        e.target.value = '';
+                                      }}
+                                    />
+                                  </label>
+                                  {can('delete', t.id) && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        tryDelete(t);
+                                      }}
+                                      className="rounded-md p-1 text-gray-300 transition hover:bg-red-50 hover:text-red-500"
+                                      title="删除数据表"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            ))
+                          )}
                         </div>
-                      ))}
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -358,19 +523,10 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
                     <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">{formatDateTime(active.createdAt)}</span>
                   </div>
                   <div className="mt-2 flex items-center gap-2">
-                    <select
-                      value={active.group || ''}
-                      onChange={(e) => handleGroupChange(active, e.target.value)}
-                      className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 outline-none hover:border-gray-300"
-                    >
-                      <option value="">未分组</option>
-                      {groupNames.map((g) => (
-                        <option key={g} value={g}>
-                          {g}
-                        </option>
-                      ))}
-                      <option value="__new__">＋ 新建分组…</option>
-                    </select>
+                    <span className="inline-flex items-center gap-1 rounded-md bg-amber-50/60 px-2 py-1 text-xs text-amber-700">
+                      <Folder size={12} strokeWidth={1.8} />
+                      {active.group || '未分组'}
+                    </span>
                     {active.prev && (
                       <button
                         onClick={() => undoUpdate(active)}

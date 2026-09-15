@@ -14,6 +14,7 @@ import type {
   Organization,
   Person,
   RuleGroup,
+  DataTableGroup,
   Schedule,
   TargetSetting,
   NotifyMode,
@@ -245,10 +246,10 @@ async function fetchRemoteState(): Promise<Partial<AppState> | null> {
   try {
     const res = await fetch(STATE_API, { cache: 'no-store' });
     if (!res.ok) return null;
-    const json = (await res.json()) as { tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[]; orgs?: Organization[]; persons?: Person[]; employees?: Employee[]; hrAttributes?: HrAttribute[]; dealers?: Dealer[]; stores?: Store[]; config?: HomeConfig; error?: string };
+    const json = (await res.json()) as { tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[]; tableGroups?: DataTableGroup[]; orgs?: Organization[]; persons?: Person[]; employees?: Employee[]; hrAttributes?: HrAttribute[]; dealers?: Dealer[]; stores?: Store[]; config?: HomeConfig; error?: string };
     if (json.error) return null;
     remoteAvailable = true;
-    return { tables: json.tables ?? [], rules: json.rules ?? [], alerts: json.alerts ?? [], ruleGroups: json.groups ?? [], orgs: json.orgs ?? [], persons: json.persons ?? [], employees: json.employees ?? [], hrAttributes: json.hrAttributes ?? [], dealers: json.dealers ?? [], stores: json.stores ?? [], config: normalizeHomeConfig(json.config) };
+    return { tables: json.tables ?? [], rules: json.rules ?? [], alerts: json.alerts ?? [], ruleGroups: json.groups ?? [], tableGroups: json.tableGroups ?? [], orgs: json.orgs ?? [], persons: json.persons ?? [], employees: json.employees ?? [], hrAttributes: json.hrAttributes ?? [], dealers: json.dealers ?? [], stores: json.stores ?? [], config: normalizeHomeConfig(json.config) };
   } catch {
     return null;
   }
@@ -285,7 +286,7 @@ async function pushRemoteState(state: AppState) {
     await fetch(STATE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] } }),
+      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], tableGroups: state.tableGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] } }),
     });
   } catch {
     /* 网络异常时忽略，localStorage 仍有兜底 */
@@ -302,6 +303,8 @@ export interface AppState {
   alerts: AlertTask[];
   /** 规则分组 */
   ruleGroups: RuleGroup[];
+  /** 数据表分组（文件夹）实体 */
+  tableGroups: DataTableGroup[];
   /** 组织架构（平级分类组织） */
   orgs: Organization[];
   /** 人事架构（挂载在组织下的人员） */
@@ -350,6 +353,10 @@ type StoreApi = {
   addRuleGroup: (name: string) => RuleGroup;
   updateRuleGroup: (id: string, name: string) => void;
   removeRuleGroup: (id: string) => void;
+  // data table groups
+  addTableGroup: (name: string) => DataTableGroup;
+  updateTableGroup: (id: string, newName: string) => void;
+  removeTableGroup: (id: string) => void;
   // organizations
   addOrg: (o: Omit<Organization, 'id' | 'createdAt'>) => Organization;
   updateOrg: (o: Organization) => void;
@@ -603,6 +610,35 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
     }
     case 'REPLACE_GROUPS':
       return { ...state, ruleGroups: Array.isArray(action.payload) ? (action.payload as RuleGroup[]) : state.ruleGroups };
+    case 'ADD_TABLE_GROUP': {
+      const g = action.payload as DataTableGroup;
+      if (!g || !g.id || !String(g.name ?? '').trim()) return state;
+      if (state.tableGroups.some((x) => x.id === g.id || x.name === g.name)) return state;
+      return { ...state, tableGroups: [...state.tableGroups, g] };
+    }
+    case 'REMOVE_TABLE_GROUP': {
+      const id = action.payload as string;
+      const gone = state.tableGroups.find((g) => g.id === id);
+      return {
+        ...state,
+        tableGroups: state.tableGroups.filter((g) => g.id !== id),
+        // 分组删除后组内数据表归回未分组，表本身不删
+        tables: gone ? state.tables.map((t) => (t.group === gone.name ? { ...t, group: '' } : t)) : state.tables,
+      };
+    }
+    case 'UPDATE_TABLE_GROUP': {
+      const { id, name } = action.payload as { id: string; name: string };
+      const n = String(name ?? '').trim();
+      const old = state.tableGroups.find((g) => g.id === id);
+      if (!old || !n || old.name === n) return state;
+      return {
+        ...state,
+        tableGroups: state.tableGroups.map((g) => (g.id === id ? { ...g, name: n } : g)),
+        tables: state.tables.map((t) => (t.group === old.name ? { ...t, group: n } : t)),
+      };
+    }
+    case 'REPLACE_TABLE_GROUPS':
+      return { ...state, tableGroups: Array.isArray(action.payload) ? (action.payload as DataTableGroup[]) : state.tableGroups };
     // 组织架构
     case 'ADD_ORG': {
       const o = action.payload as Organization;
@@ -764,10 +800,10 @@ function loadInitialState(): AppState {
     previewRows: sample.previewRows,
     rows: sample.rows,
   };
-  return { tables: [t], rules: [], activeTableId: t.id, builderTableIds: [t.id], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [], employees: [], config: DEFAULT_HOME_CONFIG, permissions: [], permOverrides: [] };
+  return { tables: [t], rules: [], activeTableId: t.id, builderTableIds: [t.id], alerts: [], ruleGroups: [], tableGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [], employees: [], config: DEFAULT_HOME_CONFIG, permissions: [], permOverrides: [] };
 }
 
-const EMPTY_STATE: AppState = { tables: [], rules: [], activeTableId: '', builderTableIds: [], alerts: [], ruleGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [], employees: [], config: DEFAULT_HOME_CONFIG, permissions: [], permOverrides: [] };
+const EMPTY_STATE: AppState = { tables: [], rules: [], activeTableId: '', builderTableIds: [], alerts: [], ruleGroups: [], tableGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [], employees: [], config: DEFAULT_HOME_CONFIG, permissions: [], permOverrides: [] };
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   // 初始统一为空，避免 SSR 与客户端首帧不一致导致 Hydration 报错；
@@ -798,6 +834,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               config: state.config,
               alerts: state.alerts ?? [],
               ruleGroups: state.ruleGroups ?? [],
+              tableGroups: state.tableGroups ?? [],
               orgs: state.orgs ?? [],
               persons: state.persons ?? [],
               hrAttributes: state.hrAttributes ?? [],
@@ -816,6 +853,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           tables: (tables ?? []).map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })),
           rules,
           ruleGroups: remote.ruleGroups ?? [],
+          tableGroups: remote.tableGroups ?? [],
           alerts: (remote.alerts ?? []).filter((a) => !isBlankAlert(a)),
           orgs: remote.orgs ?? [],
           persons: remote.persons ?? [],
@@ -907,6 +945,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       },
       removeRuleGroup: (id) => dispatch('REMOVE_RULE_GROUP', id),
       updateRuleGroup: (id, name) => dispatch('UPDATE_RULE_GROUP', { id, name }),
+      addTableGroup: (name) => {
+        const n = String(name ?? '').trim();
+        const g: DataTableGroup = { id: uid('tg'), name: n, createdAt: Date.now() };
+        dispatch('ADD_TABLE_GROUP', g);
+        return g;
+      },
+      removeTableGroup: (id) => dispatch('REMOVE_TABLE_GROUP', id),
+      updateTableGroup: (id, name) => dispatch('UPDATE_TABLE_GROUP', { id, name }),
       addAlert: (alert) => dispatch('ADD_ALERT', alert),
       updateAlertStatus: (alertId, patch) => dispatch('UPDATE_ALERT', { alertId, patch }),
       addOrg: (o) => {

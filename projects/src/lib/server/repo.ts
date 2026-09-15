@@ -1,5 +1,5 @@
 import { getSupabaseClient } from '@/storage/database/supabase-client';
-import type { AlertRule, AlertStatus, AlertTask, AttrCategory, DataTable, Dealer, Employee, HomeConfig, HrAttribute, Organization, Person, RuleGroup, Store } from '@/lib/types';
+import type { AlertRule, AlertStatus, AlertTask, AttrCategory, DataTable, DataTableGroup, Dealer, Employee, HomeConfig, HrAttribute, Organization, Person, RuleGroup, Store } from '@/lib/types';
 
 interface TableRow {
   id: string;
@@ -253,6 +253,36 @@ export async function syncRuleGroups(groups: RuleGroup[]): Promise<void> {
   if (staleIds.length > 0) {
     const { error: delErr } = await client.from('rule_groups').delete().in('id', staleIds);
     if (delErr) throw new Error(`删除分组失败: ${delErr.message}`);
+  }
+}
+
+/** 读取所有数据表分组 */
+export async function getAllTableGroups(): Promise<DataTableGroup[]> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from('table_groups').select('*').order('created_at', { ascending: true });
+  if (error) throw new Error(`读取数据表分组失败: ${error.message}`);
+  return ((data as { id: string; name: string; created_at: number }[] | null) ?? []).map((g) => ({
+    id: g.id,
+    name: g.name,
+    createdAt: g.created_at ?? Date.now(),
+  }));
+}
+
+/** 全量覆盖式保存数据表分组 */
+export async function syncTableGroups(groups: DataTableGroup[]): Promise<void> {
+  const client = getSupabaseClient();
+  const rows = groups.map((g) => ({ id: g.id, name: g.name, created_at: g.createdAt ?? Date.now() }));
+  if (rows.length > 0) {
+    const { error } = await client.from('table_groups').upsert(rows, { onConflict: 'id' });
+    if (error) throw new Error(`保存数据表分组失败: ${error.message}`);
+  }
+  const { data: existing, error: selErr } = await client.from('table_groups').select('id');
+  if (selErr) throw new Error(`读取数据表分组ID失败: ${selErr.message}`);
+  const keep = new Set(groups.map((g) => g.id));
+  const staleIds = ((existing as { id: string }[] | null) ?? []).map((r) => r.id).filter((id) => !keep.has(id));
+  if (staleIds.length > 0) {
+    const { error: delErr } = await client.from('table_groups').delete().in('id', staleIds);
+    if (delErr) throw new Error(`删除数据表分组失败: ${delErr.message}`);
   }
 }
 

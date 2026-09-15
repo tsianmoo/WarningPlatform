@@ -787,6 +787,13 @@ export interface ExecutionRecord {
 export type RuleStatus = 'draft' | 'active' | 'paused' | 'ended';
 
 /** 规则分组 */
+/** 数据表分组（文件夹）实体；DataTable.group 存分组名，空名=未分组 */
+export interface DataTableGroup {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
 export interface RuleGroup {
   id: string;
   name: string;
