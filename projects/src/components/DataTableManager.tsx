@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   UploadCloud,
   Table2,
@@ -10,6 +10,9 @@ import {
   ArrowLeft,
   Database,
   ChevronRight,
+  RefreshCw,
+  Undo2,
+  Folder,
 } from 'lucide-react';
 import { useStore, formatDateTime } from '@/lib/store';
 import { resolvePerm, canOper } from '@/lib/perm';
@@ -35,45 +38,119 @@ const TYPE_LABEL: Record<FieldType, string> = {
 };
 
 export function DataTableManager({ onHome }: { onHome?: () => void }) {
-  const { state, addTable, removeTable, setActiveTable, renameField, setFieldType } = useStore();
+  const { state, addTable, updateTable, removeTable, setActiveTable, renameField, setFieldType } = useStore();
   const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
   const me = state.persons.find((p) => p.name === meName) ?? null;
   const perm = resolvePerm(me, state.config);
   const can = (op: Parameters<typeof canOper>[2], _rid?: string) => canOper(perm, 'datatables', op);
   const [dragging, setDragging] = useState(false);
   const [openDelete, setOpenDelete] = useState<{ id: string; refs: AlertRule[] } | null>(null);
-
+  const [openUpdate, setOpenUpdate] = useState<{
+    t: DataTable;
+    next: { name: string; fileName: string; fields: DataTable['fields']; previewRows: DataTable['previewRows']; rowCount: number; rows: DataTable['rows'] };
+  } | null>(null);
   const tryDelete = (t: DataTable) => {
     // 若已被规则引用，标注引用来源并由对话框阻止删除；无引用时仍须二次确认
     setOpenDelete({ id: t.id, refs: state.rules.filter((r) => r.tableIds?.includes(t.id)) });
   };
 
+  const buildNew = async (file: File) => {
+    const { rows } = await parseTableFile(file);
+    if (!rows.length) {
+      toast.error('文件内容为空或未解析出数据');
+      return null;
+    }
+    const name = file.name.replace(/\.[^.]+$/, '');
+    const { fields, previewRows, rowCount, rows: fullRows } = buildTableFromRows(rows);
+    return { name, fileName: file.name, fields, previewRows, rowCount, rows: fullRows as DataTable['rows'] };
+  };
+
   const handleFile = async (file: File) => {
     try {
-      const { rows } = await parseTableFile(file);
-      if (!rows.length) {
-        toast.error('文件内容为空或未解析出数据');
-        return;
-      }
-      const name = file.name.replace(/\.[^.]+$/, '');
-      const { fields, previewRows, rowCount, rows: fullRows } = buildTableFromRows(rows);
-      const table: DataTable = {
-        id: uid('tbl'),
-        name,
-        fileName: file.name,
-        createdAt: Date.now(),
-        rowCount,
-        fields,
-        previewRows,
-        rows: fullRows as Record<string, string | number | boolean>[],
-      };
+      const next = await buildNew(file);
+      if (!next) return;
+      const table: DataTable = { id: uid('tbl'), createdAt: Date.now(), group: '', ...next };
       addTable(table);
-      toast.success(`已导入「${name}」，共 ${rowCount} 行`);
+      toast.success(`已导入「${table.name}」，共 ${table.rowCount} 行`);
     } catch (e) {
       toast.error('数据解析失败，请检查文件格式');
       console.error(e);
     }
   };
+
+  const finger = (t: { rowCount: number; fields: DataTable['fields']; previewRows: DataTable['previewRows'] }) =>
+    JSON.stringify({ n: t.rowCount, k: t.fields.map((f) => f.key), p: t.previewRows.slice(0, 50) });
+
+  // 鼠标悬停「更新」：重新上传，做到全覆盖；数据不一致时提示确认
+  const handleUpdate = async (t: DataTable, file: File) => {
+    try {
+      const next = await buildNew(file);
+      if (!next) return;
+      if (finger(t) === finger(next)) {
+        toast.success('新文件与原表数据一致，无需更新');
+        return;
+      }
+      setOpenUpdate({ t, next });
+    } catch (e) {
+      toast.error('数据解析失败，请检查文件格式');
+      console.error(e);
+    }
+  };
+
+  const applyUpdate = () => {
+    if (!openUpdate) return;
+    const { t, next } = openUpdate;
+    const mergedFields = next.fields.map((f) => {
+      const old = t.fields.find((o) => o.key === f.key);
+      return old ? { ...f, alias: f.alias || old.alias } : f;
+    });
+    updateTable(t.id, {
+      name: next.name,
+      fileName: next.fileName,
+      createdAt: Date.now(),
+      rowCount: next.rowCount,
+      fields: mergedFields,
+      previewRows: next.previewRows,
+      rows: next.rows,
+      prev: { fileName: t.fileName, rowCount: t.rowCount, fields: t.fields, previewRows: t.previewRows, rows: t.rows },
+    });
+    setOpenUpdate(null);
+    toast.success(`已覆盖更新「${t.name}」，如需还原可点击“返回上一步”`);
+  };
+
+  const undoUpdate = (t: DataTable) => {
+    if (!t.prev) return;
+    updateTable(t.id, {
+      fileName: t.prev.fileName,
+      rowCount: t.prev.rowCount,
+      fields: t.prev.fields,
+      previewRows: t.prev.previewRows,
+      rows: t.prev.rows ?? [],
+      prev: undefined,
+    });
+    toast.success(`已返回上一步，恢复「${t.name}」更新前的数据`);
+  };
+
+  const handleGroupChange = (t: DataTable, value: string) => {
+    if (value === '__new__') {
+      const name = window.prompt('请输入新的分组名称');
+      if (name && name.trim()) updateTable(t.id, { group: name.trim() });
+      return;
+    }
+    updateTable(t.id, { group: value });
+  };
+
+  const groups = useMemo(() => {
+    const map = new Map<string, DataTable[]>();
+    for (const t of state.tables) {
+      const g = t.group || '';
+      if (!map.has(g)) map.set(g, []);
+      map.get(g)!.push(t);
+    }
+    return [...map.entries()];
+  }, [state.tables]);
+
+  const groupNames = useMemo(() => groups.map((g) => g[0]).filter(Boolean), [groups]);
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -141,40 +218,82 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
                 <p className="text-sm text-gray-400">还没有数据表</p>
               </div>
             ) : (
-              <div className="space-y-1.5">
-                {state.tables.map((t) => (
-                  <div
-                    key={t.id}
-                    onClick={() => setActiveTable(t.id)}
-                    className={`group flex cursor-pointer items-center justify-between rounded-xl border px-3.5 py-3 transition ${
-                      t.id === activeId
-                        ? 'border-gray-300 bg-gray-50 shadow-sm'
-                        : 'border-transparent hover:border-gray-200 hover:bg-gray-50/50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500">
-                        <Table2 size={17} strokeWidth={1.7} />
-                      </span>
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-gray-800">{t.name}</div>
-                        <div className="mt-0.5 text-xs text-gray-400">
-                          {t.rowCount.toLocaleString()} 行 · {t.fields.length} 字段
-                        </div>
-                      </div>
+              <div className="space-y-3">
+                {groups.map(([g, list]) => (
+                  <div key={g}>
+                    <div className="flex items-center gap-1.5 px-1 pb-1 pt-0.5 text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                      <Folder size={12} strokeWidth={1.8} />
+                      {g || '未分组'}
+                      <span className="text-gray-300">{list.length}</span>
                     </div>
-                    {can('delete', t.id) && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        tryDelete(t);
-                      }}
-                      className="rounded-md p-1.5 text-gray-300 opacity-0 transition hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
-                      title="删除数据表"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                    )}
+                    <div className="space-y-1.5">
+                      {list.map((t) => (
+                        <div
+                          key={t.id}
+                          onClick={() => setActiveTable(t.id)}
+                          className={`group flex cursor-pointer items-center justify-between rounded-xl border px-3.5 py-3 transition ${
+                            t.id === activeId
+                              ? 'border-gray-300 bg-gray-50 shadow-sm'
+                              : 'border-transparent hover:border-gray-200 hover:bg-gray-50/50'
+                          }`}
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500">
+                              <Table2 size={17} strokeWidth={1.7} />
+                            </span>
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium text-gray-800">{t.name}</div>
+                              <div className="mt-0.5 text-xs text-gray-400">
+                                {t.rowCount.toLocaleString()} 行 · {t.fields.length} 字段
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+                            {t.prev && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  undoUpdate(t);
+                                }}
+                                className="rounded-md p-1.5 text-gray-400 transition hover:bg-amber-50 hover:text-amber-600"
+                                title="返回上一步"
+                              >
+                                <Undo2 size={15} />
+                              </button>
+                            )}
+                            <label
+                              onClick={(e) => e.stopPropagation()}
+                              className="cursor-pointer rounded-md p-1.5 text-gray-400 transition hover:bg-violet-50 hover:text-violet-600"
+                              title="更新数据表（重新上传覆盖）"
+                            >
+                              <RefreshCw size={15} />
+                              <input
+                                type="file"
+                                accept=".xlsx,.xls,.xlsm,.csv,.txt"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) void handleUpdate(t, f);
+                                  e.target.value = '';
+                                }}
+                              />
+                            </label>
+                            {can('delete', t.id) && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  tryDelete(t);
+                                }}
+                                className="rounded-md p-1.5 text-gray-300 transition hover:bg-red-50 hover:text-red-500"
+                                title="删除数据表"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -226,6 +345,30 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
                     </span>
                     <span className="text-base font-semibold text-gray-900">{active.name}</span>
                     <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">{formatDateTime(active.createdAt)}</span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <select
+                      value={active.group || ''}
+                      onChange={(e) => handleGroupChange(active, e.target.value)}
+                      className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 outline-none hover:border-gray-300"
+                    >
+                      <option value="">未分组</option>
+                      {groupNames.map((g) => (
+                        <option key={g} value={g}>
+                          {g}
+                        </option>
+                      ))}
+                      <option value="__new__">＋ 新建分组…</option>
+                    </select>
+                    {active.prev && (
+                      <button
+                        onClick={() => undoUpdate(active)}
+                        className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-600 transition hover:bg-amber-100"
+                        title="返回上一步，恢复更新前的数据"
+                      >
+                        <Undo2 size={13} /> 返回上一步
+                      </button>
+                    )}
                   </div>
                   <p className="mt-1.5 text-xs text-gray-400">共 {active.fields.length} 个字段 · 点击「标签值 / 类型」可标签化并用于规则配置</p>
                 </div>
@@ -359,6 +502,57 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
                 确认删除
               </AlertDialogAction>
             )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!openUpdate} onOpenChange={(v) => !v && setOpenUpdate(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>更新数据表「{openUpdate?.t.name}」</AlertDialogTitle>
+            <AlertDialogDescription>
+              新文件与当前表内容不一致，更新将覆盖全部数据：
+              <div className="mt-3 overflow-hidden rounded-xl border border-gray-150">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 text-left text-gray-500">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">项目</th>
+                      <th className="px-3 py-2 font-medium">当前</th>
+                      <th className="px-3 py-2 font-medium">新文件</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-t border-gray-100">
+                      <td className="px-3 py-2 text-gray-500">文件名</td>
+                      <td className="px-3 py-2 text-gray-700">{openUpdate?.t.fileName}</td>
+                      <td className="px-3 py-2 text-gray-700">{openUpdate?.next.fileName}</td>
+                    </tr>
+                    <tr className="border-t border-gray-100">
+                      <td className="px-3 py-2 text-gray-500">行数</td>
+                      <td className="px-3 py-2 text-gray-700">{openUpdate?.t.rowCount.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-gray-700">{openUpdate?.next.rowCount.toLocaleString()}</td>
+                    </tr>
+                    <tr className="border-t border-gray-100">
+                      <td className="px-3 py-2 text-gray-500">字段</td>
+                      <td className="px-3 py-2 text-gray-700">{openUpdate?.t.fields.map((f) => f.key).join('、')}</td>
+                      <td className="px-3 py-2 text-gray-700">{openUpdate?.next.fields.map((f) => f.key).join('、')}</td>
+                    </tr>
+                    <tr className="border-t border-gray-100">
+                      <td className="px-3 py-2 text-gray-500">首行样例</td>
+                      <td className="px-3 py-2 text-gray-500">{Object.values(openUpdate?.t.previewRows[0] ?? {}).slice(0, 5).join(' · ') || '—'}</td>
+                      <td className="px-3 py-2 text-gray-500">{Object.values(openUpdate?.next.previewRows[0] ?? {}).slice(0, 5).join(' · ') || '—'}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <span className="mt-3 block text-gray-500">覆盖后不可由当前的“返回上一步”之外的方式还原，确认要更新吗？</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setOpenUpdate(null)}>取消</AlertDialogCancel>
+            <AlertDialogAction className="bg-violet-600 text-white hover:bg-violet-700" onClick={applyUpdate}>
+              确认更新
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

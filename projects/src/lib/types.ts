@@ -26,6 +26,18 @@ export interface DataTable {
   rows?: Record<string, string | number | boolean>[];
   /** 关联到该表的其它表（用于"添加关联"） */
   relations?: TableRelation[];
+  /** 分组归类（如"销售/门店"等）；空串为未分组 */
+  group?: string;
+  /** 最近一次覆盖更新前的数据快照（用于"返回上一步"回退） */
+  prev?: TableSnapshot;
+}
+
+export interface TableSnapshot {
+  fileName: string;
+  rowCount: number;
+  fields: TableField[];
+  previewRows: Record<string, string>[];
+  rows?: Record<string, string | number | boolean>[];
 }
 
 /** 表间关联 */
