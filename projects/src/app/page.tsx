@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { Person } from '@/lib/types';
 import { useRouter } from 'next/navigation';
-import { Table2, BellRing, ShieldAlert, LayoutDashboard, Activity, Briefcase, Users, Settings, Maximize, Minimize, LogOut } from 'lucide-react';
+import { Table2, BellRing, ShieldAlert, LayoutDashboard, Activity, Briefcase, Users, Settings, Maximize, Minimize, LogOut, UploadCloud, Server, ClipboardList } from 'lucide-react';
 import { StoreProvider, useStore } from '@/lib/store';
 import { DataTableManager } from '@/components/DataTableManager';
 import { RuleList } from '@/components/RuleList';
@@ -17,7 +17,33 @@ import { DealerStoreManage } from '@/components/DealerStoreManage';
 import EmployeeManage from '@/components/EmployeeManage';
 import { HomeConfig } from '@/components/HomeConfig';
 
-type View = 'home' | 'tables' | 'rules' | 'new' | 'edit' | 'alerts' | 'people' | 'attrs' | 'dealer' | 'store' | 'dattrs' | 'sattrs' | 'emp' | 'eattrs' | 'homecfg';
+type View = 'home' | 'tables' | 'apitable' | 'formtable' | 'rules' | 'new' | 'edit' | 'alerts' | 'people' | 'attrs' | 'dealer' | 'store' | 'dattrs' | 'sattrs' | 'emp' | 'eattrs' | 'homecfg';
+
+function ApiDataPlaceholder({ onHome }: { onHome: () => void }) {
+  return (
+    <div className="flex h-full min-h-[60vh] flex-col items-center justify-center gap-3 text-center">
+      <Server size={40} className="text-gray-300" />
+      <div className="text-lg font-medium text-gray-700">API数据表</div>
+      <div className="max-w-sm text-sm text-gray-400">通过 API 接入外部数据表的模块即将上线，敬请期待。</div>
+      <button onClick={onHome} className="mt-2 rounded-md bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700">
+        返回首页
+      </button>
+    </div>
+  );
+}
+
+function FormFillPlaceholder({ onHome }: { onHome: () => void }) {
+  return (
+    <div className="flex h-full min-h-[60vh] flex-col items-center justify-center gap-3 text-center">
+      <ClipboardList size={40} className="text-gray-300" />
+      <div className="text-lg font-medium text-gray-700">在线填报表</div>
+      <div className="max-w-sm text-sm text-gray-400">在线填报收集数据的功能即将上线，敬请期待。</div>
+      <button onClick={onHome} className="mt-2 rounded-md bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700">
+        返回首页
+      </button>
+    </div>
+  );
+}
 
 function Shell() {
   const { state, updatePerson } = useStore();
@@ -76,6 +102,10 @@ function Shell() {
     content = <Dashboard onGoTables={() => setView('tables')} onGoRules={() => setView('rules')} />;
   } else if (view === 'tables') {
     content = <DataTableManager onHome={goHome} />;
+  } else if (view === 'apitable') {
+    content = <ApiDataPlaceholder onHome={goHome} />;
+  } else if (view === 'formtable') {
+    content = <FormFillPlaceholder onHome={goHome} />;
   } else if (view === 'new') {
     content = <NewRule onBack={() => goRules()} />;
   } else if (view === 'edit') {
@@ -130,7 +160,33 @@ function Shell() {
           </div>
           <nav className="flex-1 space-y-1 px-2 py-2">
             <NavItem active={view === 'home'} icon={<LayoutDashboard size={17} />} label="首页" onClick={goHome} />
-            <NavItem active={currentView === 'tables'} icon={<Table2 size={17} />} label="数据表管理" onClick={() => setView('tables')} />
+            <div className="pt-1">
+              <div className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-800">
+                <Table2 size={17} className="text-gray-400" />
+                <span className="flex-1">数据表管理</span>
+              </div>
+              <NavItem
+                nested
+                active={currentView === 'tables'}
+                icon={<span className="text-gray-400">·</span>}
+                label="上传数据表"
+                onClick={() => setView('tables')}
+              />
+              <NavItem
+                nested
+                active={currentView === 'apitable'}
+                icon={<span className="text-gray-400">·</span>}
+                label="API数据表"
+                onClick={() => setView('apitable')}
+              />
+              <NavItem
+                nested
+                active={currentView === 'formtable'}
+                icon={<span className="text-gray-400">·</span>}
+                label="在线填报表"
+                onClick={() => setView('formtable')}
+              />
+            </div>
             <NavItem
               active={currentView === 'rules' || currentView === 'new' || currentView === 'edit'}
               icon={<BellRing size={17} />}
