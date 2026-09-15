@@ -115,6 +115,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
   const [meName] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : ''));
   const me = state.persons.find((p) => p.name === meName) ?? null;
   const perm = resolvePerm(me, state.config);
+  const isManager = canView(perm, 'perms');
   const alerts = useMemo(
     () => filterAlertsByScope(state.alerts ?? [], me, perm.dataScope, state.stores ?? []),
     [state.alerts, me, perm.dataScope, state.stores]
@@ -520,6 +521,30 @@ export function AlertList({ onBack }: { onBack: () => void }) {
           setReplyDraft('');
           setReplyTarget(null);
         };
+        const delComment = (cid: string) => {
+          const c = comments.find((x) => x.id === cid);
+          if (!c) return;
+          const ownFresh = c.by === meName && now - c.at <= 3600000;
+          if (!(ownFresh || isManager)) return;
+          openConfirm({
+            title: ownFresh ? '撤回这条留言？' : '删除这条留言？',
+            desc: `${c.by} · ${new Date(c.at).toLocaleString('zh-CN')}`,
+            onOk: () => updateAlertStatus(open.id, { comments: comments.filter((x) => x.id !== cid), updatedAt: Date.now() }),
+          });
+        };
+        const delReply = (cid: string, rid: string) => {
+          const c = comments.find((x) => x.id === cid);
+          if (!c) return;
+          const r = (c.replies ?? []).find((x) => x.id === rid);
+          if (!r) return;
+          const ownFresh = r.by === meName && now - r.at <= 3600000;
+          if (!(ownFresh || isManager)) return;
+          openConfirm({
+            title: ownFresh ? '撤回这条回复？' : '删除这条回复？',
+            desc: `${r.by} · ${new Date(r.at).toLocaleString('zh-CN')}`,
+            onOk: () => updateAlertStatus(open.id, { comments: comments.map((x) => (x.id === cid ? { ...x, replies: (x.replies ?? []).filter((y) => y.id !== rid) } : x)), updatedAt: Date.now() }),
+          });
+        };
         const personMeta = (name: string) => {
           const p = state.persons.find((x) => x.name === name);
           return {
@@ -730,11 +755,17 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                                 <p className="mt-1 text-[13px] leading-relaxed text-gray-700">{c.text}</p>
                               </div>
                             </div>
-                            <div className="mt-1.5 pl-8">
+                            <div className="mt-1.5 flex items-center gap-2 pl-8">
                               <button
                                 onClick={() => { setReplyTarget(replyTarget === c.id ? null : c.id); setReplyDraft(''); }}
                                 className="text-[11px] text-gray-400 transition-colors hover:text-gray-600"
                               >回复</button>
+                              {c.by === meName && now - c.at <= 3600000 ? (
+                                <button onClick={() => delComment(c.id)} className="text-[11px] text-gray-400 transition-colors hover:text-gray-600">撤回</button>
+                              ) : null}
+                              {isManager ? (
+                                <button onClick={() => delComment(c.id)} className="text-[11px] text-rose-400 transition-colors hover:text-rose-600">删除</button>
+                              ) : null}
                               {replyTarget === c.id ? (
                                 <div className="mt-1.5 flex items-center gap-2">
                                   <input
@@ -767,6 +798,14 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                                             <span className="ml-auto shrink-0 text-gray-300">{new Date(r.at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                                           </div>
                                           <p className="mt-0.5 text-[12px] leading-relaxed text-gray-600">{r.text}</p>
+                                          <div className="mt-0.5 flex items-center gap-2">
+                                            {r.by === meName && now - r.at <= 3600000 ? (
+                                              <button onClick={() => delReply(c.id, r.id)} className="text-[10px] text-gray-300 transition-colors hover:text-gray-500">撤回</button>
+                                            ) : null}
+                                            {isManager ? (
+                                              <button onClick={() => delReply(c.id, r.id)} className="text-[10px] text-rose-300 transition-colors hover:text-rose-500">删除</button>
+                                            ) : null}
+                                          </div>
                                         </div>
                                       </div>
                                     );
