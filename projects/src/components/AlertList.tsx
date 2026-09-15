@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Bell, Eye, MessageSquare, Plus, RotateCcw, Send, X } from 'lucide-react';
+import { ArrowLeft, Bell, Eye, History, MessageSquare, Plus, RotateCcw, Send, X } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { resolvePerm, canOper, canView, filterAlertsByScope } from '@/lib/perm';
 import type { AlertStatus, AlertTask, NotifyMode } from '@/lib/types';
@@ -44,6 +44,12 @@ function formatDur(start: number, end: number): string {
   if (h >= 1) return `${h} 小时 ${m} 分`;
   if (m >= 1) return `${m} 分 ${sec} 秒`;
   return `${sec} 秒`;
+}
+
+/** 同类预警标识：同一规则 + 同一触发主体（店仓/款色等首行 store 值），用于「历史预警」归并 */
+function historyKeyOf(a: AlertTask): string {
+  const ent = a.preview?.storeMessages?.[0]?.store ?? '';
+  return `${a.ruleId || a.ruleName || 'manual'}::${ent}`;
 }
 
 function ElapsedCell({ createdAt }: { createdAt: number }) {
@@ -125,6 +131,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
   const [reason, setReason] = useState('');
   const [handoffId, setHandoffId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [showHist, setShowHist] = useState(false);
   const [confirm, setConfirm] = useState<null | { title: string; desc?: string; needText?: boolean; required?: boolean; placeholder?: string; onOk: (t: string) => void }>(null);
   const [chatDraft, setChatDraft] = useState('');
   const [now, setNow] = useState(() => Date.now());
@@ -508,17 +515,53 @@ export function AlertList({ onBack }: { onBack: () => void }) {
         const onEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
           if (e.key === 'Enter') { e.preventDefault(); sendMsg(); }
         };
+        const hKey = historyKeyOf(open);
+        const history = alerts
+          .filter((a) => a.id !== open.id && historyKeyOf(a) === hKey)
+          .sort((x, y) => (y.updatedAt ?? y.createdAt ?? 0) - (x.updatedAt ?? x.createdAt ?? 0));
         return (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/25 p-4 backdrop-blur-sm"
-            onClick={() => setOpenId(null)}
-          >
-            <div
-              className="alert-pop flex max-h-[86vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-2xl shadow-gray-900/10"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <style>{`@keyframes alertPop{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}.alert-pop{animation:alertPop .18s ease-out}`}</style>
-              <div className="flex min-h-0 flex-1">
+          <div className="fixed inset-0 z-50 flex flex-col bg-white">
+            <style>{`@keyframes alertPop{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}.alert-pop{animation:alertPop .18s ease-out}`}</style>
+            <div className="flex min-h-0 flex-1" onClick={(e) => e.stopPropagation()}>
+              {showHist ? (
+                <aside className="flex w-72 shrink-0 flex-col border-r border-gray-100 bg-gray-50/40">
+                  <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+                    <div className="flex items-center gap-2 text-sm font-medium text-gray-800">
+                      <History size={15} className="text-gray-400" />
+                      历史预警
+                    </div>
+                    <button onClick={() => setShowHist(false)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                      <X size={15} />
+                    </button>
+                  </div>
+                  <div className="min-h-0 flex-1 space-y-1 overflow-auto px-2.5 py-2">
+                    {history.length ? (
+                      history.map((h) => {
+                        const hl = (LEVEL_META[(h.level ?? 'warn') as keyof typeof LEVEL_META] ?? LEVEL_META.warn);
+                        const hs = STATUS_META[h.status];
+                        return (
+                          <button
+                            key={h.id}
+                            onClick={() => setOpenId(h.id)}
+                            className={`w-full rounded-lg px-3 py-2 text-left transition-colors ${h.id === open.id ? 'bg-white shadow-sm' : 'hover:bg-white/70'}`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <i className={`h-1.5 w-1.5 shrink-0 rounded-full ${hl.dot}`} />
+                              <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-gray-700">{h.title || '—'}</span>
+                            </div>
+                            <div className="mt-1 flex items-center justify-between text-[11px]">
+                              <span className="text-gray-400">{new Date(h.createdAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                              <span className={hs.text}>{hs.label}</span>
+                            </div>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <p className="pt-8 text-center text-xs text-gray-300">暂无相同的历史预警</p>
+                    )}
+                  </div>
+                </aside>
+              ) : null}
                 <div className="flex min-w-0 flex-1 flex-col">
               {/* 头部 */}
               <div className="flex items-start gap-3 px-6 pt-5 pb-4">
@@ -530,12 +573,22 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                   <h3 className="truncate text-[15px] font-medium leading-snug text-gray-900">{open.title || '—'}</h3>
                   {open.ruleName ? <p className="mt-0.5 truncate text-xs text-gray-400">{open.ruleName}</p> : null}
                 </div>
-                <button
-                  onClick={() => setOpenId(null)}
-                  className="rounded p-1 text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600"
-                >
-                  <X size={16} />
-                </button>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    onClick={() => setShowHist((v) => !v)}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50"
+                  >
+                    <History size={13} />
+                    历史预警
+                    {history.length ? <span className="rounded-full bg-gray-800 px-1.5 text-[10px] font-semibold text-white">{history.length}</span> : null}
+                  </button>
+                  <button
+                    onClick={() => setOpenId(null)}
+                    className="rounded p-1 text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
               </div>
               {/* 元信息 */}
               <div className="grid grid-cols-2 gap-x-6 gap-y-2 border-y border-gray-100 bg-gray-50/40 px-6 py-3 text-xs sm:grid-cols-5">
@@ -673,7 +726,6 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                 </div>
               </div>
             </div>
-          </div>
         );
       })()}
 
