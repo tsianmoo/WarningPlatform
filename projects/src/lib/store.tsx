@@ -203,7 +203,7 @@ export function buildAlertsForRule(
         ruleName: rule.name,
         level: lv,
         priority: type === 'alert' ? priority : undefined,
-        title: storeMsg && storeMsg.store ? `${actionTitle} · ${storeMsg.store}` : actionTitle,
+        title: actionTitle,
         content: storeMsg?.message || content || `${rule.name} · ${actionTitle} 已触发，请及时处理`,
         reason: rule.description || `${rule.name} 命中「${actionTitle}」预警动作，达到触发条件`,
         conditionDesc: conditionDesc || undefined,

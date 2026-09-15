@@ -44,23 +44,7 @@ function ElapsedCell({ createdAt }: { createdAt: number }) {
   return <span className="text-gray-400 tabular-nums">{now ? formatElapsed(createdAt, now) : '—'}</span>;
 }
 
-/** 提取某条预警涉及的店仓集合（用于筛选下拉） */
-function alertStores(a: AlertTask): string[] {
-  const direct = (a.preview?.storeMessages ?? []).map((s) => s.store).filter(Boolean);
-  const set = new Set(direct);
-  if (set.size === 0 && a.preview?.rows?.length) {
-    const col = a.preview.columns.find((c) => /店|仓/.test(c)) ?? a.preview.columns[0];
-    if (col) a.preview.rows.forEach((r) => set.add(String(r[col] ?? '')));
-  }
-  return [...set];
-}
-
-/** 取某条预警中指定通知方式（店仓/员工/用户）下的接收对象名 */
-function recipientNames(a: AlertTask, mode: NotifyMode): string[] {
-  return a.preview?.recipients?.find((r) => r.mode === mode)?.names ?? [];
-}
-
-const emptyFilter = { kw: '', level: 'all' as string, status: 'all' as string, person: 'all' as string, store: 'all' as string, employee: 'all' as string, user: 'all' as string, start: '', end: '' };
+const emptyFilter = { kw: '', level: 'all' as string, status: 'all' as string, person: 'all' as string, start: '', end: '' };
 
 /** 快捷日期标签定义 */
 const QUICK_TAGS: { key: string; label: string }[] = [
@@ -141,10 +125,6 @@ export function AlertList({ onBack }: { onBack: () => void }) {
     () => [...new Set(alerts.map((a) => a.assignee || a.handoffTo).filter(Boolean))],
     [alerts]
   );
-  const storeOptions = useMemo(() => [...new Set(alerts.flatMap(alertStores))], [alerts]);
-  const employeeOptions = useMemo(() => [...new Set(alerts.flatMap((a) => recipientNames(a, 'employee')))], [alerts]);
-  const userOptions = useMemo(() => [...new Set(alerts.flatMap((a) => recipientNames(a, 'person')))], [alerts]);
-
   const filtered = useMemo(() => {
     const start = filter.start ? new Date(filter.start + 'T00:00:00').getTime() : null;
     const end = filter.end ? new Date(filter.end + 'T23:59:59').getTime() : null;
@@ -153,9 +133,6 @@ export function AlertList({ onBack }: { onBack: () => void }) {
       if (filter.level !== 'all' && (a.level ?? 'warn') !== filter.level) return false;
       if (filter.status !== 'all' && a.status !== filter.status) return false;
       if (filter.person !== 'all' && a.assignee !== filter.person && a.handoffTo !== filter.person) return false;
-      if (filter.store !== 'all' && !alertStores(a).includes(filter.store)) return false;
-      if (filter.employee !== 'all' && !recipientNames(a, 'employee').includes(filter.employee)) return false;
-      if (filter.user !== 'all' && !recipientNames(a, 'person').includes(filter.user)) return false;
       if (start && a.createdAt < start) return false;
       if (end && a.createdAt > end) return false;
       return true;
@@ -246,24 +223,6 @@ export function AlertList({ onBack }: { onBack: () => void }) {
             <option key={p} value={p}>{p}</option>
           ))}
         </select>
-        <select value={filter.store} onChange={(e) => setFilter({ ...filter, store: e.target.value })} className={SelectCls}>
-          <option value="all">适用店仓</option>
-          {storeOptions.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-        <select value={filter.employee} onChange={(e) => setFilter({ ...filter, employee: e.target.value })} className={SelectCls}>
-          <option value="all">适用员工</option>
-          {employeeOptions.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-        <select value={filter.user} onChange={(e) => setFilter({ ...filter, user: e.target.value })} className={SelectCls}>
-          <option value="all">适用用户</option>
-          {userOptions.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
         <button
           onClick={() => setFilter(emptyFilter)}
           className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600"
@@ -330,18 +289,12 @@ export function AlertList({ onBack }: { onBack: () => void }) {
           <table className="w-full border-collapse bg-white text-xs">
             <thead>
               <tr className="sticky top-0 z-10 bg-white text-left text-xs text-gray-400">
-                <th className="whitespace-nowrap px-4 py-3 pl-6 font-medium">序号</th>
-                <th className="min-w-36 whitespace-nowrap px-4 py-3 font-medium">预警规则</th>
-                <th className="min-w-40 whitespace-nowrap px-4 py-3 font-medium">预警标题</th>
-                <th className="whitespace-nowrap px-4 py-3 font-medium">预警分组</th>
-                <th className="whitespace-nowrap px-4 py-3 font-medium">预警条数</th>
+                <th className="min-w-40 whitespace-nowrap px-4 py-3 pl-6 font-medium">预警标题</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">重要程度</th>
-                <th className="whitespace-nowrap px-4 py-3 font-medium">适用店仓</th>
-                <th className="whitespace-nowrap px-4 py-3 font-medium">适用员工</th>
-                <th className="whitespace-nowrap px-4 py-3 font-medium">适用用户</th>
+                <th className="whitespace-nowrap px-4 py-3 font-medium">预警分组</th>
+                <th className="whitespace-nowrap px-4 py-3 font-medium">条数</th>
+                <th className="min-w-32 whitespace-nowrap px-4 py-3 font-medium">预警规则</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">接收人</th>
-                <th className="whitespace-nowrap px-4 py-3 font-medium">创建人</th>
-                <th className="whitespace-nowrap px-4 py-3 font-medium">创建时间</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">已过时间</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">状态</th>
                 <th className="whitespace-nowrap px-4 py-3 pr-6 font-medium">操作</th>
@@ -388,22 +341,18 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                 return (
                   <Fragment key={a.id}>
                     <tr className="align-middle transition-colors last:border-0 hover:bg-gray-50/70">
-                      <td className="whitespace-nowrap px-4 py-3 pl-6 text-xs tabular-nums text-gray-300">{String(idx + 1).padStart(2, '0')}</td>
-                      <td className="whitespace-nowrap px-4 py-3 align-middle text-[13px] font-medium text-gray-800">
-                        {a.ruleName || '—'}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 align-middle text-[13px] text-gray-600">{a.title || '—'}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-gray-600">{groupOf.get(a.ruleId) || '—'}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-xs tabular-nums text-gray-600">{count}</td>
+                      <td className="min-w-40 whitespace-nowrap px-4 py-3 pl-6 align-middle text-[13px] text-gray-600">{a.title || '—'}</td>
                       <td className="whitespace-nowrap px-4 py-3">
                         <span className={`inline-flex items-center gap-1.5 text-[13px] font-medium ${lv.text}`}>
                           <i className={`h-1.5 w-1.5 shrink-0 rounded-full ${lv.dot}`} />
                           {lv.label}（{a.level ?? 'warn'}级）
                         </span>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-gray-600">{recipientNames(a, 'store').join('、') || '—'}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-gray-600">{recipientNames(a, 'employee').join('、') || '—'}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-gray-600">{recipientNames(a, 'person').join('、') || '—'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-gray-600">{groupOf.get(a.ruleId) || '—'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-xs tabular-nums text-gray-600">{count}</td>
+                      <td className="min-w-32 whitespace-nowrap px-4 py-3 align-middle text-[13px] font-medium text-gray-800">
+                        {a.ruleName || '—'}
+                      </td>
                       <td className="whitespace-nowrap px-4 py-3 text-[13px] text-gray-600">
                         {a.handoffTo ? (
                           <span>{a.handoffTo}<span className="ml-1 text-[11px] text-gray-400">（转交）</span></span>
@@ -412,10 +361,6 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                         ) : (
                           <span className="text-gray-300">待分配</span>
                         )}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-gray-600">{a.createdBy || '—'}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-xs tabular-nums text-gray-500">
-                        {new Date(a.createdAt).toLocaleString('zh-CN')}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs">
                         <ElapsedCell createdAt={a.createdAt} />
@@ -450,7 +395,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
                     </tr>
                     {openId === a.id && count > 0 ? (
                       <tr className="bg-gray-50/50">
-                        <td colSpan={15} className="px-6 py-3">
+                        <td colSpan={9} className="px-6 py-3">
                           {a.preview?.recipients?.length ? (
                             <div className="mb-2 space-y-1 rounded border border-amber-100 bg-amber-50/60 px-3 py-2 text-[11px]">
                               {renderRecipients(a.preview.recipients)}
