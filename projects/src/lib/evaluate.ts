@@ -784,6 +784,9 @@ function calcAdd(op: string, a: CalcVal, b: CalcVal): CalcVal {
     if (an && bn) return (a as number) + (b as number);
     return String(a === null ? '' : a) + String(b === null ? '' : b);
   }
+  const da = calcDateVal(a);
+  const db = calcDateVal(b);
+  if (da && db) return Math.round((da.getTime() - db.getTime()) / 86400000);
   return (an ? (a as number) : 0) - (bn ? (b as number) : 0);
 }
 function calcMul(op: string, a: CalcVal, b: CalcVal): CalcVal {

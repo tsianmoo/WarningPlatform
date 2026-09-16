@@ -4743,7 +4743,7 @@ const RankNode = memo(({ id, data }: NodeProps) => {
 /** 计算列函数库：name 函数名；desc 用途；usage 用法示例；tag 点击插入的完整公式模板 */
 const CALC_FNS: { name: string; desc: string; usage: string; tag: string }[] = [
   { name: 'IF', desc: '条件判断，满足返回真值，否则返回假值', usage: 'IF([库存]=0,\'无货\',\'有货\')', tag: 'IF([条件],[真值],[假值])' },
-  { name: 'DATEDIFF', desc: '计算两个日期的相差天数（日期A-日期B）', usage: 'DATEDIFF(TODAY(),[上货日期])', tag: 'DATEDIFF([日期A],[日期B])' },
+  { name: 'DATEDIFF', desc: '计算两个日期的相差天数（A-B，取整数）', usage: 'DATEDIFF(TODAY(),[上货日期]) 或 [当前日期]-[最小(出库日期)]', tag: 'DATEDIFF([日期A],[日期B])' },
   { name: 'CONCAT', desc: '文本拼接，把多个文本连成一个', usage: 'CONCAT([店铺],\'-\',[款色])', tag: 'CONCAT([文本1],[文本2])' },
   { name: 'TEXT', desc: '把值转为文本', usage: 'TEXT([数量])', tag: 'TEXT([值])' },
   { name: 'NUMBER', desc: '把文本转为数值', usage: 'NUMBER([价格文本])', tag: 'NUMBER([文本])' },
@@ -4874,7 +4874,7 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
               value={c.expr}
               onFocus={() => setActiveCol(i)}
               onChange={(e) => setCol(i, { expr: e.target.value })}
-              placeholder="公式，如 DATEDIFF(TODAY(),[上货日期])"
+              placeholder="例：DATEDIFF(TODAY(),[上货日期]) 或 [当前日期]-[最小(出库日期)]"
               className={`${inputCls} ${activeCol === i ? 'ring-1 ring-fuchsia-300' : ''}`}
             />
           </div>
