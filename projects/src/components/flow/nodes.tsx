@@ -3448,7 +3448,7 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
                     setMetrics(next);
                   }}
                   placeholder="结果字段名"
-                  className="min-w-0 w-[5rem] shrink-0 rounded-md border bg-white px-1.5 py-1 text-[9px] text-gray-700 placeholder:text-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className="min-w-0 w-[7.5rem] shrink-0 rounded-md border bg-white px-1.5 py-1 text-[9px] text-gray-700 placeholder:text-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                 />
               </div>
             ))}
