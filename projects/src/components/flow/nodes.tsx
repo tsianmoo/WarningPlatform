@@ -2,7 +2,7 @@
 
 import React, { memo, useEffect, useState, useMemo, useRef, createContext, useContext } from 'react';
 import { Handle, Position, useReactFlow, useEdges, useNodes, type NodeProps } from '@xyflow/react';
-import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus, ChevronDown } from 'lucide-react';
+import { Play, Braces, GitFork, Calculator, Link2, Bell, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus, ChevronDown } from 'lucide-react';
 import CalcExprEditor, { type CalcExprEditorHandle } from './CalcExprEditor';
 import {
   KIND_COLOR,
@@ -20,7 +20,6 @@ import {
   type FlowNode,
   type FlowEdge,
   type NodeResultRef,
-  type LookupNodeData,
   type RelationNodeData,
   type TimeNodeData,
   type TopNNodeData,
@@ -59,7 +58,6 @@ type AnyData =
   | FieldNodeData
   | ConditionNodeData
   | ComputeNodeData
-  | LookupNodeData
   | RelationNodeData
   | ActionNodeData
   | TimeNodeData
@@ -80,7 +78,6 @@ const KIND_ICON: Record<FlowNode['kind'], React.ReactNode> = {
   field: <Braces size={13} strokeWidth={2.5} />,
   condition: <GitFork size={13} strokeWidth={2.5} />,
   compute: <Calculator size={13} strokeWidth={2.5} />,
-  lookup: <Search size={13} strokeWidth={2.5} />,
   relation: <Link2 size={13} strokeWidth={2.5} />,
   action: <Bell size={13} strokeWidth={2.5} />,
   time: <CalendarClock size={13} strokeWidth={2.5} />,
@@ -222,7 +219,6 @@ function nodeKindCn(kind: FlowNode['kind']) {
     field: '数据字段',
     condition: '判断',
     compute: '计算',
-    lookup: '查找',
     relation: '关联',
     action: '预警动作',
     time: '时间窗口',
@@ -531,18 +527,6 @@ function getNodeOutputs(allNodes: ReturnType<typeof useNodes>, selfId: string): 
             ref: { nodeId: n.id, nodeKind: 'groupby', outputKind: 'scalar', label: scalarLabel },
           });
         }
-        break;
-      }
-      case 'lookup': {
-        const l = n.data as unknown as LookupNodeData;
-        out.push({
-          ref: {
-            nodeId: n.id,
-            nodeKind: 'lookup',
-            outputKind: 'column',
-            label: l.mode === 'aggregate' ? l.aggLabel || '查找汇总结果' : l.returnLabel || '查找结果',
-          },
-        });
         break;
       }
       case 'compute': {
@@ -1967,262 +1951,6 @@ const BaseNode = memo(({ id, data }: NodeProps) => {
 
 
 
-// ---------- 查找节点（跨表匹配） ----------
-const LookupNode = memo(({ id, data }: NodeProps) => {
-  const fnode = { id, kind: 'lookup' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as LookupNodeData;
-  const mode = d.mode ?? 'field';
-  const update = useNodeUpdater(id);
-  const tables = useRuleTables();
-  const allNodes = useNodes();
-  const source = d.source ?? 'table';
-  const nodeOutputs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'column');
-  const tableTarget = tables.find((t) => t.id === d.tableId) ?? tables[0];
-  const tableTargetFields = tableTarget?.fields ?? [];
-  // 节点结果作为"目标表"：字段取该结果列
-  const srcNodeOut = source === 'node' ? nodeOutputs.find((o) => o.ref.nodeId === d.sourceNode) : undefined;
-  const nodeTargetFields = srcNodeOut
-    ? [{ key: srcNodeOut.ref.label, alias: srcNodeOut.ref.label, type: 'string' as const }]
-    : [];
-  const targetFields = source === 'node' ? nodeTargetFields : tableTargetFields;
-  const targetName = source === 'node' ? d.sourceNodeLabel || '上游结果' : tableTarget?.name;
-  const hasDate = targetFields.some((f) => f.type === 'date');
-  const dateFields = hasDate ? targetFields.filter((f) => f.type === 'date') : targetFields;
-  const numFields = targetFields.filter((f) => f.type === 'number');
-  const rowLabel = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
-
-  const upd = (patch: Partial<LookupNodeData>) => update({ ...d, ...patch });
-
-  // 未显式选目标表时，同步兜底表 id，保证预览/执行取到 tableId
-  useEffect(() => {
-    if (source === 'table' && !d.tableId && tables[0]) {
-      upd({ tableId: tables[0].id, tableName: tables[0].name });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d.tableId, tables, source]);
-
-  return (
-    <NodeShell fnode={fnode}>
-      <div className="space-y-1.5">
-        <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5">
-          {(['field', 'aggregate'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => upd({ mode: m })}
-              className={`flex-1 rounded-md py-1 text-[11px] font-medium transition ${
-                mode === m ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {m === 'field' ? '返回字段值' : '聚合带回（汇总）'}
-            </button>
-          ))}
-        </div>
-
-        <DataSourcePicker
-          source={source}
-          sourceNode={d.sourceNode}
-          nodeOptions={nodeOutputs}
-          onSourceChange={(v) =>
-            upd({
-              source: v,
-              sourceNode: v === 'node' ? d.sourceNode ?? nodeOutputs[0]?.ref.nodeId : undefined,
-              sourceNodeLabel: v === 'node' ? nodeOutputs.find((o) => o.ref.nodeId === (d.sourceNode ?? nodeOutputs[0]?.ref.nodeId))?.ref.label : undefined,
-              matchField: '',
-              matchFieldLabel: '',
-              returnField: '',
-              returnFieldLabel: '',
-              aggField: '',
-              aggFieldLabel: '',
-            })
-          }
-          onNodeChange={(ref) =>
-            upd({ sourceNode: ref?.nodeId, sourceNodeLabel: ref?.label, matchField: '', matchFieldLabel: '', returnField: '', returnFieldLabel: '', aggField: '', aggFieldLabel: '' })
-          }
-          nodeLabel="查询目标节点（在其输出结果里找）"
-          nodePlaceholder="选择上一步节点结果作为查找目标…"
-          tableBlock={
-            <div>
-              <div className={rowLabel}>查询目标表（在这张表里找）</div>
-              <select
-                value={tableTarget?.id ?? ''}
-                onChange={(e) => {
-                  const t = tables.find((x) => x.id === e.target.value);
-                  if (t)
-                    upd({
-                      tableId: t.id,
-                      tableName: t.name,
-                      matchField: '',
-                      matchFieldLabel: '',
-                      returnField: '',
-                      returnFieldLabel: '',
-                      dateField: '',
-                      dateFieldLabel: '',
-                      aggField: '',
-                      aggFieldLabel: '',
-                    });
-                }}
-                className="w-full rounded-md border bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-green-400"
-              >
-                {tables.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          }
-        />
-
-        {source === 'node' && mode === 'aggregate' && (
-          <div className="rounded-md bg-emerald-50 px-2 py-1 text-[10px] leading-relaxed text-emerald-700">
-            节点结果模式：在「{targetName}」的输出里按匹配键聚合带回，时间范围以上游为准。
-          </div>
-        )}
-
-        <div>
-          <div className={rowLabel}>{targetName || '目标'}里的匹配字段（如：店仓）</div>
-          <select
-            value={d.matchField}
-            onChange={(e) => {
-              const f = targetFields.find((x) => x.key === e.target.value);
-              upd({ matchField: e.target.value, matchFieldLabel: f?.alias ?? f?.key ?? '' });
-            }}
-            className="w-full rounded-md border bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-green-400"
-          >
-            <option value="">选择匹配字段…</option>
-            {targetFields.map((f) => (
-              <option key={f.key} value={f.key}>
-                {f.alias || f.key}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <div className={rowLabel}>按哪个值去匹配（基础数据/上游字段）</div>
-          <FieldSelect
-            value={d.key}
-            tables={tables}
-            placeholder="选择匹配键字段，如：店仓…"
-            onChange={(ref) => upd({ key: ref })}
-          />
-        </div>
-
-        {mode === 'field' ? (
-          <>
-            <div>
-              <div className={rowLabel}>{targetName || '目标表'}里要带回的字段</div>
-              <select
-                value={d.returnField}
-                onChange={(e) => {
-                  const f = targetFields.find((x) => x.key === e.target.value);
-                  upd({ returnField: e.target.value, returnFieldLabel: f?.alias ?? f?.key ?? '' });
-                }}
-                className="w-full rounded-md border bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-green-400"
-              >
-                <option value="">选择返回字段…</option>
-                {targetFields.map((f) => (
-                  <option key={f.key} value={f.key}>
-                    {f.alias || f.key}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <input
-              value={d.returnLabel}
-              onChange={(e) => upd({ returnLabel: e.target.value })}
-              placeholder="结果标签，如：负责人"
-              className="w-full rounded-md border px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-green-400"
-            />
-            <div className="text-[10px] text-gray-400">
-              按 {d.key?.fieldLabel || '?'} = {targetName || 'B'}.{d.matchField || '?'} 查找，带回{' '}
-              {d.returnFieldLabel || '?'}
-            </div>
-          </>
-        ) : (
-          <>
-            <div>
-              <div className={rowLabel}>{targetName || '目标表'}的日期字段</div>
-              <select
-                value={d.dateField ?? ''}
-                onChange={(e) => {
-                  const f = dateFields.find((x) => x.key === e.target.value);
-                  upd({ dateField: e.target.value, dateFieldLabel: f?.alias ?? f?.key ?? '' });
-                }}
-                className="w-full rounded-md border bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-green-400"
-              >
-                <option value="">{hasDate ? '选择日期字段…' : '选择字段（未识别到日期类型）…'}</option>
-                {dateFields.map((f) => (
-                  <option key={f.key} value={f.key}>
-                    {f.alias || f.key}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <div className={rowLabel}>统计日期范围</div>
-              <TimeComponent
-                value={d.timeWindow ?? { preset: 'specificMonth' }}
-                onChange={(tw) => upd({ timeWindow: tw })}
-              />
-            </div>
-            <div>
-              <div className={rowLabel}>汇总方式与汇总字段</div>
-              <div className="flex gap-1.5">
-                <select
-                  value={d.aggFn ?? 'sum'}
-                  onChange={(e) => upd({ aggFn: e.target.value as LookupNodeData['aggFn'] })}
-                  className="w-24 shrink-0 rounded-md border bg-white px-1.5 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-green-400"
-                >
-                  {AGG_FN_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={d.aggField ?? ''}
-                  onChange={(e) => {
-                    const f = targetFields.find((x) => x.key === e.target.value);
-                    upd({ aggField: e.target.value, aggFieldLabel: f?.alias ?? f?.key ?? '' });
-                  }}
-                  className="min-w-0 flex-1 rounded-md border bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-green-400"
-                >
-                  <option value="">选择汇总字段，如：成交金额…</option>
-                  {(numFields.length ? numFields : targetFields).map((f) => (
-                    <option key={f.key} value={f.key}>
-                      {f.alias || f.key}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <label className="flex cursor-pointer items-center gap-1.5 pt-0.5 text-[11px] text-gray-600">
-              <input
-                type="checkbox"
-                checked={d.fillZero ?? true}
-                onChange={(e) => upd({ fillZero: e.target.checked })}
-                className="h-3.5 w-3.5 accent-emerald-600"
-              />
-              匹配不到记录的按 0 计入（如该店当期无成交）
-            </label>
-            <input
-              value={d.aggLabel ?? ''}
-              onChange={(e) => upd({ aggLabel: e.target.value })}
-              placeholder="汇总结果命名，如：8月成交金额"
-              className="w-full rounded-md border px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-green-400"
-            />
-            <div className="text-[10px] text-gray-400">
-              在{targetName || '目标表'}中按 {d.matchFieldLabel || '?'}={d.key?.fieldLabel || '?'} 匹配，时间窗内{' '}
-              {(d.aggFn ? AGG_FN_OPTIONS.find((o) => o.value === d.aggFn)?.label : '求和') || '求和'}({d.aggFieldLabel || '汇总字段'}
-              )，{d.fillZero === false ? '无记录忽略' : '无记录记0'}
-            </div>
-          </>
-        )}
-      </div>
-    </NodeShell>
-  );
-});
 
 // ---------- 关联节点 ----------
 const RelationNode = memo(({ id, data }: NodeProps) => {
@@ -5015,7 +4743,6 @@ export const nodeTypes = {
   field: FieldNode,
   condition: ConditionNode,
   compute: ComputeNode,
-  lookup: LookupNode,
   relation: RelationNode,
   action: ActionNode,
   time: TimeNode,
@@ -5044,7 +4771,6 @@ TriggerNode.displayName = 'TriggerNode';
 FieldNode.displayName = 'FieldNode';
 ConditionNode.displayName = 'ConditionNode';
 ComputeNode.displayName = 'ComputeNode';
-LookupNode.displayName = 'LookupNode';
 RelationNode.displayName = 'RelationNode';
 ActionNode.displayName = 'ActionNode';
 TimeNode.displayName = 'TimeNode';
@@ -5086,26 +4812,6 @@ export function createNodeData(
         fieldLabel: '',
         resultLabel: '',
         compare: null,
-      };
-    case 'lookup':
-      return {
-        mode: 'field',
-        tableId: '',
-        tableName: '',
-        matchField: '',
-        matchFieldLabel: '',
-        key: { tableId: '', tableName: '', fieldKey: '', fieldLabel: '' },
-        returnField: '',
-        returnFieldLabel: '',
-        returnLabel: '',
-        dateField: '',
-        dateFieldLabel: '',
-        timeWindow: { preset: 'specificMonth' },
-        aggFn: 'sum',
-        aggField: '',
-        aggFieldLabel: '',
-        fillZero: true,
-        aggLabel: '',
       };
     case 'base':
       return {
