@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, ClipboardList, Eye, History, MessageSquare, RotateCcw, Send, Tag, X } from 'lucide-react';
 import { useStore, computeAlertDims } from '@/lib/store';
 import { resolvePerm, canView, filterAlertsByScope, resolveAuthAccount } from '@/lib/perm';
@@ -178,6 +178,10 @@ export function AlertList() {
   useEffect(() => {
     if (openForSync) setPlanDraft(openForSync.plan || '');
   }, [openForSync?.id]);
+  const activeRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (showHist) activeRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [openId, showHist, histTab]);
   const [confirmText, setConfirmText] = useState('');
   const openConfirm = (c: NonNullable<typeof confirm>) => {
     setConfirmText('');
@@ -305,6 +309,9 @@ export function AlertList() {
           className="h-7 w-28 rounded border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none transition-colors focus:border-gray-400"
         />
         <datalist id="alert-person-opts">{personOptions.map((p) => <option key={p} value={p} />)}</datalist>
+        <input type="date" value={filter.start} onChange={(e) => setFilter({ ...filter, start: e.target.value })} className={SelectCls} />
+        <span className="text-xs text-gray-300">至</span>
+        <input type="date" value={filter.end} onChange={(e) => setFilter({ ...filter, end: e.target.value })} className={SelectCls} />
         <button
           onClick={() => setFilter(emptyFilter)}
           className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600"
@@ -316,9 +323,6 @@ export function AlertList() {
 
       {/* 第二行：日期 · 快捷 · 商品/店仓维度 */}
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-white px-6 py-2">
-        <input type="date" value={filter.start} onChange={(e) => setFilter({ ...filter, start: e.target.value })} className={SelectCls} />
-        <span className="text-xs text-gray-300">至</span>
-        <input type="date" value={filter.end} onChange={(e) => setFilter({ ...filter, end: e.target.value })} className={SelectCls} />
         <div className="mx-1 h-4 w-px bg-gray-100" />
         {QUICK_TAGS.map((t) => (
           <button
@@ -626,12 +630,14 @@ export function AlertList() {
                         return (
                           <button
                             key={h.id}
+                            ref={h.id === open.id ? activeRef : undefined}
                             onClick={() => setOpenId(h.id)}
-                            className={`w-full rounded-lg px-3 py-2 text-left transition-colors ${h.id === open.id ? 'bg-white shadow-sm' : 'hover:bg-white/70'}`}
+                            className={`w-full rounded-lg px-3 py-2 text-left transition-colors ${h.id === open.id ? 'bg-white shadow-sm ring-1 ring-black/10' : 'hover:bg-white/70'}`}
                           >
                             <div className="flex items-center gap-1.5">
                               <i className={`h-1.5 w-1.5 shrink-0 rounded-full ${hl.dot}`} />
-                              <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-gray-700">{h.title || '—'}</span>
+                              <span className={`min-w-0 flex-1 truncate text-[12px] font-medium ${h.id === open.id ? 'text-gray-900' : 'text-gray-700'}`}>{h.title || '—'}</span>
+                              {h.id === open.id ? <span className="shrink-0 rounded bg-gray-800 px-1 py-px text-[9px] font-semibold text-white">查看中</span> : null}
                             </div>
                             <div className="mt-1 flex items-center justify-between text-[11px]">
                               <span className="text-gray-400">{new Date(h.createdAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
