@@ -677,6 +677,20 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
         // 兼容旧：无多指标时兜底结果命名列
         if (!metrics.length && s(data.resultLabel)) cols.push({ key: s(data.resultLabel), label: s(data.resultLabel) });
       }
+      // 对比列：与 evaluate 分组聚合输出对齐（同比/环比/同期/环期），当时间窗启用了对比时追加
+      const cmpConf = data.timeWindow && typeof data.timeWindow === 'object' ? (data.timeWindow as { compare?: { mode?: string; modes?: string[] } }).compare : undefined;
+      if (cmpConf) {
+        const modes = (Array.isArray(cmpConf.modes) && cmpConf.modes.length ? cmpConf.modes : cmpConf.mode ? [cmpConf.mode] : []).filter(Boolean) as string[];
+        const metricKeys = metrics.map((m) => s(m.resultLabel) || `${fnTxt(m.fn)}(${s(m.fieldLabel) || s(m.fieldKey)})`).filter(Boolean);
+        for (const mk of metricKeys) {
+          for (const md of Array.from(new Set(modes))) {
+            const valN = md === 'yoY' ? '同期' : '环期';
+            const grwN = md === 'yoY' ? '同比' : '环比';
+            cols.push({ key: `${mk} · ${valN}`, label: `${mk} · ${valN}` });
+            cols.push({ key: `${mk} · ${grwN}`, label: `${mk} · ${grwN}` });
+          }
+        }
+      }
       return cols;
     }
     case 'base': {
