@@ -508,6 +508,11 @@ export function AlertList() {
           const keep = detailRows.filter((r) => scopeNames.some((nm) => Object.values(r).some((v) => String(v) === nm)));
           if (keep.length) detailRows = keep;
         }
+        const focusStyle = String(open.dims?.product?.style?.[0] ?? computeAlertDims(open, state.stores)?.product?.style?.[0] ?? '');
+        if (focusStyle) {
+          const styleKept = detailRows.filter((r) => Object.values(r).some((v) => String(v) === focusStyle));
+          if (styleKept.length) detailRows = styleKept;
+        }
         const recipient = open.handoffTo ? (
           <span>{open.handoffTo}<span className="ml-1 text-[11px] text-gray-400">（转交）</span></span>
         ) : open.assignee ? (
