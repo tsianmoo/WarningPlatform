@@ -70,7 +70,8 @@ export type NodeKind =
   | 'base' // 基础数据（从一张表取一列去重值，如店仓表→全部店仓）
   | 'filter' // 过滤（对某表按多条件筛选行，支持搜索多选/单选）
   | 'elapsed' // 已过天数（本周/月/季/年或自定义区间，已过去的天数，标量）
-  | 'logic'; // 逻辑关联（如果/且/或），串联多个判断
+  | 'logic' // 逻辑关联（如果/且/或），串联多个判断
+  | 'calc'; // 添加列（选择数据表/节点，逐行用函数公式计算追加新列：IF/CONCAT/文本/当前日期/日期函数/时间差）
 
 /** 比较运算符 */
 export type Operator =
@@ -684,6 +685,28 @@ export interface ElapsedNodeData {
   includeToday?: boolean;
 }
 
+/** 添加列（计算列）：在所选数据表/节点结果的每一行上，用函数公式计算并追加新列 */
+export interface CalcColumn {
+  /** 新列名 */
+  label: string;
+  /** 公式（支持 Excel 风格）：IF/CONCAT/TEXT/SUBSTR/YEAR/MONTH/DAY/TODAY()/DATE/DATEDIFF 及四则与比较运算，字段用 [字段名] 引用 */
+  expr: string;
+}
+
+/** 添加列节点数据 */
+export interface CalcNodeData {
+  /** 数据来源：数据表 / 上游节点输出（默认数据表） */
+  source?: DataSourceKind;
+  /** 引用的上游节点 id（source==='node' 时） */
+  sourceNode?: string;
+  sourceNodeLabel?: string;
+  /** 来源数据表（source==='table' 时） */
+  tableId?: string;
+  tableName?: string;
+  /** 要追加的计算列 */
+  columns: CalcColumn[];
+}
+
 /** 流程节点 */
 export interface FlowNode {
   id: string;
@@ -706,6 +729,7 @@ export interface FlowNode {
     | LogicNodeData
     | FilterNodeData
     | ElapsedNodeData
+    | CalcNodeData
     | Record<string, unknown>;
   position: { x: number; y: number };
 }
@@ -869,6 +893,7 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   filter: '数据过滤',
   elapsed: '已过天数',
   rank: '排名',
+  calc: '添加列',
 };
 
 /** 节点分类色 */
@@ -894,6 +919,7 @@ export const KIND_COLOR: Record<
   filter: { bg: '#F0FDF4', border: '#16A34A', text: '#166534', dot: '#16A34A' },
   elapsed: { bg: '#ECFEFF', border: '#0891B2', text: '#155E75', dot: '#0891B2' },
   rank: { bg: '#EFF6FF', border: '#2563EB', text: '#1D4ED8', dot: '#2563EB' },
+  calc: { bg: '#FDF4FF', border: '#D946EF', text: '#A21CAF', dot: '#D946EF' },
 };
 
 /** 预警类型（级别→类型：提醒/预警） */

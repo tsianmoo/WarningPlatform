@@ -2,7 +2,7 @@
 
 import React, { memo, useEffect, useState, useMemo, useRef, createContext, useContext } from 'react';
 import { Handle, Position, useReactFlow, useEdges, useNodes, type NodeProps } from '@xyflow/react';
-import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp } from 'lucide-react';
+import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus } from 'lucide-react';
 import {
   KIND_COLOR,
   KIND_LABEL,
@@ -46,6 +46,8 @@ import {
   type RepeatType,
   type RankNodeData,
   type RankItem,
+  type CalcNodeData,
+  type CalcColumn,
 } from '@/lib/types';
 import { useStore } from '@/lib/store';
 import TimeComponent from './TimeComponent';
@@ -69,7 +71,8 @@ type AnyData =
   | LogicNodeData
   | FilterNodeData
   | ElapsedNodeData
-  | RankNodeData;
+  | RankNodeData
+  | CalcNodeData;
 
 const KIND_ICON: Record<FlowNode['kind'], React.ReactNode> = {
   trigger: <Play size={13} strokeWidth={2.5} />,
@@ -90,6 +93,7 @@ const KIND_ICON: Record<FlowNode['kind'], React.ReactNode> = {
   filter: <Filter size={13} strokeWidth={2.5} />,
   elapsed: <CalendarRange size={13} strokeWidth={2.5} />,
   rank: <TrendingUp size={13} strokeWidth={2.5} />,
+  calc: <TableProperties size={13} strokeWidth={2.5} />,
 };
 
 function useNodeUpdater(id: string) {
@@ -231,6 +235,7 @@ function nodeKindCn(kind: FlowNode['kind']) {
     elapsed: '已过天数',
     logic: '逻辑关联',
     rank: '排名',
+    calc: '添加列',
   };
   return map[kind];
 }
@@ -572,6 +577,13 @@ function getNodeOutputs(allNodes: ReturnType<typeof useNodes>, selfId: string): 
         out.push({ ref: { nodeId: n.id, nodeKind: 'base', outputKind: 'column', label } });
         break;
       }
+      case 'calc': {
+        const cn = n.data as unknown as CalcNodeData;
+        const ccols = Array.isArray(cn.columns) ? cn.columns : [];
+        const label = ccols.length ? `添加列(${ccols.map((c) => c.label).join('、')})` : '添加列';
+        out.push({ ref: { nodeId: n.id, nodeKind: 'calc', outputKind: 'column', label } });
+        break;
+      }
       case 'diff': {
         const df = n.data as unknown as DiffNodeData;
         out.push({ ref: { nodeId: n.id, nodeKind: 'diff', outputKind: 'column', label: str(df.resultLabel) || '反匹配结果' } });
@@ -754,6 +766,26 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
         if (t) for (const f of t.fields) if (allowFact(f.key)) pushUniq({ key: f.key, label: f.alias || f.key });
       }
       return tag;
+    }
+    case 'calc': {
+      const csrc = s(data.source);
+      const calcNodes = Array.isArray(data.columns) ? (data.columns as { label?: string }[]) : [];
+      const calcLabels = calcNodes.filter((c) => c.label).map((c) => c.label as string);
+      let base: ColOpt[] = [];
+      if (csrc === 'node') {
+        const sn = s(data.sourceNode);
+        if (sn) base = inferNodeCols(allNodes, tables, sn);
+      } else {
+        const ct = tables.find((x) => x.id === s(data.tableId));
+        if (ct) base = ct.fields.map((f) => ({ key: f.key, label: f.alias || f.key }));
+      }
+      const seen = new Set(base.map((b) => b.key));
+      for (const lab of calcLabels) {
+        if (seen.has(lab)) continue;
+        seen.add(lab);
+        base.push({ key: lab, label: lab });
+      }
+      return base;
     }
     case 'filter': {
       const src = s(data.source);
@@ -4708,6 +4740,162 @@ const RankNode = memo(({ id, data }: NodeProps) => {
   );
 });
 
+const CALC_FN_HINT = [
+  'IF(条件, 真值, 假值) 例如 IF([库存]=0,\'无货\',\'有货\')',
+  'CONCAT(文本1,文本2,…) 文本拼接；或 [字段]&\'-\'&[字段]',
+  'TEXT(值) 转文本；NUMBER(文本) 转数值',
+  'SUBSTR(文本,起始[,长度]) 取文本；LEFT(文本,n) RIGHT(文本,n) LEN(文本)',
+  '当前日期 TODAY()；当前时间 NOW()；DATE(年,月,日) 拼日期',
+  'YEAR(日期)/MONTH(日期)/DAY(日期) 取年月日',
+  'DATEDIFF(日期A,日期B) 返回相差天数（A-B）',
+];
+const CALC_FN_LIST = ['IF', 'CONCAT', 'TEXT', 'NUMBER', 'SUBSTR', 'LEFT', 'RIGHT', 'LEN', 'YEAR', 'MONTH', 'DAY', 'DATE', 'TODAY', 'NOW', 'DATEDIFF'];
+
+/** 添加列（calc）节点：选择数据表或节点结果，逐行用函数公式追加计算列 */
+const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
+  const fnode = { id, kind: 'calc' as const, data, position: { x: 0, y: 0 } } as FlowNode;
+  const d = (data as unknown) as CalcNodeData;
+  const update = useNodeUpdater(id);
+  const tables = useRuleTables();
+  const allNodes = useNodes();
+  const inputCls = 'w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-fuchsia-400';
+  const rowLabel = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
+  const source = d.source ?? 'table';
+  const nodeOutputs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'column');
+  const table = tables.find((t) => t.id === d.tableId) ?? tables[0];
+  const availFields: string[] =
+    source === 'node'
+      ? (d.sourceNode ? [d.sourceNodeLabel || ''] : [])
+      : (table?.fields.map((f) => f.alias || f.key) ?? []);
+  const cols = Array.isArray(d.columns) ? d.columns : [];
+  const setCol = (i: number, patch: Partial<CalcColumn>) => {
+    const arr = cols.slice();
+    arr[i] = { ...arr[i], ...patch };
+    update({ columns: arr } as Partial<CalcNodeData>);
+  };
+  useEffect(() => {
+    if (source === 'table' && !d.tableId && tables[0]) {
+      update({ tableId: tables[0].id, tableName: tables[0].name } as Partial<CalcNodeData>);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.tableId, tables, source]);
+  return (
+    <NodeShell fnode={fnode}>
+      <div className="space-y-1.5">
+        <DataSourcePicker
+          source={source}
+          sourceNode={d.sourceNode}
+          nodeOptions={nodeOutputs}
+          onSourceChange={(v) =>
+            update({
+              source: v,
+              sourceNode: v === 'node' ? (d.sourceNode ?? nodeOutputs[0]?.ref.nodeId) : undefined,
+              sourceNodeLabel:
+                v === 'node'
+                  ? nodeOutputs.find((o) => o.ref.nodeId === (d.sourceNode ?? nodeOutputs[0]?.ref.nodeId))?.ref.label
+                  : undefined,
+            } as Partial<CalcNodeData>)
+          }
+          onNodeChange={(ref) => update({ sourceNode: ref?.nodeId, sourceNodeLabel: ref?.label } as Partial<CalcNodeData>)}
+          tableBlock={
+            <div>
+              <div className={rowLabel}>① 选择数据表</div>
+              <select
+                value={table?.id ?? ''}
+                onChange={(e) => {
+                  const t = tables.find((x) => x.id === e.target.value);
+                  if (t) update({ tableId: t.id, tableName: t.name } as Partial<CalcNodeData>);
+                }}
+                className={inputCls}
+              >
+                {tables.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          }
+        />
+
+        <div className="mt-2 flex flex-wrap gap-1 rounded-md bg-fuchsia-50/70 p-1.5">
+          {availFields.filter(Boolean).map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (cols.length) setCol(cols.length - 1, { expr: (cols[cols.length - 1].expr || '') + `[${f}]` });
+              }}
+              className="rounded bg-white px-1.5 py-0.5 text-[10px] text-fuchsia-700 ring-1 ring-fuchsia-200 hover:bg-fuchsia-100"
+              title={`点击把字段 [${f}] 追加到最后一个计算列公式`}
+            >
+              {f}
+            </button>
+          ))}
+          {availFields.length === 0 && <span className="text-[10px] text-fuchsia-400">先选择数据表或节点结果即会出现可插入字段</span>}
+        </div>
+
+        <div className={rowLabel}>② 计算列</div>
+        {cols.map((c, i) => (
+          <div key={i} className="space-y-1 rounded-md border border-gray-100 bg-gray-50/60 p-1.5">
+            <div className="flex items-center gap-1">
+              <input
+                value={c.label}
+                onChange={(e) => setCol(i, { label: e.target.value })}
+                placeholder="新列名，如：上货天数"
+                className={`${inputCls} flex-1`}
+              />
+              <button
+                type="button"
+                onClick={() => update({ columns: cols.filter((_, k) => k !== i) } as Partial<CalcNodeData>)}
+                className="text-[10px] text-red-400 hover:text-red-600"
+              >
+                删
+              </button>
+            </div>
+            <input
+              value={c.expr}
+              onChange={(e) => setCol(i, { expr: e.target.value })}
+              placeholder="公式，如 DATEDIFF(TODAY(),[上货日期])"
+              className={inputCls}
+            />
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={() => update({ columns: [...cols, { label: '', expr: '' }] } as Partial<CalcNodeData>)}
+          className="flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-fuchsia-300 bg-fuchsia-50/50 py-1 text-[11px] text-fuchsia-600 transition hover:bg-fuchsia-100"
+        >
+          <Plus size={12} /> 添加计算列
+        </button>
+
+        <div className="mt-2 rounded-md bg-gray-50 px-2 py-1.5 text-[10px] leading-relaxed text-gray-500">
+          <div className="mb-0.5 font-medium text-gray-600">可用函数（可插入多个字段组合计算）</div>
+          {CALC_FN_HINT.map((h) => (
+            <div key={h}>· {h}</div>
+          ))}
+          <div className="mt-1 flex flex-wrap gap-1">
+            {CALC_FN_LIST.map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (cols.length) setCol(cols.length - 1, { expr: (cols[cols.length - 1].expr || '') + (f === 'TODAY' || f === 'NOW' ? `${f}()` : `${f}(`) });
+                }}
+                className="rounded bg-white px-1.5 py-0.5 text-[10px] text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100"
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </NodeShell>
+  );
+});
+
 export const nodeTypes = {
   trigger: TriggerNode,
   field: FieldNode,
@@ -4727,6 +4915,7 @@ export const nodeTypes = {
   elapsed: ElapsedNode,
   logic: LogicNode,
   rank: RankNode,
+  calc: CalcNode,
 };
 
 TopNNode.displayName = 'TopNNode';
@@ -4921,6 +5110,15 @@ export function createNodeData(
         refNode: undefined,
         items: [],
         resultLabel: '排名结果',
+      };
+    case 'calc':
+      return {
+        source: 'table',
+        tableId: '',
+        tableName: '',
+        sourceNode: '',
+        sourceNodeLabel: '',
+        columns: [],
       };
     default:
       return {};

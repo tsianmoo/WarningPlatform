@@ -22,6 +22,7 @@ import type {
   ComputeExpr,
   ExprToken,
   RankNodeData,
+  CalcNodeData,
 } from './types';
 import { resolveTimeWindow, resolveElapsedDays } from './time';
 import type { TimeWindow } from './types';
@@ -650,6 +651,350 @@ function pickScalarOutput(
   return Object.values(outputs).find((o) => o && o.scalar);
 }
 
+/* ===== 添加列（calc）表达式求值 ===== */
+type CalcVal = number | string | boolean | null;
+interface CalcTok {
+  t: 'num' | 'str' | 'ident' | 'field' | 'op' | 'par' | 'comma' | 'end';
+  v: string;
+}
+function calcTokenize(s: string): CalcTok[] {
+  const toks: CalcTok[] = [];
+  let i = 0;
+  const n = s.length;
+  const isDigit = (ch: string) => ch >= '0' && ch <= '9';
+  const isIdentChar = (ch: string) => /[A-Za-z_\u4e00-\u9fa5]/.test(ch);
+  while (i < n) {
+    const ch = s[i];
+    if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
+      i++;
+      continue;
+    }
+    if (ch === '[') {
+      const j = s.indexOf(']', i + 1);
+      toks.push({ t: 'field', v: s.slice(i + 1, j < 0 ? n : j).trim() });
+      i = (j < 0 ? n : j) + 1;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      const q = ch;
+      let j = i + 1;
+      let out = '';
+      while (j < n && s[j] !== q) {
+        out += s[j];
+        j++;
+      }
+      toks.push({ t: 'str', v: out });
+      i = j + 1;
+      continue;
+    }
+    if (isDigit(ch) || (ch === '.' && isDigit(s[i + 1] || ''))) {
+      let j = i;
+      while (j < n && (isDigit(s[j]) || s[j] === '.')) j++;
+      toks.push({ t: 'num', v: s.slice(i, j) });
+      i = j;
+      continue;
+    }
+    if (isIdentChar(ch)) {
+      let j = i;
+      while (j < n && isIdentChar(s[j])) j++;
+      toks.push({ t: 'ident', v: s.slice(i, j) });
+      i = j;
+      continue;
+    }
+    const two = s.slice(i, i + 2);
+    if (two === '>=' || two === '<=' || two === '==' || two === '!=' || two === '<>') {
+      toks.push({ t: 'op', v: two });
+      i += 2;
+      continue;
+    }
+    if ('+-*/%&()=<>,'.includes(ch)) {
+      if (ch === '(' || ch === ')') toks.push({ t: 'par', v: ch });
+      else if (ch === ',') toks.push({ t: 'comma', v: ',' });
+      else toks.push({ t: 'op', v: ch });
+      i++;
+      continue;
+    }
+    i++;
+  }
+  toks.push({ t: 'end', v: '' });
+  return toks;
+}
+function calcBool(v: CalcVal): boolean {
+  if (v === null) return false;
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'number') return v !== 0;
+  const s = String(v).trim().toLowerCase();
+  if (s === 'true') return true;
+  if (s === 'false' || s === '' || s === '0') return false;
+  return !Number.isNaN(Number(s)) ? Number(s) !== 0 : true;
+}
+function calcNum(v: CalcVal): number {
+  if (typeof v === 'number') return v;
+  if (v === null) return 0;
+  const x = Number(v);
+  return Number.isNaN(x) ? 0 : x;
+}
+function calcCmp(op: string, a: CalcVal, b: CalcVal): boolean {
+  const an = typeof a === 'number';
+  const bn = typeof b === 'number';
+  const x = an ? (a as number) : (a === null ? '' : String(a));
+  const y = bn ? (b as number) : (b === null ? '' : String(b));
+  if (an && bn) {
+    switch (op) {
+      case '=':
+      case '==':
+        return x === y;
+      case '!=':
+      case '<>':
+        return x !== y;
+      case '>':
+        return x > y;
+      case '>=':
+        return x >= y;
+      case '<':
+        return x < y;
+      case '<=':
+        return x <= y;
+    }
+    return false;
+  }
+  switch (op) {
+    case '=':
+    case '==':
+      return x === y;
+    case '!=':
+    case '<>':
+      return x !== y;
+    case '>':
+      return x > y;
+    case '>=':
+      return x >= y;
+    case '<':
+      return x < y;
+    case '<=':
+      return x <= y;
+  }
+  return false;
+}
+function calcAdd(op: string, a: CalcVal, b: CalcVal): CalcVal {
+  if (op === '&') return String(a === null ? '' : a) + String(b === null ? '' : b);
+  const an = typeof a === 'number';
+  const bn = typeof b === 'number';
+  if (op === '+') {
+    if (an && bn) return (a as number) + (b as number);
+    return String(a === null ? '' : a) + String(b === null ? '' : b);
+  }
+  return (an ? (a as number) : 0) - (bn ? (b as number) : 0);
+}
+function calcMul(op: string, a: CalcVal, b: CalcVal): CalcVal {
+  const x = calcNum(a);
+  const y = calcNum(b);
+  if (op === '*') return x * y;
+  if (op === '%') return x % y;
+  return y !== 0 ? x / y : null;
+}
+function calcYMD(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+function calcDateVal(v: CalcVal): Date | null {
+  if (v === null || v === '') return null;
+  if (typeof v === 'number') return new Date(v);
+  const d = new Date(String(v).replace(/\//g, '-'));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+function calcCall(name: string, args: CalcVal[]): CalcVal {
+  const str0 = (i: number) => (args[i] === null || args[i] === undefined ? '' : String(args[i]));
+  switch (name) {
+    case 'IF':
+      return calcBool(args[0]) ? (args[1] ?? null) : (args[2] ?? null);
+    case 'CONCAT':
+      return args.map((a) => (a === null ? '' : String(a))).join('');
+    case 'TEXT':
+      return str0(0);
+    case 'NUMBER':
+    case 'NUM': {
+      const x = Number(args[0]);
+      return Number.isNaN(x) ? null : x;
+    }
+    case 'SUBSTR': {
+      const s = str0(0);
+      const st = Math.max(0, calcNum(args[1]));
+      return args.length > 2 ? s.substr(st, calcNum(args[2])) : s.substr(st);
+    }
+    case 'LEFT':
+      return str0(0).slice(0, calcNum(args[1]));
+    case 'RIGHT': {
+      const s = str0(0);
+      const k = calcNum(args[1]);
+      return k > 0 ? s.slice(-k) : '';
+    }
+    case 'LEN':
+      return str0(0).length;
+    case 'YEAR':
+      return calcDateVal(args[0])?.getFullYear() ?? null;
+    case 'MONTH':
+      return calcDateVal(args[0]) ? calcDateVal(args[0])!.getMonth() + 1 : null;
+    case 'DAY':
+      return calcDateVal(args[0])?.getDate() ?? null;
+    case 'DATE': {
+      const dt = new Date(calcNum(args[0]), calcNum(args[1]) - 1, calcNum(args[2]));
+      return Number.isNaN(dt.getTime()) ? null : calcYMD(dt);
+    }
+    case 'TODAY':
+      return calcYMD(new Date());
+    case 'NOW':
+      return new Date().toISOString().slice(0, 19).replace('T', ' ');
+    case 'DATEDIFF': {
+      const a = calcDateVal(args[0]);
+      const b = calcDateVal(args[1]);
+      if (!a || !b) return null;
+      return Math.round((a.getTime() - b.getTime()) / 86400000);
+    }
+    default:
+      return null;
+  }
+}
+class CalcParser {
+  private p = 0;
+  constructor(private toks: CalcTok[], private row: Record<string, unknown>) {}
+  private peek() {
+    return this.toks[this.p];
+  }
+  private next() {
+    return this.toks[this.p++];
+  }
+  parse(): CalcVal {
+    return this.expr();
+  }
+  private expr(): CalcVal {
+    return this.or();
+  }
+  private or(): CalcVal {
+    let a = this.and();
+    while (this.peek().t === 'ident' && this.peek().v.toUpperCase() === 'OR') {
+      this.next();
+      a = calcBool(a) || calcBool(this.and());
+    }
+    return a;
+  }
+  private and(): CalcVal {
+    let a = this.not();
+    while (this.peek().t === 'ident' && this.peek().v.toUpperCase() === 'AND') {
+      this.next();
+      a = calcBool(a) && calcBool(this.not());
+    }
+    return a;
+  }
+  private not(): CalcVal {
+    if (this.peek().t === 'ident' && this.peek().v.toUpperCase() === 'NOT') {
+      this.next();
+      return !calcBool(this.not());
+    }
+    return this.comparison();
+  }
+  private comparison(): CalcVal {
+    const l = this.term();
+    if (this.peek().t === 'op' && ['=', '==', '!=', '<>', '>', '>=', '<', '<='].includes(this.peek().v)) {
+      const op = this.next().v;
+      return calcCmp(op, l, this.term());
+    }
+    return l;
+  }
+  private term(): CalcVal {
+    let a = this.factor();
+    while (this.peek().t === 'op' && (this.peek().v === '+' || this.peek().v === '-' || this.peek().v === '&')) {
+      const op = this.next().v;
+      a = calcAdd(op, a, this.factor());
+    }
+    return a;
+  }
+  private factor(): CalcVal {
+    let a = this.unary();
+    while (this.peek().t === 'op' && (this.peek().v === '*' || this.peek().v === '/' || this.peek().v === '%')) {
+      const op = this.next().v;
+      a = calcMul(op, a, this.unary());
+    }
+    return a;
+  }
+  private unary(): CalcVal {
+    if (this.peek().t === 'op' && this.peek().v === '-') {
+      this.next();
+      return -calcNum(this.unary());
+    }
+    return this.primary();
+  }
+  private primary(): CalcVal {
+    const t = this.peek();
+    if (t.t === 'num') {
+      this.next();
+      return parseFloat(t.v);
+    }
+    if (t.t === 'str') {
+      this.next();
+      return t.v;
+    }
+    if (t.t === 'field') {
+      this.next();
+      const raw = this.row?.[t.v];
+      if (raw === undefined || raw === null || raw === '') return null;
+      return raw as CalcVal;
+    }
+    if (t.t === 'ident') {
+      const name = t.v.toUpperCase();
+      if (name === 'TRUE') {
+        this.next();
+        return true;
+      }
+      if (name === 'FALSE') {
+        this.next();
+        return false;
+      }
+      const nx = this.toks[this.p + 1];
+      if (nx && nx.t === 'par' && nx.v === '(') {
+        this.next();
+        this.next();
+        return this.callFn(name);
+      }
+      this.next();
+      return null;
+    }
+    if (t.t === 'par' && t.v === '(') {
+      this.next();
+      const v = this.expr();
+      if (this.peek().t === 'par') this.next();
+      return v;
+    }
+    this.next();
+    return null;
+  }
+  private callFn(name: string): CalcVal {
+    const args: CalcVal[] = [];
+    if (this.peek().t === 'par' && this.peek().v === ')') {
+      this.next();
+      return calcCall(name, args);
+    }
+    args.push(this.expr());
+    while (this.peek().t === 'comma') {
+      this.next();
+      args.push(this.expr());
+    }
+    if (this.peek().t === 'par') this.next();
+    return calcCall(name, args);
+  }
+}
+function evalCalcString(expr: string, row: Record<string, unknown>): CalcVal {
+  const s = String(expr || '').trim();
+  if (!s) return null;
+  try {
+    return new CalcParser(calcTokenize(s), row).parse();
+  } catch {
+    return null;
+  }
+}
+
 function evalNode(
   node: FlowNode,
   nodes: FlowNode[],
@@ -675,6 +1020,44 @@ function evalNode(
         columns: ['时间范围', '起', '止'],
         rows: [{ 时间范围: label, 起: start.toLocaleDateString(), 止: end.toLocaleDateString() }],
         note: '该时间范围会作用于下游按日期筛选的节点。',
+      };
+    }
+
+    case 'calc': {
+      const cd = d as unknown as CalcNodeData;
+      const rs = resolveRowset({ tableId: cd.tableId, source: cd.source, sourceNode: cd.sourceNode }, tables, byId, incoming);
+      if (!rs) {
+        return { title: '添加列', columns: [], rows: [], shape: 'table', note: '请选择数据表或上游节点结果作为计算来源。' };
+      }
+      const calcCols = (Array.isArray(cd.columns) ? cd.columns : []).filter((c) => c && c.label && c.expr);
+      const srcName = rs.from;
+      if (!calcCols.length) {
+        return { title: '添加列', columns: rs.t.fields.map((f) => f.key), rows: allRows(rs.t) as unknown as Record<string, string | number>[], shape: 'table', note: `${srcName}·请添加计算列` };
+      }
+      const outRows = allRows(rs.t).map((r) => {
+        const o: Record<string, string | number> = { ...(r as Record<string, string | number>) };
+        for (const c of calcCols) {
+          let val: string | number = '';
+          try {
+            const v = evalCalcString(c.expr, o);
+            if (v === null) val = '';
+            else if (v === true) val = '是';
+            else if (v === false) val = '否';
+            else val = v;
+          } catch {
+            val = '';
+          }
+          o[c.label] = val;
+        }
+        return o;
+      });
+      const baseCols = rs.t.fields.map((f) => f.key);
+      return {
+        title: '添加列',
+        columns: [...baseCols, ...calcCols.map((c) => c.label)],
+        rows: outRows,
+        shape: 'table',
+        note: `${srcName}·追加计算列：${calcCols.map((c) => c.label).join('、')}`,
       };
     }
 
