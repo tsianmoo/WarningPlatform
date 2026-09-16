@@ -118,7 +118,7 @@ function PreviewModal({ state, onClose }: { state: PreviewState; onClose: () => 
       onClick={onClose}
     >
       <div
-        className="flex max-h-[82vh] w-[min(720px,94vw)] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        className="flex max-h-[90vh] w-[min(1080px,96vw)] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-3">
@@ -196,7 +196,7 @@ function PreviewModal({ state, onClose }: { state: PreviewState; onClose: () => 
                       scrollBoxRef.current = el;
                     }}
                     onScroll={handleHScroll}
-                    className="max-h-[52vh] w-full overflow-auto overscroll-x-contain"
+                    className="max-h-[70vh] w-full overflow-auto overscroll-x-contain"
                   >
                     <table className="min-w-max border-collapse text-[12px]">
                       <thead>
@@ -226,7 +226,7 @@ function PreviewModal({ state, onClose }: { state: PreviewState; onClose: () => 
                                   key={c}
                                   className="whitespace-nowrap border-b border-gray-100 px-3 py-1.5 text-gray-700"
                                 >
-                                  <span className="block max-w-[280px] truncate" title={String(row[c] ?? '')}>
+                                  <span className="block max-w-[420px] truncate" title={String(row[c] ?? '')}>
                                     {String(row[c] ?? '')}
                                   </span>
                                 </td>

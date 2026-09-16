@@ -1628,7 +1628,7 @@ function evalNode(
             row[`${mLabels[mi]} · ${cmpLabel}`] = Number.isFinite(cv) ? fmtNum(cv) : '—';
             if (Number.isFinite(val) && Number.isFinite(cv)) {
               const rate = val !== 0 ? ((val - cv) / cv) * 100 : cv !== 0 ? -100 : 0;
-              row[`${mLabels[mi]} · 同比`] = Number.isFinite(rate) ? rate.toFixed(2) : '—';
+              row[`${mLabels[mi]} · 同比`] = Number.isFinite(rate) ? `${rate.toFixed(2)}%` : '—';
             } else {
               row[`${mLabels[mi]} · 同比`] = '—';
             }
