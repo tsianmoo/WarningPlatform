@@ -10,6 +10,10 @@ export interface TableField {
   type: FieldType;
   tagColor: string; // 标签颜色
   sample: string; // 样例值
+  /** 是否在预览/表格中显示（false 隐藏但保留数据，防误删） */
+  hidden?: boolean;
+  /** 锁定后不可改名/改类型（保护关键列） */
+  locked?: boolean;
 }
 
 /** 上传的数据表 */

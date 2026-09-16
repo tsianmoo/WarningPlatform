@@ -351,6 +351,7 @@ export interface DriverHealth {
   user?: string;
   schema?: string;
   mode?: 'thin' | 'thick';
+  thickError?: string;
   error?: string;
 }
 

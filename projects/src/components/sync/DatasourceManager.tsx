@@ -221,7 +221,7 @@ export default function DatasourceManager() {
               <span className={`ml-2 text-xs ${testResult.success ? 'text-green-600' : 'text-red-600'}`}>
                 {testResult.success
                   ? `✓ 连通，耗时 ${testResult.elapsedMs}ms · ${testResult.version || ''} · 用户 ${testResult.user} · Schema ${testResult.schema || '-'}${testResult.mode ? ` · 模式 ${testResult.mode.toUpperCase()}` : ''}`
-                  : `✗ ${testResult.error || '连接失败'}`}
+                  : `✗ ${testResult.error || '连接失败'}${testResult.mode ? `（当前模式 ${testResult.mode.toUpperCase()}${testResult.thickError ? '；Thick 未生效：' + testResult.thickError : ''}）` : ''}`}
               </span>
             )}
           </div>

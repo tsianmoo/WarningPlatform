@@ -15,6 +15,7 @@ oracledb.autoCommit = false;
 // 必须用 Thick 模式（依赖 Oracle Instant Client 客户端库）。启用方式：设置 `ORACLE_LIB_DIR`
 // 指向 Instant Client 目录（Linux 上还需 libaio）。未设置或加载失败则维持 Thin。
 let connMode: 'thin' | 'thick' = 'thin';
+let thickError = '';
 try {
   const libDir = (process.env.ORACLE_LIB_DIR || '').trim();
   if (libDir) {
@@ -32,8 +33,9 @@ try {
     }
     if (oracledb.thin === false) connMode = 'thick';
   }
-} catch {
+} catch (e) {
   /* 无 Instant Client 时维持 thin */
+  thickError = new Error(e instanceof Error ? e.message : String(e)).message.split('\n')[0];
 }
 
 interface PoolKey {
@@ -179,9 +181,10 @@ export const oracleDriver: Driver = {
         user: info.user,
         schema: info.schema,
         mode: connMode,
+        thickError: thickError || undefined,
       };
     } catch (e) {
-      return { success: false, elapsedMs: Date.now() - started, mode: connMode, error: sanitizeError(e) };
+      return { success: false, elapsedMs: Date.now() - started, mode: connMode, thickError: thickError || undefined, error: sanitizeError(e) };
     }
   },
 

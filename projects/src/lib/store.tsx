@@ -16,6 +16,7 @@ import type {
   Person,
   RuleGroup,
   DataTableGroup,
+  TableField,
   Schedule,
   TargetSetting,
   NotifyMode,
@@ -423,6 +424,13 @@ type StoreApi = {
   setBuilderTables: (ids: string[]) => void;
   renameField: (tableId: string, fieldKey: string, alias: string) => void;
   setFieldType: (tableId: string, fieldKey: string, type: DataTable['fields'][number]['type']) => void;
+  toggleFieldVisible: (tableId: string, fieldKey: string) => void;
+  toggleFieldLock: (tableId: string, fieldKey: string) => void;
+  moveField: (tableId: string, fieldKey: string, dir: 'up' | 'down') => void;
+  addField: (
+    tableId: string,
+    f: { key: string; alias: string; type: DataTable['fields'][number]['type']; defaultValue?: string }
+  ) => void;
   // rules
   addRule: (r: AlertRule) => void;
   updateRule: (id: string, patch: Partial<AlertRule>) => void;
@@ -601,6 +609,73 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
         tables: state.tables.map((t) =>
           t.id === tableId ? { ...t, fields: t.fields.map((f) => (f.key === fieldKey ? { ...f, type } : f)) } : t
         ),
+      };
+    }
+    case 'TOGGLE_FIELD_VISIBLE': {
+      const { tableId, fieldKey } = action.payload as { tableId: string; fieldKey: string };
+      return {
+        ...state,
+        tables: state.tables.map((t) =>
+          t.id === tableId
+            ? { ...t, fields: t.fields.map((f) => (f.key === fieldKey ? { ...f, hidden: !f.hidden } : f)) }
+            : t
+        ),
+      };
+    }
+    case 'TOGGLE_FIELD_LOCK': {
+      const { tableId, fieldKey } = action.payload as { tableId: string; fieldKey: string };
+      return {
+        ...state,
+        tables: state.tables.map((t) =>
+          t.id === tableId
+            ? { ...t, fields: t.fields.map((f) => (f.key === fieldKey ? { ...f, locked: !f.locked } : f)) }
+            : t
+        ),
+      };
+    }
+    case 'MOVE_FIELD': {
+      const { tableId, fieldKey, dir } = action.payload as { tableId: string; fieldKey: string; dir: 'up' | 'down' };
+      return {
+        ...state,
+        tables: state.tables.map((t) => {
+          if (t.id !== tableId) return t;
+          const idx = t.fields.findIndex((f) => f.key === fieldKey);
+          const target = dir === 'up' ? idx - 1 : idx + 1;
+          if (idx < 0 || target < 0 || target >= t.fields.length) return t;
+          const fields = [...t.fields];
+          const [f] = fields.splice(idx, 1);
+          fields.splice(target, 0, f);
+          return { ...t, fields };
+        }),
+      };
+    }
+    case 'ADD_FIELD': {
+      const { tableId, f } = action.payload as {
+        tableId: string;
+        f: { key: string; alias: string; type: DataTable['fields'][number]['type']; defaultValue?: string };
+      };
+      return {
+        ...state,
+        tables: state.tables.map((t) => {
+          if (t.id !== tableId) return t;
+          if (t.fields.some((x) => x.key === f.key)) return t;
+          const field: TableField = {
+            key: f.key,
+            alias: f.alias || f.key,
+            type: f.type,
+            tagColor: '#646a80',
+            sample: f.defaultValue ?? '',
+            hidden: false,
+            locked: false,
+          };
+          const dv = f.defaultValue ?? '';
+          return {
+            ...t,
+            fields: [...t.fields, field],
+            previewRows: (t.previewRows || []).map((r) => ({ ...r, [f.key]: dv })),
+            rows: t.rows ? t.rows.map((r) => ({ ...r, [f.key]: dv })) : t.rows,
+          };
+        }),
       };
     }
     case 'ADD_RULE': {
@@ -1014,6 +1089,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setBuilderTables: (ids) => dispatch('SET_BUILDER_TABLES', ids),
       renameField: (tableId, fieldKey, alias) => dispatch('RENAME_FIELD', { tableId, fieldKey, alias }),
       setFieldType: (tableId, fieldKey, type) => dispatch('SET_FIELD_TYPE', { tableId, fieldKey, type }),
+      toggleFieldVisible: (tableId, fieldKey) => dispatch('TOGGLE_FIELD_VISIBLE', { tableId, fieldKey }),
+      toggleFieldLock: (tableId, fieldKey) => dispatch('TOGGLE_FIELD_LOCK', { tableId, fieldKey }),
+      moveField: (tableId, fieldKey, dir) => dispatch('MOVE_FIELD', { tableId, fieldKey, dir }),
+      addField: (tableId, f) => dispatch('ADD_FIELD', { tableId, f }),
       addRule: (r) => dispatch('ADD_RULE', r),
       updateRule: (id, patch) => dispatch('UPDATE_RULE', { id, patch }),
       activateRule: (id) => {

@@ -11,9 +11,15 @@ DEPLOY_RUN_PORT="${DEPLOY_RUN_PORT:-${PORT}}"
 
 cd "${COZE_WORKSPACE_PATH}"
 
-# Oracle 11g 需要 Thick 模式（Instant Client）。沙箱默认指向已安装的 Instant Client，用户部署时可用环境变量覆盖。
-if [ -d /opt/oracle/instantclient_19_24 ]; then
-  export ORACLE_LIB_DIR="${ORACLE_LIB_DIR:-/opt/oracle/instantclient_19_24}"
+# Oracle 11g 需要 Thick 模式（Oracle Instant Client libclntsh）。未设置 ORACLE_LIB_DIR 时，
+# 自动探测常见目录（用户可自定义 /opt/oracle/instantclient_server 等任意路径）。
+_oracle_ic_dir() {
+  if [ -n "${ORACLE_LIB_DIR:-}" ] && [ -d "${ORACLE_LIB_DIR}" ]; then echo "${ORACLE_LIB_DIR}"; return; fi
+  ls -d /opt/oracle/instantclient_* /usr/lib/oracle/*/client64 /usr/lib/oracle/*/client/lib 2>/dev/null | sort -V | tail -1
+}
+_oracle_dir="$(_oracle_ic_dir)"
+if [ -n "${_oracle_dir}" ]; then
+  export ORACLE_LIB_DIR="${ORACLE_LIB_DIR:-${_oracle_dir}}"
 fi
 export LD_LIBRARY_PATH="${ORACLE_LIB_DIR:-}:${LD_LIBRARY_PATH:-}"
 
