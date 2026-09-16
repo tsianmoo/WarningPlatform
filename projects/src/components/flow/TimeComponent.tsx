@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, Fragment } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Clock, Settings2, CalendarRange } from 'lucide-react';
 import type { TimeWindow, TimePreset, TimeUnit } from '@/lib/types';
 import { TIME_PRESETS, TIME_UNIT_OPTIONS, resolveTimeWindow, presetLabel } from '@/lib/time';
@@ -57,10 +57,12 @@ export default function TimeComponent({ value, onChange, hideAllToggle }: Props)
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute left-0 top-full z-50 mt-1 w-full rounded-md border border-border bg-white p-2 shadow-lg">
-            <div className="flex flex-wrap items-center gap-x-1 gap-y-1">
-              {(['point', 'recent', 'week', 'month', 'quarter', 'year'] as const).map((g) => (
-                <Fragment key={g}>
-                  <span className="px-1 text-[9px] font-medium uppercase tracking-wide text-slate-400">{GROUP_LABEL[g]}</span>
+            {(['point', 'recent'] as const).map((g) => (
+              <div key={g} className="mb-1.5">
+                <div className="mb-0.5 px-1 text-[9px] font-medium uppercase tracking-wide text-slate-400">
+                  {GROUP_LABEL[g]}
+                </div>
+                <div className="grid grid-cols-4 gap-1">
                   {TIME_PRESETS.filter((p) => p.group === g).map((p) => (
                     <button
                       key={p.value}
@@ -75,9 +77,32 @@ export default function TimeComponent({ value, onChange, hideAllToggle }: Props)
                       {p.label}
                     </button>
                   ))}
-                </Fragment>
-              ))}
-            </div>
+                </div>
+              </div>
+            ))}
+            {(['week', 'month', 'quarter', 'year'] as const).map((g) => (
+              <div key={g} className="mb-1.5">
+                <div className="mb-0.5 px-1 text-[9px] font-medium uppercase tracking-wide text-slate-400">
+                  {GROUP_LABEL[g]}
+                </div>
+                <div className="grid grid-cols-3 gap-1">
+                  {TIME_PRESETS.filter((p) => p.group === g).map((p) => (
+                    <button
+                      key={p.value}
+                      type="button"
+                      onClick={() => pick(p.value)}
+                      className={`rounded border px-1 py-0.5 text-[10px] transition ${
+                        tw.preset === p.value
+                          ? 'border-emerald-500 bg-emerald-500 text-white'
+                          : 'border-slate-200 text-slate-600 hover:border-emerald-300 hover:bg-emerald-50'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
             {/* 自定义 */}
             <div className={tw.preset === 'custom' ? '' : 'mt-1'}>
               <div className="mb-0.5 flex items-center justify-between px-1">
