@@ -221,6 +221,10 @@ export interface ConditionItem {
   rangeMin?: string;
   /** 区间上界（op 为 between/notBetween 时，如"3天至5天"的 5） */
   rangeMax?: string;
+  /** 区间下界比较符：'>'（大于）或 '>='（大于等于），默认 '>=' */
+  rangeMinOp?: 'gt' | 'gte';
+  /** 区间上界比较符：'<'（小于）或 '<='（小于等于），默认 '<' */
+  rangeMaxOp?: 'lt' | 'lte';
   /**
    * 右值来源：'values'（常量集合）或 'node'（引用节点标量，如基准统计均值）。
    * 当为 'node' 时用 refNode 指向的节点标量与左值做大小比较。

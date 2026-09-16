@@ -1142,7 +1142,7 @@ const ConditionNode = memo(({ id, data }: NodeProps) => {
                     <option value="gte">大于等于</option>
                     <option value="lt">小于</option>
                     <option value="lte">小于等于</option>
-                    <option value="between">在区间内(≤x≤)</option>
+                    <option value="between">在区间内</option>
                     <option value="notBetween">不在区间内</option>
                     <option value="empty">为空</option>
                     <option value="notEmpty">不为空</option>
@@ -1193,20 +1193,36 @@ const ConditionNode = memo(({ id, data }: NodeProps) => {
                   )}
                   {(c.op === 'between' || c.op === 'notBetween') && (
                     <div className="flex shrink-0 items-center gap-1">
+                      <select
+                        value={c.rangeMinOp ?? 'gte'}
+                        onChange={(e) => setCond(i, { rangeMinOp: e.target.value as 'gt' | 'gte' })}
+                        className="h-[22px] shrink-0 rounded-md border bg-white px-1 text-[11px] text-gray-600 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                      >
+                        <option value="gte">≥</option>
+                        <option value="gt">&gt;</option>
+                      </select>
                       <input
                         value={c.rangeMin ?? ''}
                         onChange={(e) => setCond(i, { rangeMin: e.target.value })}
                         placeholder="下限"
                         type="number"
-                        className="w-16 shrink-0 rounded-md border bg-white px-1 py-0.5 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                        className="w-14 shrink-0 rounded-md border bg-white px-1 py-0.5 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
                       />
-                      <span className="shrink-0 text-[11px] text-gray-400">~</span>
+                      <span className="shrink-0 text-[11px] text-gray-400">且</span>
+                      <select
+                        value={c.rangeMaxOp ?? 'lt'}
+                        onChange={(e) => setCond(i, { rangeMaxOp: e.target.value as 'lt' | 'lte' })}
+                        className="h-[22px] shrink-0 rounded-md border bg-white px-1 text-[11px] text-gray-600 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                      >
+                        <option value="lt">&lt;</option>
+                        <option value="lte">≤</option>
+                      </select>
                       <input
                         value={c.rangeMax ?? ''}
                         onChange={(e) => setCond(i, { rangeMax: e.target.value })}
                         placeholder="上限"
                         type="number"
-                        className="w-16 shrink-0 rounded-md border bg-white px-1 py-0.5 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                        className="w-14 shrink-0 rounded-md border bg-white px-1 py-0.5 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
                       />
                     </div>
                   )}

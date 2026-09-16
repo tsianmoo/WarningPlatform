@@ -2020,13 +2020,17 @@ function evalNode(
                 default: return false;
               }
             }
-            // 区间（between / notBetween，如下界~上界）
+            // 区间（between / notBetween，如 ≥3 且 <5，端点比较符可选）
             if (op === 'between' || op === 'notBetween') {
               const lv = toNum(raw);
               const lo = toNum(item.rangeMin);
               const hi = toNum(item.rangeMax);
               if (!Number.isFinite(lv) || !Number.isFinite(lo) || !Number.isFinite(hi)) return false;
-              const inside = lv >= Math.min(lo, hi) && lv <= Math.max(lo, hi);
+              const min = Math.min(lo, hi);
+              const max = Math.max(lo, hi);
+              const minHit = item.rangeMinOp === 'gt' ? lv > min : lv >= min;
+              const maxHit = item.rangeMaxOp === 'lte' ? lv <= max : lv < max;
+              const inside = minHit && maxHit;
               return op === 'between' ? inside : !inside;
             }
             let values = item.values && item.values.length ? item.values : [];
@@ -2101,14 +2105,14 @@ function evalNode(
               const opN = OPERATOR_OPTIONS.find((o2) => o2.value === opRef)?.label || opRef;
               const vals =
                 opRef === 'between' || opRef === 'notBetween'
-                  ? `${String(c.rangeMin ?? '?')} ~ ${String(c.rangeMax ?? '?')}`
+                  ? `${c.rangeMinOp === 'gt' ? '>' : '≥'}${String(c.rangeMin ?? '?')} 且 ${c.rangeMaxOp === 'lte' ? '≤' : '<'}${String(c.rangeMax ?? '?')}`
                   : (c.values && c.values.length ? c.values : [])
                       .map((v) => (v === '' ? '空' : String(v)))
                       .join(' / ');
               return `${i + 1}.${col} ${opN}${vals ? ` ∈{${vals}}` : ''}`;
             })
             .join('；')
-        : `条件：${leftCol} ${opLabel} ${rightDesc || (cd.operator === 'between' ? `${fmtNum(lo)} ~ ${fmtNum(hi)}` : '')}`;
+        : `条件：${leftCol} ${opLabel} ${rightDesc || (cd.operator === 'between' ? `≥${fmtNum(lo)} 且 <${fmtNum(hi)}` : '')}`;
       return {
         title: '判断',
         columns: src.columns,
