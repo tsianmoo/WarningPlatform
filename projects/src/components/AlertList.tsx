@@ -146,6 +146,7 @@ export function AlertList() {
   const { state, updateAlertStatus } = useStore();
   const PEOPLE = PERSONNEL as unknown as { name: string; dept: string }[];
   const [meName] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : ''));
+  const [onlyMine, setOnlyMine] = useState<boolean>(() => (typeof window !== 'undefined' ? localStorage.getItem('dn_alert_mine') === '1' : false));
   const me = state.persons.find((p) => p.name === meName) ?? null;
   const { subject: meSubject, scopePerson } = resolveAuthAccount(state.stores ?? [], state.dealers ?? [], state.employees ?? [], meName, me);
   const perm = resolvePerm(me, state.config, meSubject);
@@ -233,13 +234,14 @@ export function AlertList() {
       if (filter.level !== 'all' && (a.level ?? 'warn') !== filter.level) return false;
       if (filter.status !== 'all' && a.status !== filter.status) return false;
       if (filter.person && filter.person !== 'all' && a.assignee !== filter.person && a.handoffTo !== filter.person) return false;
+      if (onlyMine && meName && a.assignee !== meName && a.handoffTo !== meName) return false;
       if (start && a.createdAt < start) return false;
       if (end && a.createdAt > end) return false;
       for (const d of PRODUCT_DIMS) if (filter[d.key] && filter[d.key] !== 'all' && !(d.get(a) ?? []).includes(filter[d.key])) return false;
       for (const d of STORE_DIMS) if (filter[d.key] && filter[d.key] !== 'all' && !(d.get(a) ?? []).includes(filter[d.key])) return false;
       return true;
     });
-  }, [enriched, filter]);
+  }, [enriched, filter, onlyMine, meName]);
 
   const stats = useMemo(() => {
     const total = filtered.length;
@@ -335,6 +337,23 @@ export function AlertList() {
           title="重置筛选"
         >
           <RotateCcw size={12} /> 重置
+        </button>
+        <div className="mx-1.5 h-4 w-px bg-gray-100" />
+        <button
+          onClick={() => {
+            const next = !onlyMine;
+            setOnlyMine(next);
+            if (typeof window !== 'undefined') localStorage.setItem('dn_alert_mine', next ? '1' : '0');
+          }}
+          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+            onlyMine ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:bg-gray-50'
+          }`}
+          title="打开后仅显示当前登录账号负责的预警"
+        >
+          <span className={`relative h-3.5 w-6 rounded-full transition-colors ${onlyMine ? 'bg-indigo-500' : 'bg-gray-300'}`}>
+            <span className={`absolute top-0.5 h-2.5 w-2.5 rounded-full bg-white shadow transition-all ${onlyMine ? 'left-3' : 'left-0.5'}`} />
+          </span>
+          只看我的
         </button>
       </div>
 
