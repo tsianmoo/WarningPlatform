@@ -840,6 +840,8 @@ export interface AlertRule {
   /** 所属规则分组 id（空串表示未分组） */
   groupId?: string;
   description: string;
+  /** 创建人（展示用，持久化于 createdBy） */
+  createdBy?: string;
   /** 本规则使用到的数据表 id 列表（支持多表） */
   tableIds: string[];
   status: RuleStatus;

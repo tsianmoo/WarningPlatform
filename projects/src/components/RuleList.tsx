@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, BellRing, ArrowLeft, Trash2, Users, CalendarClock, Table2, Pencil, PlayCircle, PauseCircle, Copy, Search } from 'lucide-react';
+import { Plus, BellRing, ArrowLeft, Trash2, Users, CalendarClock, Table2, Pencil, PlayCircle, PauseCircle, Copy, Search, Zap, User, ChevronDown } from 'lucide-react';
 import type { AlertRule, RuleGroup } from '@/lib/types';
 import { useStore, formatDateTime } from '@/lib/store';
 import { resolvePerm, canOper } from '@/lib/perm';
@@ -169,92 +169,116 @@ export function RuleList({
             const pendingCount = r.executions.filter((e) => e.status === 'pending').length;
             const isOpen = expanded === r.id;
             return (
-              <div key={r.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md">
-                <div className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className={`rounded px-1.5 py-0.5 text-xs ${st.cls}`}>{st.label}</span>
-                        {pendingCount > 0 && r.status === 'active' && (
-                          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-600">
-                            {pendingCount} 项待处理
-                          </span>
-                        )}
-                        {(() => { const g = catOf(r); return g ? (
-                          <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-xs text-indigo-600">{g.name}</span>
-                        ) : null; })()}
-                      </div>
-                      <div className="mt-1.5 truncate text-base font-semibold text-gray-800">{r.name}</div>
-                      {r.description && <div className="mt-0.5 line-clamp-2 text-xs text-gray-400">{r.description}</div>}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
+              <div key={r.id} className="group/card flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md">
+                <div className="flex flex-1 flex-col p-4">
+                  {/* 标题置顶 */}
+                  <div className="flex items-start justify-between gap-2">
+                    <h3
+                      className="min-w-0 flex-1 truncate text-[15px] font-semibold text-gray-800"
+                      title={r.name}
+                    >
+                      {r.name}
+                    </h3>
+                    <div className="flex shrink-0 items-center gap-0.5">
                       {(r.status === 'active' || r.status === 'paused') && can('run', r.id) && (
                         <button
                           onClick={() => {
                             const next = r.status === 'active' ? 'paused' : 'active';
                             if (next === 'active') activateRule(r.id);
                             else updateRule(r.id, { status: next });
-                            toast.success(next === 'paused' ? '已停用，不再自动生成新预警（已有预警保留）' : '已启用');
+                            toast.success(next === 'paused' ? '已停用，不再生成新预警（已有预警保留）' : '已启用');
                           }}
-                          className="rounded-md p-1.5 text-gray-400 hover:bg-amber-50 hover:text-amber-500"
+                          className="rounded-lg p-1.5 text-slate-400 transition hover:bg-amber-50 hover:text-amber-500 active:scale-90"
                           title={r.status === 'active' ? '停用（不再生成新预警）' : '启用'}
                         >
-                          {r.status === 'active' ? <PauseCircle size={15} /> : <PlayCircle size={15} />}
+                          {r.status === 'active' ? <PauseCircle size={16} /> : <PlayCircle size={16} />}
                         </button>
                       )}
                       <button
                         onClick={() => setExpanded(isOpen ? null : r.id)}
-                        className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100"
-                        title="展开详情"
+                        className={`rounded-lg p-1.5 text-slate-400 transition hover:bg-gray-100 hover:text-gray-600 active:scale-90 ${isOpen ? 'rotate-180 text-gray-600' : ''}`}
+                        title={isOpen ? '收起详情' : '展开详情'}
                       >
-                        <Pencil size={15} />
+                        <ChevronDown size={16} />
                       </button>
-                      {can('delete', r.id) && (
-                      <button
-                        onClick={() => setConfirm({ kind: 'delete', rule: r })}
-                        className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
-                        title="删除"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                      )}
                       {can('create', r.id) && (
                       <button
                         onClick={() => setConfirm({ kind: 'copy', rule: r })}
-                        className="rounded-md p-1.5 text-gray-400 hover:bg-blue-50 hover:text-blue-500"
+                        className="rounded-lg p-1.5 text-slate-400 transition hover:bg-blue-50 hover:text-blue-500 active:scale-90"
                         title="复制为新规则"
                       >
-                        <Copy size={15} />
+                        <Copy size={16} />
+                      </button>
+                      )}
+                      {can('delete', r.id) && (
+                      <button
+                        onClick={() => setConfirm({ kind: 'delete', rule: r })}
+                        className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-500 active:scale-90"
+                        title="删除"
+                      >
+                        <Trash2 size={16} />
                       </button>
                       )}
                     </div>
                   </div>
 
-                  {/* 关键信息摘要 */}
-                  <div className="mt-3 space-y-1.5 text-xs text-gray-500">
-                    <div className="flex items-center gap-1.5">
-                      <Table2 size={12} className="text-blue-400" /> {tablesUsed.map((t) => t.name).join('、') || '未绑定数据表'}
+                  {/* 状态 / 待处理 / 分类放标题下方 */}
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <span className={`rounded-md px-1.5 py-0.5 text-xs ${st.cls}`}>{st.label}</span>
+                    {pendingCount > 0 && r.status === 'active' && (
+                      <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-600">
+                        {pendingCount} 项待处理
+                      </span>
+                    )}
+                    {(() => { const g = catOf(r); return g ? (
+                      <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-xs text-indigo-600">{g.name}</span>
+                    ) : null; })()}{' '}
+                    <span
+                      className={`ml-auto inline-flex items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] ${
+                        r.status === 'active'
+                          ? r.executions.length > 0
+                            ? 'bg-emerald-50 text-emerald-500'
+                            : 'bg-slate-100 text-slate-400'
+                          : 'bg-slate-50 text-slate-300'
+                      }`}
+                    >
+                      {r.executions.length} 次预警
+                    </span>
+                  </div>
+
+                  {r.description && <p className="mt-2 line-clamp-2 text-xs text-gray-400">{r.description}</p>}
+
+                  {/* 触发规则，注明清楚 */}
+                  <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50/50 px-2.5 py-2">
+                    <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                      <Zap size={12} className="shrink-0 text-amber-500" />
+                      <span className="shrink-0 text-gray-400">触发规则</span>
+                      <span className="truncate font-medium text-gray-700">
+                        {scheduleLabel(r.schedule.repeatType, r.schedule)}
+                      </span>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <CalendarClock size={12} className="text-blue-400" />
-                      {r.status === 'active'
-                        ? r.executions.find((e) => e.status === 'pending')?.scheduledAt
-                          ? `下次触发 ${formatDateTime(r.executions.find((e) => e.status === 'pending')!.scheduledAt)}`
-                          : '等待调度'
-                        : r.status === 'paused'
-                          ? '已停用，不再生成新预警'
-                          : r.status === 'ended'
-                            ? '已提前结束'
-                            : '草稿未激活'}
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                      <span className="flex min-w-0 items-center gap-1">
+                        <Table2 size={12} className="shrink-0 text-blue-400" />
+                        <span className="truncate">{tablesUsed.map((t) => t.name).join('、') || '未绑定数据表'}</span>
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Users size={12} className="text-blue-400" />
+                        {r.targets.departments.length} 部门 / {r.targets.personnel.length} 人
+                      </span>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <Users size={12} className="text-blue-400" />
-                      通知：{r.targets.departments.length} 部门 / {r.targets.personnel.length} 人
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <BellRing size={12} className="text-blue-400" />
-                      节点 {r.flow.nodes.length} 个 · 执行 {r.executions.length} 条
-                    </div>
+                  </div>
+
+                  {/* 创建人 / 创建时间 */}
+                  <div className="mt-auto flex items-center justify-between border-t border-dashed border-gray-100 pt-2.5 text-xs text-gray-400">
+                    <span className="flex min-w-0 items-center gap-1">
+                      <User size={12} className="shrink-0" />
+                      <span className="truncate">{r.createdBy || meName || '系统'}</span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1">
+                      <CalendarClock size={12} />
+                      {formatDateTime(r.createdAt)}
+                    </span>
                   </div>
                 </div>
 

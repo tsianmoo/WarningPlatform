@@ -66,9 +66,11 @@ function collectTargets(
 export function RuleConfigurator({
   draft,
   onBack,
+  meName = '',
 }: {
   draft: AlertRule;
   onBack: () => void;
+  meName?: string;
 }) {
   const { state, addRule, setBuilderTables, addAlert, updateAlertStatus, addRuleGroup, removeRuleGroup } = useStore();
   const [rule, setRule] = useState<AlertRule>(draft);
@@ -130,6 +132,7 @@ export function RuleConfigurator({
       const final: AlertRule = {
         ...r,
         name: r.name.trim(),
+        createdBy: !r.createdBy && meName ? meName : r.createdBy,
         targets: finalTargets,
         status: mode === 'activate' ? 'active' : exists ? r.status : 'draft',
         executions:
@@ -396,7 +399,7 @@ export function RuleConfigurator({
 }
 
 /** 新建规则的封装：mount 时生成一份全新草稿，key 保证每次进入都是干净的新规则 */
-export function NewRule({ onBack }: { onBack: () => void }) {
+export function NewRule({ onBack, meName = '' }: { onBack: () => void; meName?: string }) {
   const { state, addRuleGroup } = useStore();
   const [draft] = useState<AlertRule>(() => makeDefaultRule());
   const [title, setTitle] = useState('');
@@ -438,7 +441,7 @@ export function NewRule({ onBack }: { onBack: () => void }) {
     );
   }
 
-  const final: AlertRule = { ...draft, name: title.trim(), tableIds: selected, groupId };
+  const final: AlertRule = { ...draft, name: title.trim(), tableIds: selected, groupId, createdBy: meName || draft.createdBy };
   return <RuleConfigurator key={final.id} draft={final} onBack={onBack} />;
 }
 

@@ -157,11 +157,11 @@ function Shell() {
   } else if (view === 'formtable') {
     content = <FormFillPlaceholder onHome={goHome} />;
   } else if (view === 'new') {
-    content = <NewRule onBack={() => goRules()} />;
+    content = <NewRule onBack={() => goRules()} meName={meName} />;
   } else if (view === 'edit') {
     const rule = state.rules.find((r) => r.id === editingId);
     content = rule ? (
-      <RuleConfigurator key={rule.id} draft={rule} onBack={() => goRules()} />
+      <RuleConfigurator key={rule.id} draft={rule} onBack={() => goRules()} meName={meName} />
     ) : (
       <RuleList onNew={startNew} onEdit={startEdit} />
     );
