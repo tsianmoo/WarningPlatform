@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Clock } from 'lucide-react';
+import { Clock, Settings2, CalendarRange } from 'lucide-react';
 import type { TimeWindow, TimePreset, TimeUnit } from '@/lib/types';
 import { TIME_PRESETS, TIME_UNIT_OPTIONS, resolveTimeWindow, presetLabel } from '@/lib/time';
 
@@ -56,7 +56,7 @@ export default function TimeComponent({ value, onChange, hideAllToggle }: Props)
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-border bg-white p-2 shadow-lg">
+          <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-md border border-border bg-white p-2 shadow-lg">
             {(['point', 'recent'] as const).map((g) => (
               <div key={g} className="mb-1.5">
                 <div className="mb-0.5 px-1 text-[9px] font-medium uppercase tracking-wide text-slate-400">
@@ -68,7 +68,7 @@ export default function TimeComponent({ value, onChange, hideAllToggle }: Props)
                       key={p.value}
                       type="button"
                       onClick={() => pick(p.value)}
-                      className={`rounded-md border px-1 py-0.5 text-[10px] transition ${
+                      className={`rounded border px-1 py-0.5 text-[10px] transition ${
                         tw.preset === p.value
                           ? 'border-emerald-500 bg-emerald-500 text-white'
                           : 'border-slate-200 text-slate-600 hover:border-emerald-300 hover:bg-emerald-50'
@@ -91,7 +91,7 @@ export default function TimeComponent({ value, onChange, hideAllToggle }: Props)
                       key={p.value}
                       type="button"
                       onClick={() => pick(p.value)}
-                      className={`rounded-md border px-1 py-0.5 text-[10px] transition ${
+                      className={`rounded border px-1 py-0.5 text-[10px] transition ${
                         tw.preset === p.value
                           ? 'border-emerald-500 bg-emerald-500 text-white'
                           : 'border-slate-200 text-slate-600 hover:border-emerald-300 hover:bg-emerald-50'
@@ -109,10 +109,13 @@ export default function TimeComponent({ value, onChange, hideAllToggle }: Props)
                 <button
                   type="button"
                   onClick={() => pick('custom')}
-                  className={`text-[10px] font-medium ${
-                    tw.preset === 'custom' ? 'text-emerald-600' : 'text-slate-400 hover:text-emerald-600'
+                  className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition ${
+                    tw.preset === 'custom'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-slate-100 text-slate-600 hover:bg-emerald-50 hover:text-emerald-600'
                   }`}
                 >
+                  <Settings2 size={11} />
                   自定义（近 N 天/周/月）
                 </button>
               </div>
@@ -125,14 +128,14 @@ export default function TimeComponent({ value, onChange, hideAllToggle }: Props)
                     onChange={(e) =>
                       onChange({ ...tw, custom: { value: Math.max(1, Number(e.target.value) || 1), unit: tw.custom?.unit ?? 'day' } })
                     }
-                    className="h-6 w-16 rounded-md border border-slate-200 px-1.5 text-[10px] text-slate-700 outline-none focus:border-emerald-400"
+                    className="h-6 w-16 rounded border border-slate-200 px-1.5 text-[10px] text-slate-700 outline-none focus:border-emerald-400"
                   />
                   <select
                     value={tw.custom?.unit ?? 'day'}
                     onChange={(e) =>
                       onChange({ ...tw, custom: { value: tw.custom?.value ?? 7, unit: e.target.value as TimeUnit } })
                     }
-                    className="h-6 rounded-md border border-slate-200 px-1 text-[10px] text-slate-700 outline-none"
+                    className="h-6 rounded border border-slate-200 px-1 text-[10px] text-slate-700 outline-none"
                   >
                     {TIME_UNIT_OPTIONS.map((u) => (
                       <option key={u.value} value={u.value}>
@@ -153,10 +156,13 @@ export default function TimeComponent({ value, onChange, hideAllToggle }: Props)
                     const def = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
                     onChange({ ...tw, preset: 'specificMonth', month: tw.month || def });
                   }}
-                  className={`text-[10px] font-medium ${
-                    tw.preset === 'specificMonth' ? 'text-emerald-600' : 'text-slate-400 hover:text-emerald-600'
+                  className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition ${
+                    tw.preset === 'specificMonth'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-slate-100 text-slate-600 hover:bg-emerald-50 hover:text-emerald-600'
                   }`}
                 >
+                  <CalendarRange size={11} />
                   指定月份（如 8 月）
                 </button>
               </div>
@@ -166,7 +172,7 @@ export default function TimeComponent({ value, onChange, hideAllToggle }: Props)
                     type="month"
                     value={tw.month ?? ''}
                     onChange={(e) => onChange({ ...tw, preset: 'specificMonth', month: e.target.value })}
-                    className="h-6 rounded-md border border-slate-200 px-1.5 text-[10px] text-slate-700 outline-none focus:border-emerald-400"
+                    className="h-6 rounded border border-slate-200 px-1.5 text-[10px] text-slate-700 outline-none focus:border-emerald-400"
                   />
                   <span className="text-[9px] text-slate-400">如选择 2025-08 即“8月份”</span>
                 </div>
@@ -192,7 +198,7 @@ export default function TimeComponent({ value, onChange, hideAllToggle }: Props)
                       key={o.value}
                       type="button"
                       onClick={() => onChange({ ...tw, compare: { ...cmpTw, mode: o.value } })}
-                      className={`inline-flex min-w-[3.5rem] flex-col items-center rounded-md border px-2 py-0.5 text-[10px] transition ${
+                      className={`inline-flex min-w-[3.5rem] flex-col items-center rounded border px-2 py-0.5 text-[10px] transition ${
                         cmpTw.mode === o.value
                           ? 'border-emerald-500 bg-emerald-500 text-white'
                           : 'border-slate-200 text-slate-600 hover:border-emerald-300 hover:bg-emerald-50'
