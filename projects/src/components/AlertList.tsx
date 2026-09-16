@@ -194,19 +194,39 @@ export function AlertList({ onBack }: { onBack: () => void }) {
     () => [...new Set(alerts.map((a) => a.assignee || a.handoffTo).filter(Boolean))],
     [alerts]
   );
+  // 旧预警缺少 dims 时按命中内容补算，保证新旧预警都能按商品/店仓维度筛选
+  const enriched = useMemo(
+    () => alerts.map((a) => ({ ...a, dims: a.dims ?? computeAlertDims(a, state.stores ?? []) })),
+    [alerts, state.stores]
+  );
+  // 各维度筛选项：从已有预警统计去重（无该维度数据的预警不产生对应选项）
+  const dimOptions = useMemo(() => {
+    const build = (defs: typeof PRODUCT_DIMS): Record<string, string[]> => {
+      const out: Record<string, string[]> = {};
+      for (const d of defs) {
+        const set = new Set<string>();
+        enriched.forEach((a) => (d.get(a) ?? []).forEach((v) => v && set.add(v)));
+        out[d.key] = [...set].sort();
+      }
+      return out;
+    };
+    return { ...build(PRODUCT_DIMS), ...build(STORE_DIMS) };
+  }, [enriched]);
   const filtered = useMemo(() => {
     const start = filter.start ? new Date(filter.start + 'T00:00:00').getTime() : null;
     const end = filter.end ? new Date(filter.end + 'T23:59:59').getTime() : null;
-    return alerts.filter((a) => {
+    return enriched.filter((a) => {
       if (filter.kw && !(`${a.ruleName || a.title}`.toLowerCase().includes(filter.kw.toLowerCase()))) return false;
       if (filter.level !== 'all' && (a.level ?? 'warn') !== filter.level) return false;
       if (filter.status !== 'all' && a.status !== filter.status) return false;
       if (filter.person !== 'all' && a.assignee !== filter.person && a.handoffTo !== filter.person) return false;
       if (start && a.createdAt < start) return false;
       if (end && a.createdAt > end) return false;
+      for (const d of PRODUCT_DIMS) if (filter[d.key] !== 'all' && !(d.get(a) ?? []).includes(filter[d.key])) return false;
+      for (const d of STORE_DIMS) if (filter[d.key] !== 'all' && !(d.get(a) ?? []).includes(filter[d.key])) return false;
       return true;
     });
-  }, [alerts, filter]);
+  }, [enriched, filter]);
 
   const stats = useMemo(() => {
     const total = filtered.length;
@@ -299,6 +319,33 @@ export function AlertList({ onBack }: { onBack: () => void }) {
         </button>
         <span className="ml-auto text-xs tabular-nums text-gray-400">{filtered.length} 条</span>
       </div>
+
+      {/* 商品 / 店仓 维度筛选 */}
+      {(PRODUCT_DIMS.some((d) => (dimOptions[d.key] ?? []).length) || STORE_DIMS.some((d) => (dimOptions[d.key] ?? []).length)) && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-white px-6 py-2">
+          <span className="text-xs font-medium text-gray-500">按商品</span>
+          {PRODUCT_DIMS.map((d) => {
+            const opts = dimOptions[d.key] ?? [];
+            return opts.length ? (
+              <select key={d.key} value={filter[d.key]} onChange={(e) => setFilter({ ...filter, [d.key]: e.target.value })} className={SelectCls}>
+                <option value="all">{d.label}：全部</option>
+                {opts.map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            ) : null;
+          })}
+          <span className="mx-1 h-4 w-px bg-gray-100" />
+          <span className="text-xs font-medium text-gray-500">按店仓</span>
+          {STORE_DIMS.map((d) => {
+            const opts = dimOptions[d.key] ?? [];
+            return opts.length ? (
+              <select key={d.key} value={filter[d.key]} onChange={(e) => setFilter({ ...filter, [d.key]: e.target.value })} className={SelectCls}>
+                <option value="all">{d.label}：全部</option>
+                {opts.map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            ) : null;
+          })}
+        </div>
+      )}
 
       {/* 统计 */}
       <div className="border-b border-gray-100 bg-white px-6 py-2.5">

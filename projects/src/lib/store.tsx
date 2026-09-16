@@ -96,14 +96,15 @@ export interface BuildAlertCtx {
   persons?: Person[];
 }
 
-/** 门店档案 → 店仓各筛选维度的取值（按字段中文名兜底兼容） */
+/** 门店档案 → 店仓各筛选维度的取值（同时兼容顶层字段与 attrs 字典中的中文字段） */
 function storeDimValues(st: Store): { brand?: string; company?: string; department?: string; salesArea?: string; district?: string } {
+  const a = st.attrs ?? {};
   return {
-    brand: st.brand || st.attrs?.['主营品牌'],
-    company: st.company || st.attrs?.['所属分公司'],
-    department: st.department || st.attrs?.['所属部门'],
-    salesArea: st.salesArea || st.attrs?.['销售区域'],
-    district: st.district || st.attrs?.['区部'],
+    brand: st.brand || a['主营品牌'] || a['品牌'],
+    company: st.company || a['所属分公司'] || a['分公司'],
+    department: st.department || a['所属部门'] || a['部门'],
+    salesArea: st.salesArea || a['销售区域'],
+    district: st.district || a['区部'],
   };
 }
 
