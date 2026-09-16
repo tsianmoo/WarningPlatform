@@ -99,24 +99,14 @@ export function RuleList({
           </button>
         </div>
 
-      <header className="mb-7 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-1.5 text-xs text-gray-400">
-            <BellRing size={13} strokeWidth={1.8} />
-            <span>工作台</span>
-            <span>/</span>
-            <span className="text-gray-500">预警规则</span>
-          </div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-gray-900">预警规则</h1>
-          <p className="mt-1.5 text-sm text-gray-500">配置可视化预警流程，跟踪触发与完成情况。</p>
-        </div>
+      <div className="mb-6 flex flex-wrap items-center justify-end gap-3">
         <div className="flex items-center gap-3">
           {onHome && (
             <button
               onClick={onHome}
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm text-gray-600 transition hover:border-gray-300 hover:text-gray-900"
             >
-              <ArrowLeft size={15} strokeWidth={2} /> 返回首页
+              <ArrowLeft size={15} strokeWidth={2} /> 返回
             </button>
           )}
           {can('create') && (
@@ -128,7 +118,7 @@ export function RuleList({
           </button>
           )}
         </div>
-      </header>
+      </div>
 
       {visibleRules.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed bg-white py-20 text-center">

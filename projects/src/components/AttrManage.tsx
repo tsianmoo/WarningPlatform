@@ -12,16 +12,10 @@ function genItemId() {
 
 type AttrManageProps = {
   category?: AttrCategory;
-  title?: string;
-  parent?: string;
-  hint?: string;
 };
 
 export function AttrManage({
   category = 'person',
-  title = '属性管理',
-  parent = '人事管理',
-  hint = '先给属性命名，再在属性下添加子标签（如 职位管理 → 职位标签）',
 }: AttrManageProps) {
   const { state, addHrAttribute, updateHrAttribute, removeHrAttribute } = useStore();
   const { hrAttributes } = state;
@@ -64,18 +58,7 @@ export function AttrManage({
 
   return (
     <div className="flex h-full flex-col overflow-y-auto px-8 pb-10 pt-6">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-1.5 text-xs text-gray-400">
-            <span className="text-gray-500">系统管理</span>
-            <span>/</span>
-            <span className="text-gray-500">{parent}</span>
-            <span>/</span>
-            <span>{title}</span>
-          </div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-gray-900">{title}</h1>
-          <p className="mt-1 text-sm text-gray-400">{hint}</p>
-        </div>
+      <div className="mb-6 flex items-center justify-end">
         <button
           onClick={addAttr}
           className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-700"
@@ -83,7 +66,7 @@ export function AttrManage({
           <Plus size={15} />
           新增属性
         </button>
-      </header>
+      </div>
 
       {sorted.length === 0 && (
         <div className="flex h-[320px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 text-center text-sm text-gray-400">

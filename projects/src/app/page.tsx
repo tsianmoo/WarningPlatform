@@ -149,9 +149,9 @@ function Shell() {
 
   let content;
   if (view === 'home') {
-    content = <Dashboard onGoTables={() => navigate('tables')} onGoRules={() => navigate('rules')} />;
+    content = <Dashboard />;
   } else if (view === 'tables') {
-    content = <DataTableManager onHome={goHome} />;
+    content = <DataTableManager />;
   } else if (view === 'apitable') {
     content = <ApiDataPlaceholder onHome={goHome} />;
   } else if (view === 'formtable') {
@@ -174,11 +174,11 @@ function Shell() {
   } else if (view === 'store') {
     content = <DealerStoreManage kind="store" />;
   } else if (view === 'dattrs') {
-    content = <AttrManage category="dealer" title="经销商属性" parent="组织架构" hint="先给属性命名，再在属性下添加子标签（如 经销商级别 / 区域 → 标签）" />;
+    content = <AttrManage category="dealer" />;
   } else if (view === 'sattrs') {
-    content = <AttrManage category="store" title="店仓属性" parent="组织架构" hint="先给属性命名，再在属性下添加子标签（如 门店类型 / 仓库 → 标签）" />;
+    content = <AttrManage category="store" />;
   } else if (view === 'eattrs') {
-    content = <AttrManage category="employee" title="员工属性" parent="组织架构" hint="先给属性命名，再在属性下添加子标签（如 岗位 / 喜好 → 标签）" />;
+    content = <AttrManage category="employee" />;
   } else if (view === 'people') {
     content = <PeopleManage />;
   } else if (view === 'attrs') {

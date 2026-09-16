@@ -7,7 +7,6 @@ import {
   FileSpreadsheet,
   Trash2,
   Tags,
-  ArrowLeft,
   Database,
   ChevronRight,
   RefreshCw,
@@ -51,7 +50,7 @@ const TYPE_LABEL: Record<FieldType, string> = {
   boolean: '布尔',
 };
 
-export function DataTableManager({ onHome }: { onHome?: () => void }) {
+export function DataTableManager() {
   const { state, addTable, updateTable, removeTable, setActiveTable, renameField, setFieldType, addTableGroup, updateTableGroup, removeTableGroup } = useStore();
   const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
   const me = state.persons.find((p) => p.name === meName) ?? null;
@@ -262,43 +261,6 @@ export function DataTableManager({ onHome }: { onHome?: () => void }) {
 
   return (
     <div className="flex h-full flex-col px-8 pb-10 pt-6">
-      {/* 顶部栏 */}
-      <header className="mb-7 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-1.5 text-xs text-gray-400">
-            <Database size={13} strokeWidth={1.8} />
-            <span>工作台</span>
-            <ChevronRight size={12} />
-            <span className="text-gray-500">数据表</span>
-          </div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-gray-900">数据表管理</h1>
-          <p className="mt-1.5 text-sm text-gray-500">上传数据源，为字段打上标签，供预警规则直接引用。</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onHome}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm text-gray-600 transition hover:border-gray-300 hover:text-gray-900"
-          >
-            <ArrowLeft size={15} strokeWidth={2} />
-            返回首页
-          </button>
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700">
-            <UploadCloud size={16} strokeWidth={2} />
-            上传数据表
-            <input
-              type="file"
-              accept=".xlsx,.xls,.xlsm,.csv,.txt"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void handleFile(f);
-                e.target.value = '';
-              }}
-            />
-          </label>
-        </div>
-      </header>
-
       <div className="grid min-h-0 flex-1 grid-cols-[340px_1fr] gap-6">
         {/* 左：数据表列表 */}
         <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white">

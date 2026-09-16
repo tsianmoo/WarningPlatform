@@ -29,7 +29,7 @@ const completionTime = (e: ExecutionRecord): Date | null => {
   return e.triggeredAt ? new Date(e.triggeredAt) : null;
 };
 
-export function Dashboard({ onGoTables, onGoRules }: { onGoTables: () => void; onGoRules: () => void }) {
+export function Dashboard() {
   const { state } = useStore();
   const rules = state.rules;
 
@@ -104,21 +104,6 @@ export function Dashboard({ onGoTables, onGoRules }: { onGoTables: () => void; o
 
   return (
     <div className="h-full overflow-auto bg-[#F7F8FA] px-6 py-6">
-      <div className="mb-5 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">首页 · 预警概览</h1>
-          <p className="mt-0.5 text-sm text-gray-500">预警规则的全局运行状态与趋势</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={onGoTables} className="rounded-lg border bg-white px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
-            数据表管理
-          </button>
-          <button onClick={onGoRules} className="rounded-lg border bg-white px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
-            预警规则
-          </button>
-        </div>
-      </div>
-
       {/* 统计卡片 */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard icon={<Sparkles size={18} />} color="#3B82F6" label="预警规则总数" value={stats.total} sub={`启用 ${stats.active} · 未启用 ${stats.inactive}`} />

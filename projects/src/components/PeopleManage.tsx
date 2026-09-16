@@ -75,18 +75,7 @@ export function PeopleManage() {
 
   return (
     <div className="flex h-full flex-col overflow-y-auto px-8 pb-10 pt-6">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-1.5 text-xs text-gray-400">
-            <span className="text-gray-500">系统管理</span>
-            <span>/</span>
-            <span className="text-gray-500">人事管理</span>
-            <span>/</span>
-            <span>用户管理</span>
-          </div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-gray-900">用户管理</h1>
-          <p className="mt-1 text-sm text-gray-400">添加人员：选择部门 / 职位 / 岗位，填写基础信息与管理范围</p>
-        </div>
+      <div className="mb-6 flex items-center justify-end">
         {can('create') && (
         <button
           onClick={() => {
@@ -99,7 +88,7 @@ export function PeopleManage() {
           新增人员
         </button>
         )}
-      </header>
+      </div>
 
       <div className="grid gap-6 grid-cols-[280px_1fr]">
         {/* 左侧：部门（组织）列表 */}
