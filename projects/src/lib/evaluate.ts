@@ -2020,6 +2020,15 @@ function evalNode(
                 default: return false;
               }
             }
+            // 区间（between / notBetween，如下界~上界）
+            if (op === 'between' || op === 'notBetween') {
+              const lv = toNum(raw);
+              const lo = toNum(item.rangeMin);
+              const hi = toNum(item.rangeMax);
+              if (!Number.isFinite(lv) || !Number.isFinite(lo) || !Number.isFinite(hi)) return false;
+              const inside = lv >= Math.min(lo, hi) && lv <= Math.max(lo, hi);
+              return op === 'between' ? inside : !inside;
+            }
             let values = item.values && item.values.length ? item.values : [];
             if (!values.length && cd.value !== undefined && cd.value !== '') values = [cd.value];
             // 「空/0」同时匹配空值与 0
@@ -2090,9 +2099,12 @@ function evalNode(
               const col = c.colLabel || c.col || leftCol;
               const opRef = c.op || cd.operator;
               const opN = OPERATOR_OPTIONS.find((o2) => o2.value === opRef)?.label || opRef;
-              const vals = (c.values && c.values.length ? c.values : [])
-                .map((v) => (v === '' ? '空' : String(v)))
-                .join(' / ');
+              const vals =
+                opRef === 'between' || opRef === 'notBetween'
+                  ? `${String(c.rangeMin ?? '?')} ~ ${String(c.rangeMax ?? '?')}`
+                  : (c.values && c.values.length ? c.values : [])
+                      .map((v) => (v === '' ? '空' : String(v)))
+                      .join(' / ');
               return `${i + 1}.${col} ${opN}${vals ? ` ∈{${vals}}` : ''}`;
             })
             .join('；')

@@ -1111,7 +1111,7 @@ const ConditionNode = memo(({ id, data }: NodeProps) => {
             </p>
           )}
           {(d.conditions && d.conditions.length ? d.conditions : []).map((c, i) => {
-            const isNoValue = c.op === 'empty' || c.op === 'notEmpty' || c.op === 'eq' || c.op === 'gt' || c.op === 'gte' || c.op === 'lt' || c.op === 'lte';
+            const isNoValue = c.op === 'empty' || c.op === 'notEmpty' || c.op === 'eq' || c.op === 'gt' || c.op === 'gte' || c.op === 'lt' || c.op === 'lte' || c.op === 'between' || c.op === 'notBetween';
             return (
               <div key={i} className="space-y-1 rounded-md border border-gray-200 p-1.5">
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -1142,6 +1142,8 @@ const ConditionNode = memo(({ id, data }: NodeProps) => {
                     <option value="gte">大于等于</option>
                     <option value="lt">小于</option>
                     <option value="lte">小于等于</option>
+                    <option value="between">在区间内(≤x≤)</option>
+                    <option value="notBetween">不在区间内</option>
                     <option value="empty">为空</option>
                     <option value="notEmpty">不为空</option>
                   </select>
@@ -1187,6 +1189,25 @@ const ConditionNode = memo(({ id, data }: NodeProps) => {
                           ))}
                         </select>
                       )}
+                    </div>
+                  )}
+                  {(c.op === 'between' || c.op === 'notBetween') && (
+                    <div className="flex shrink-0 items-center gap-1">
+                      <input
+                        value={c.rangeMin ?? ''}
+                        onChange={(e) => setCond(i, { rangeMin: e.target.value })}
+                        placeholder="下限"
+                        type="number"
+                        className="w-16 shrink-0 rounded-md border bg-white px-1 py-0.5 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                      />
+                      <span className="shrink-0 text-[11px] text-gray-400">~</span>
+                      <input
+                        value={c.rangeMax ?? ''}
+                        onChange={(e) => setCond(i, { rangeMax: e.target.value })}
+                        placeholder="上限"
+                        type="number"
+                        className="w-16 shrink-0 rounded-md border bg-white px-1 py-0.5 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                      />
                     </div>
                   )}
                   <button onClick={() => removeCond(i)} className="shrink-0 rounded px-1 text-[12px] text-gray-400 hover:text-red-500" title="删除条件">
@@ -1244,7 +1265,10 @@ const ConditionNode = memo(({ id, data }: NodeProps) => {
               .map((c) => {
                 const opN = OPERATOR_OPTIONS.find((o2) => o2.value === (c.op || 'eq'))?.label || c.op || '等于';
                 const noV = c.op === 'empty' || c.op === 'notEmpty';
-                const vs = (c.values || []).map((v) => (v === '' ? '空/0' : String(v))).join('/');
+                const vs =
+                  c.op === 'between' || c.op === 'notBetween'
+                    ? `${String(c.rangeMin ?? '?')} ~ ${String(c.rangeMax ?? '?')}`
+                    : (c.values || []).map((v) => (v === '' ? '空/0' : String(v))).join('/');
                 return `${c.colLabel || c.col || '列'} ${opN}${noV ? '' : vs ? ` ∈{${vs}}` : ''}`;
               })
               .join(d.conditionJoin === 'or' ? ' 或 ' : ' 且 ')

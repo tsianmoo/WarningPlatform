@@ -217,6 +217,10 @@ export interface ConditionItem {
   op?: Operator;
   /** 可匹配的值集合；含 '' 表示匹配"空" */
   values?: string[];
+  /** 区间下界（op 为 between/notBetween 时，如"3天至5天"的 3） */
+  rangeMin?: string;
+  /** 区间上界（op 为 between/notBetween 时，如"3天至5天"的 5） */
+  rangeMax?: string;
   /**
    * 右值来源：'values'（常量集合）或 'node'（引用节点标量，如基准统计均值）。
    * 当为 'node' 时用 refNode 指向的节点标量与左值做大小比较。
