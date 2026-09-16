@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { Bell, ClipboardList, Eye, History, MessageSquare, RotateCcw, Send, X } from 'lucide-react';
+import { Bell, ClipboardList, Eye, History, MessageSquare, RotateCcw, Send, Tag, X } from 'lucide-react';
 import { useStore, computeAlertDims } from '@/lib/store';
 import { resolvePerm, canView, filterAlertsByScope, resolveAuthAccount } from '@/lib/perm';
 import type { AlertStatus, AlertTask, NotifyMode } from '@/lib/types';
@@ -221,12 +221,6 @@ function formatDur(start: number, end: number): string {
   return `${sec} 秒`;
 }
 
-/** 同类预警标识：同一规则 + 同一触发主体（店仓/款色等首行 store 值），用于「历史预警」归并 */
-function historyKeyOf(a: AlertTask): string {
-  const ent = a.preview?.storeMessages?.[0]?.store ?? '';
-  return `${a.ruleId || a.ruleName || 'manual'}::${ent}`;
-}
-
 function ElapsedCell({ createdAt }: { createdAt: number }) {
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
@@ -340,7 +334,8 @@ export function AlertList() {
 
   const [handoffId, setHandoffId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [showHist, setShowHist] = useState(false);
+  const [showHist, setShowHist] = useState(true);
+  const [histTab, setHistTab] = useState<'all' | 'style'>('all');
   const [confirm, setConfirm] = useState<null | { title: string; desc?: string; needText?: boolean; required?: boolean; placeholder?: string; onOk: (t: string) => void }>(null);
   const [chatDraft, setChatDraft] = useState('');
   const [planDraft, setPlanDraft] = useState('');
@@ -745,10 +740,30 @@ export function AlertList() {
         const onEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
           if (e.key === 'Enter') { e.preventDefault(); sendMsg(); }
         };
-        const hKey = historyKeyOf(open);
-        const history = alerts
-          .filter((a) => a.id !== open.id && historyKeyOf(a) === hKey)
-          .sort((x, y) => (y.updatedAt ?? y.createdAt ?? 0) - (x.updatedAt ?? x.createdAt ?? 0));
+        const sortByTime = (xs: AlertTask[]) =>
+          xs.sort((x, y) => (y.updatedAt ?? y.createdAt ?? 0) - (x.updatedAt ?? x.createdAt ?? 0));
+        const curStyle = String((open.dims?.product?.style?.[0] ?? '') || '').trim();
+        const relatedByPerson = sortByTime(
+          alerts.filter(
+            (a) =>
+              a.id !== open.id &&
+              ((a.preview?.storeMessages ?? []).some((s) => scopeNames.includes(s.store)) ||
+                (!!open.assignee && a.assignee === open.assignee)),
+          ),
+        );
+        const relatedByStyle = curStyle
+          ? sortByTime(
+              alerts.filter((a) => {
+                if (a.id === open.id) return false;
+                const own = a.dims?.product?.style;
+                let ss: string[] = [];
+                if (own && own.length) ss = own;
+                else ss = computeAlertDims(a, state.stores)?.product?.style ?? [];
+                return ss.includes(curStyle);
+              }),
+            )
+          : [];
+        const sideList = histTab === 'all' ? relatedByPerson : relatedByStyle;
         return (
           <div className="fixed inset-0 z-50 flex flex-col bg-white">
             <style>{`@keyframes alertPop{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}.alert-pop{animation:alertPop .18s ease-out}`}</style>
@@ -756,17 +771,27 @@ export function AlertList() {
               {showHist ? (
                 <aside className="flex w-72 shrink-0 flex-col border-r border-gray-100 bg-gray-50/40">
                   <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-                    <div className="flex items-center gap-2 text-sm font-medium text-gray-800">
-                      <History size={15} className="text-gray-400" />
-                      历史预警
+                      <div className="flex items-center gap-1">
+                      {(['all', 'style'] as const).map((t) => (
+                        <button
+                          key={t}
+                          onClick={() => setHistTab(t)}
+                          className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${histTab === t ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
+                        >
+                          {t === 'all' ? '全部预警' : '关联预警'}
+                          <span className={`ml-1 rounded-full px-1.5 text-[10px] font-semibold ${histTab === t ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                            {(t === 'all' ? relatedByPerson : relatedByStyle).length}
+                          </span>
+                        </button>
+                      ))}
                     </div>
                     <button onClick={() => setShowHist(false)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
                       <X size={15} />
                     </button>
                   </div>
                   <div className="min-h-0 flex-1 space-y-1 overflow-auto px-2.5 py-2">
-                    {history.length ? (
-                      history.map((h) => {
+                    {sideList.length ? (
+                      sideList.map((h) => {
                         const hl = (LEVEL_META[(h.level ?? 'warn') as keyof typeof LEVEL_META] ?? LEVEL_META.warn);
                         const hs = STATUS_META[h.status];
                         return (
@@ -787,7 +812,7 @@ export function AlertList() {
                         );
                       })
                     ) : (
-                      <p className="pt-8 text-center text-xs text-gray-300">暂无相同的历史预警</p>
+                      <p className="pt-8 text-center text-xs text-gray-300">{histTab === 'all' ? '暂无与此店铺或接收人相关的预警' : `暂无关于「${curStyle}」的关联预警`}</p>
                     )}
                   </div>
                 </aside>
@@ -817,9 +842,9 @@ export function AlertList() {
                     onClick={() => setShowHist((v) => !v)}
                     className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50"
                   >
-                    <History size={13} />
-                    历史预警
-                    {history.length ? <span className="rounded-full bg-gray-800 px-1.5 text-[10px] font-semibold text-white">{history.length}</span> : null}
+                    {histTab === 'all' ? <History size={13} /> : <Tag size={13} />}
+                    {histTab === 'all' ? '全部预警' : '关联预警'}
+                    {sideList.length ? <span className="rounded-full bg-gray-800 px-1.5 text-[10px] font-semibold text-white">{sideList.length}</span> : null}
                   </button>
                   <button
                     onClick={() => setOpenId(null)}
