@@ -3,6 +3,7 @@
 import React, { memo, useEffect, useState, useMemo, useRef, createContext, useContext } from 'react';
 import { Handle, Position, useReactFlow, useEdges, useNodes, type NodeProps } from '@xyflow/react';
 import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus, ChevronDown } from 'lucide-react';
+import CalcExprEditor, { type CalcExprEditorHandle } from './CalcExprEditor';
 import {
   KIND_COLOR,
   KIND_LABEL,
@@ -4740,21 +4741,21 @@ const RankNode = memo(({ id, data }: NodeProps) => {
   );
 });
 
-/** 计算列函数库：name 函数名；desc 用途；usage 用法示例；tag 点击插入的完整公式模板 */
+/** 计算列函数库：name 函数名；desc 用途；usage 用法示例；tag 点击插入的完整公式模板（占位请替换为实际字段/值） */
 const CALC_FNS: { name: string; desc: string; usage: string; tag: string }[] = [
-  { name: 'IF', desc: '条件判断，满足返回真值，否则返回假值', usage: 'IF([库存]=0,\'无货\',\'有货\')', tag: 'IF([条件],[真值],[假值])' },
-  { name: 'DATEDIFF', desc: '计算两个日期的相差天数（A-B，取整数）', usage: 'DATEDIFF(TODAY(),[上货日期]) 或 [当前日期]-[最小(出库日期)]', tag: 'DATEDIFF([日期A],[日期B])' },
-  { name: 'CONCAT', desc: '文本拼接，把多个文本连成一个', usage: 'CONCAT([店铺],\'-\',[款色])', tag: 'CONCAT([文本1],[文本2])' },
-  { name: 'TEXT', desc: '把值转为文本', usage: 'TEXT([数量])', tag: 'TEXT([值])' },
-  { name: 'NUMBER', desc: '把文本转为数值', usage: 'NUMBER([价格文本])', tag: 'NUMBER([文本])' },
-  { name: 'SUBSTR', desc: '从文本中截取一段（起始从0开始，可带长度）', usage: 'SUBSTR([款色],0,3)', tag: 'SUBSTR([文本],0,3)' },
-  { name: 'LEFT', desc: '取文本左边 n 个字符', usage: 'LEFT([款色],2)', tag: 'LEFT([文本],2)' },
-  { name: 'RIGHT', desc: '取文本右边 n 个字符', usage: 'RIGHT([款色],2)', tag: 'RIGHT([文本],2)' },
-  { name: 'LEN', desc: '返回文本长度', usage: 'LEN([款色])', tag: 'LEN([文本])' },
-  { name: 'YEAR', desc: '从日期中取年份', usage: 'YEAR([出库日期])', tag: 'YEAR([日期])' },
-  { name: 'MONTH', desc: '从日期中取月份', usage: 'MONTH([出库日期])', tag: 'MONTH([日期])' },
-  { name: 'DAY', desc: '从日期中取几号', usage: 'DAY([出库日期])', tag: 'DAY([日期])' },
-  { name: 'DATE', desc: '按 年,月,日 拼成一个日期', usage: 'DATE(2026,8,10)', tag: 'DATE(2026,1,1)' },
+  { name: 'IF', desc: '条件判断，满足返回真值，否则返回假值', usage: 'IF([库存]=0,\'无货\',\'有货\')', tag: 'IF(条件,真值,假值)' },
+  { name: 'DATEDIFF', desc: '计算两个日期的相差天数（A-B，取整数）', usage: 'DATEDIFF(TODAY(),[上货日期]) 或 [当前日期]-[最小(出库日期)]', tag: 'DATEDIFF(日期A,日期B)' },
+  { name: 'CONCAT', desc: '文本拼接，把多个文本连成一个', usage: 'CONCAT([店铺],\'-\',[款色])', tag: 'CONCAT(文本1,文本2)' },
+  { name: 'TEXT', desc: '把值转为文本', usage: 'TEXT([数量])', tag: 'TEXT(值)' },
+  { name: 'NUMBER', desc: '把文本转为数值', usage: 'NUMBER([价格文本])', tag: 'NUMBER(文本)' },
+  { name: 'SUBSTR', desc: '从文本中截取一段（起始从0开始，可带长度）', usage: 'SUBSTR([款色],0,3)', tag: 'SUBSTR(文本,起始,长度)' },
+  { name: 'LEFT', desc: '取文本左边 n 个字符', usage: 'LEFT([款色],2)', tag: 'LEFT(文本,个数)' },
+  { name: 'RIGHT', desc: '取文本右边 n 个字符', usage: 'RIGHT([款色],2)', tag: 'RIGHT(文本,个数)' },
+  { name: 'LEN', desc: '返回文本长度', usage: 'LEN([款色])', tag: 'LEN(文本)' },
+  { name: 'YEAR', desc: '从日期中取年份', usage: 'YEAR([出库日期])', tag: 'YEAR(日期)' },
+  { name: 'MONTH', desc: '从日期中取月份', usage: 'MONTH([出库日期])', tag: 'MONTH(日期)' },
+  { name: 'DAY', desc: '从日期中取几号', usage: 'DAY([出库日期])', tag: 'DAY(日期)' },
+  { name: 'DATE', desc: '按 年,月,日 拼成一个日期', usage: 'DATE(2026,8,10)', tag: 'DATE(年,月,日)' },
   { name: 'TODAY', desc: '获取当前日期（年月日）', usage: 'DATEDIFF(TODAY(),[上货日期])', tag: 'TODAY()' },
   { name: 'NOW', desc: '获取当前日期和时间', usage: 'NOW()', tag: 'NOW()' },
 ];
@@ -4778,27 +4779,21 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
   const cols = Array.isArray(d.columns) ? d.columns : [];
   const [activeCol, setActiveCol] = useState<number | null>(null);
   const [fnOpen, setFnOpen] = useState(true);
-  const colExprRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const insertIntoExpr = (i: number, text: string) => {
-    if (i < 0 || !cols[i]) return;
+  const colExprRefs = useRef<(CalcExprEditorHandle | null)[]>([]);
+  const insertField = (i: number, name: string) => {
+    if (i < 0) return;
     const el = colExprRefs.current[i];
-    const ex = el ? el.value : (cols[i]?.expr || '');
-    const pos = el && el.selectionStart != null ? el.selectionStart : ex.length;
-    const next = ex.slice(0, pos) + text + ex.slice(pos);
-    setCol(i, { expr: next });
-    const caret = pos + text.length;
-    setTimeout(() => {
-      const node = colExprRefs.current[i];
-      if (node) {
-        node.focus();
-        node.setSelectionRange(caret, caret);
-      }
-    }, 0);
+    if (el) el.insertField(name);
   };
   const insFn = (tag: string) => {
     const i = activeCol != null ? activeCol : (cols.length ? cols.length - 1 : -1);
     if (i < 0) return;
-    insertIntoExpr(i, tag);
+    const el = colExprRefs.current[i];
+    const caret = (() => {
+      const open = tag.indexOf('(');
+      return open >= 0 ? open + 1 : -1;
+    })();
+    if (el) el.insertText(tag, caret);
   };
   const setCol = (i: number, patch: Partial<CalcColumn>) => {
     const arr = cols.slice();
@@ -4858,7 +4853,7 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
               onClick={(e) => {
                 e.stopPropagation();
                 const i = activeCol != null ? activeCol : (cols.length ? cols.length - 1 : -1);
-                insertIntoExpr(i, `[${f}]`);
+                insertField(i, f);
               }}
               className="rounded bg-white px-1.5 py-0.5 text-[10px] text-fuchsia-700 ring-1 ring-fuchsia-200 hover:bg-fuchsia-100"
               title={`点击把字段 [${f}] 插入到当前计算列公式的光标处`}
@@ -4888,16 +4883,19 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
                 删
               </button>
             </div>
-            <input
-              ref={(el) => { colExprRefs.current[i] = el; }}
-              defaultValue={c.expr}
+            <div
               onFocus={() => setActiveCol(i)}
               onClick={() => setActiveCol(i)}
-              onKeyUp={() => setActiveCol(i)}
-              onChange={(e) => setCol(i, { expr: e.target.value })}
-              placeholder="例：DATEDIFF(TODAY(),[上货日期]) 或 [当前日期]-[最小(出库日期)]"
-              className={`${inputCls} ${activeCol === i ? 'ring-1 ring-fuchsia-300' : ''}`}
-            />
+              className="w-full"
+            >
+              <CalcExprEditor
+                value={c.expr}
+                onChange={(v) => setCol(i, { expr: v })}
+                onFocus={() => setActiveCol(i)}
+                ref={(el) => { colExprRefs.current[i] = el; }}
+                placeholder="例：DATEDIFF(TODAY(),[上货日期]) 或 [当前日期]-[最小(出库日期)]"
+              />
+            </div>
           </div>
         ))}
         <button
