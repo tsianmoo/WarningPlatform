@@ -161,6 +161,8 @@ export interface TimeWindow {
     enabled?: boolean;
     /** 对比模式：yoY=同期(去年同段) ring=环期(上移时间段) */
     mode?: 'yoY' | 'ring';
+    /** 可同时启用多个对比模式（同期 && 环期） */
+    modes?: ('yoY' | 'ring')[];
     /** 环期上移的单位数（默认 1） */
     shift?: number;
   };
@@ -905,7 +907,7 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   filter: '数据过滤',
   elapsed: '已过天数',
   rank: '排名',
-  calc: '添加列',
+  calc: '添加公式列',
 };
 
 /** 节点分类色 */

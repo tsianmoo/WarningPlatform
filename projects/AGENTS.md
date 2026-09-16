@@ -230,3 +230,4 @@
 - **oracledb 类型过严**：`oracle.ts` 用自定义 `OraConn` 桩接口（execute/cancel/close/commit）规避 @types 泛型报错；`streamQuery`/`exec` 内 conn 取 `any` 处理。
 - **驱动扩展**：新增厂商 → 在 `driver.ts` 加 `getXxx()` + 注册 + 置 `DRIVER_SUPPORTED`，并实现 `Driver` 接口全部方法（Oracle 有 `getPrimaryKeys` 可选方法）。
 - **分组聚合同期/环比增长计算**：`evaluate.ts` 的对比期聚合（`cmpValByKey`）需与当期走同一套指标分支（`aggActiveDays`/`aggCountDistinct`/`count`/`agg`）。否则 `countDistinct` 等指标会落到通用 `agg` 默认分支返回 NaN，导致同期值与同比列显示 `—`，用户常误以为「没输出」。增长率列名「增长率%」已统一为「同比」，值用 `toFixed(2)` 保留两位小数；同期列名由「N年前同期」简化为「同期」。
+- **时间窗对比多模式**：`compare.modes: ('yoY'|'ring')[]` 支持同时启用同期+环期（兼容旧 `mode` 单字段；`time.ts compareModes()` 解析并去重）。`TimeComponent` 为多选 checkbox。`evaluate.ts` 分组聚合按模式循环构建 `cmpSeries`，每种模式输出独立两列：yoY→`·同期`+`·同比`、ring→`·环期`+`·环比`；增长率统一 `toFixed(2)%`。⚠️ 其他走对比窗口的地方（计算差集、基线等）仍需 `resolveTimeWindow().compare` 单值，仅分组聚合是多列。

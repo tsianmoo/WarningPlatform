@@ -192,25 +192,34 @@ export default function TimeComponent({ value, onChange, hideAllToggle }: Props)
                 对比上一时段（同期/环期）
               </label>
               {cmpTw && (
-                <div className="mt-1 flex items-center gap-1.5 px-2">
-                  {COMPARE_OPTIONS.map((o) => (
-                    <button
-                      key={o.value}
-                      type="button"
-                      onClick={() => onChange({ ...tw, compare: { ...cmpTw, mode: o.value } })}
-                      className={`inline-flex min-w-[3.5rem] flex-col items-center rounded border px-2 py-0.5 text-[10px] transition ${
-                        cmpTw.mode === o.value
-                          ? 'border-emerald-500 bg-emerald-500 text-white'
-                          : 'border-slate-200 text-slate-600 hover:border-emerald-300 hover:bg-emerald-50'
-                      }`}
-                    >
-                      <span>{o.label}</span>
-                      <span className={`text-[8px] ${cmpTw.mode === o.value ? 'text-emerald-100' : 'text-slate-400'}`}>
-                        {o.hint}
-                      </span>
-                    </button>
-                  ))}
-                  <span className="ml-1 text-[9px] text-slate-400">对比窗口：本期 → 上一时段</span>
+                <div className="mt-1 space-y-1 px-2">
+                  {COMPARE_OPTIONS.map((o) => {
+                    const active = (cmpTw.modes ?? [cmpTw.mode ?? 'ring']).includes(o.value);
+                    const toggle = (on: boolean) => {
+                      const cur = (cmpTw.modes ?? [cmpTw.mode ?? 'ring']).filter(Boolean) as ('yoY' | 'ring')[];
+                      const next = on ? Array.from(new Set([...cur, o.value])) : cur.filter((m) => m !== o.value);
+                      onChange({ ...tw, compare: { ...cmpTw, modes: next, mode: next[0] ?? 'ring' } });
+                    };
+                    return (
+                      <label
+                        key={o.value}
+                        className={`flex cursor-pointer select-none items-center justify-between rounded border px-2 py-0.5 text-[10px] transition ${
+                          active ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/40'
+                        }`}
+                      >
+                        <span className={`flex items-center gap-1 ${active ? 'text-emerald-700' : 'text-slate-600'}`}>
+                          <input
+                            type="checkbox"
+                            className="h-3 w-3 accent-emerald-600"
+                            checked={active}
+                            onChange={(e) => toggle(e.target.checked)}
+                          />
+                          <span className="font-medium">{o.label}</span>
+                          <span className="text-[8px] text-slate-400">{o.hint}</span>
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
               )}
             </div>

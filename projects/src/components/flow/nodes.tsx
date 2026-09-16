@@ -236,7 +236,7 @@ function nodeKindCn(kind: FlowNode['kind']) {
     elapsed: '已过天数',
     logic: '逻辑关联',
     rank: '排名',
-    calc: '添加列',
+    calc: '添加公式列',
   };
   return map[kind];
 }
@@ -581,7 +581,7 @@ function getNodeOutputs(allNodes: ReturnType<typeof useNodes>, selfId: string): 
       case 'calc': {
         const cn = n.data as unknown as CalcNodeData;
         const ccols = Array.isArray(cn.columns) ? cn.columns : [];
-        const label = ccols.length ? `添加列(${ccols.map((c) => c.label).join('、')})` : '添加列';
+        const label = ccols.length ? `添加公式列(${ccols.map((c) => c.label).join('、')})` : '添加公式列';
         out.push({ ref: { nodeId: n.id, nodeKind: 'calc', outputKind: 'column', label } });
         break;
       }

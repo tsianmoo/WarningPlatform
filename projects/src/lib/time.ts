@@ -210,10 +210,19 @@ export function resolveTimeWindow(tw: TimeWindow, now = new Date()): ResolvedTim
 
   let compare: ResolvedCompare | undefined;
   if (tw.compare?.enabled) {
-    compare = computeCompareWindow(tw, preset, start, end, now);
+    const modes = compareModes(tw.compare);
+    const first = modes[0] ?? 'ring';
+    compare = computeCompareWindow(tw, preset, start, end, now, first);
   }
 
   return { start, end, label, hint, compare };
+}
+
+/** 解析对比模式列表（兼容旧字段 mode / 新字段 modes），去重保序 */
+export function compareModes(c?: { mode?: 'yoY' | 'ring'; modes?: ('yoY' | 'ring')[] }): ('yoY' | 'ring')[] {
+  if (!c) return [];
+  const list = (Array.isArray(c.modes) && c.modes.length ? c.modes : [c.mode ?? 'ring']).filter(Boolean) as ('yoY' | 'ring')[];
+  return Array.from(new Set(list));
 }
 
 type Gran = 'day' | 'week' | 'month' | 'quarter' | 'year';
@@ -243,10 +252,11 @@ export function computeCompareWindow(
   preset: TimePreset,
   start: Date,
   end: Date,
-  _now: Date = new Date()
+  _now: Date = new Date(),
+  forcedMode?: 'yoY' | 'ring'
 ): ResolvedCompare {
   void _now;
-  const mode = tw.compare?.mode ?? 'ring';
+  const mode = forcedMode ?? tw.compare?.mode ?? 'ring';
   const n = Math.max(1, Math.floor(tw.compare?.shift ?? 1));
   let cs = start;
   let ce = end;

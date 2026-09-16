@@ -408,7 +408,7 @@ export function PalettePanel({
     { kind: 'relation', label: '关联', desc: '联表', payload: { kind: 'relation' }, color: KIND_COLOR.relation.border, dot: KIND_COLOR.relation.dot },
     { kind: 'time', label: '时间窗口', desc: '今天/本周/本月…', payload: { kind: 'time' }, color: KIND_COLOR.time.border, dot: KIND_COLOR.time.dot },
     { kind: 'elapsed', label: '已过天数', desc: '本周/月/季/年/区间已过天数', payload: { kind: 'elapsed' }, color: KIND_COLOR.elapsed.border, dot: KIND_COLOR.elapsed.dot },
-    { kind: 'calc', label: '添加列', desc: '公式计算追加新列·IF/拼接/日期差', payload: { kind: 'calc' }, color: KIND_COLOR.calc.border, dot: KIND_COLOR.calc.dot },
+    { kind: 'calc', label: '添加公式列', desc: '公式计算追加新列·IF/拼接/日期差', payload: { kind: 'calc' }, color: KIND_COLOR.calc.border, dot: KIND_COLOR.calc.dot },
     { kind: 'action', label: '预警动作', desc: '终点·通知', payload: { kind: 'action' }, color: KIND_COLOR.action.border, dot: KIND_COLOR.action.dot },
   ];
 
