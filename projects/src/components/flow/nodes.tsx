@@ -3185,7 +3185,7 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
     'w-full rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400';
 
   return (
-    <NodeShell fnode={fnode}>
+    <NodeShell fnode={fnode} width={420}>
       <DataSourcePicker
         source={source}
         sourceNode={d.sourceNode}
@@ -3251,8 +3251,8 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
               ))}
             </select>
 
-            <div className="mb-1 flex items-center justify-between">
-              <div className={rowLabel}>③ 统计时间窗</div>
+            <div className="mb-1 mt-2 flex items-center justify-between">
+              <div className="text-[11px] font-medium text-gray-500">③ 统计时间窗</div>
               <label className="flex shrink-0 cursor-pointer select-none items-center gap-1 text-[10px] font-medium text-gray-600">
                 <input
                   type="checkbox"
