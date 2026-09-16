@@ -214,8 +214,7 @@ export function allowedStoreIds(scope: DataScope | null, person: Person, stores:
     case 'store':
       return person.storeId ? new Set([person.storeId]) : new Set();
     case 'managed': {
-      const ids = person.manageScope?.storeIds ?? [];
-      return new Set(ids);
+      return manageStoreIds(person, stores);
     }
     case 'custom': {
       const out = new Set<string>();
@@ -227,7 +226,7 @@ export function allowedStoreIds(scope: DataScope | null, person: Person, stores:
           if (v && f.values.includes(v)) out.add(st.id);
         }
       }
-      if (s.useManageScope) (person.manageScope?.storeIds ?? []).forEach((id) => out.add(id));
+      if (s.useManageScope) manageStoreIds(person, stores).forEach((id) => out.add(id));
       return out;
     }
     default:
@@ -303,6 +302,24 @@ function storeAttrValue(s: Store, attrName: string): string {
   if (attrName === '所属分公司' || attrName === 'company') return s.company ?? '';
   if (attrName === '所属部门' || attrName === 'department') return s.department ?? '';
   return s.attrs?.[attrName] ?? '';
+}
+
+/**
+ * 个人管理范围→实际管辖门店：筛选条件采用「组合(AND)」——门店须满足全部条件方纳入辖内；
+ * 再与显式勾选的 storeIds 取并集。只要设置了管理范围，命中的门店即纳入管辖，两者不冲突。
+ */
+export function manageStoreIds(person: Person, stores: Store[]): Set<string> {
+  const out = new Set<string>(person.manageScope?.storeIds ?? []);
+  const filters = person.manageScope?.filters ?? [];
+  if (!filters.length) return out;
+  for (const st of stores) {
+    const ok = filters.every((f) => {
+      const v = storeAttrValue(st, f.attrName);
+      return !!v && f.values.includes(v);
+    });
+    if (ok) out.add(st.id);
+  }
+  return out;
 }
 
 /** 便捷取 Person.permOverride（兼容 modules 旧的字段） */

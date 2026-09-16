@@ -28,6 +28,7 @@ import { buildSampleTable, ensureFieldsComplete } from './parser';
 import { evaluateFlow } from './evaluate';
 import type { NodePreview } from './evaluate';
 import type { ActionNodeData, ConditionItem, ConditionNodeData, FlowNode } from './types';
+import { manageStoreIds } from './perm';
 
 /** 判断预警是否为残缺脏数据（标题与规则名均为空且无预览，仅基础字段的残留记录） */
 export function isBlankAlert(a: Partial<AlertTask> | null | undefined): boolean {
@@ -263,9 +264,9 @@ export function buildAlertsForRule(
     } else if (m === 'person') {
       const pers = (ctx?.persons ?? []).filter((p) => {
         if (p.enabled === false) return false;
-        const ids = p.manageScope?.storeIds ?? [];
-        if (!ids.length) return false;
-        const byScope = hitStoreById.length === 0 || hitStoreById.some((s) => ids.includes(s.id));
+        const ids = manageStoreIds(p, ctx?.stores ?? []);
+        if (!ids.size) return false;
+        const byScope = hitStoreById.length === 0 || hitStoreById.some((s) => ids.has(s.id));
         if (!byScope) return false;
         const posFilter = notify?.personPositions ?? [];
         if (posFilter.length && !(p.title && posFilter.includes(p.title))) return false;
