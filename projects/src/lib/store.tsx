@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import type {
   AlertRule,
   AlertTask,
+  AlertDims,
   DataTable,
   ExecutionRecord,
   HrAttribute,
@@ -93,6 +94,86 @@ export interface BuildAlertCtx {
   stores?: Store[];
   employees?: Employee[];
   persons?: Person[];
+}
+
+/** 门店档案 → 店仓各筛选维度的取值（按字段中文名兜底兼容） */
+function storeDimValues(st: Store): { brand?: string; company?: string; department?: string; salesArea?: string; district?: string } {
+  return {
+    brand: st.brand || st.attrs?.['主营品牌'],
+    company: st.company || st.attrs?.['所属分公司'],
+    department: st.department || st.attrs?.['所属部门'],
+    salesArea: st.salesArea || st.attrs?.['销售区域'],
+    district: st.district || st.attrs?.['区部'],
+  };
+}
+
+/** 商品列别名映射（列名可能是中文或英文） */
+function productCol(columns: string[], aliases: string[]): string | undefined {
+  const hit = aliases.find((al) => columns.some((c) => (c || '').trim() === al));
+  return hit;
+}
+
+/**
+ * 从预警自身命中内容提取可筛选维度（商品/店仓）：
+ * - 商品：扫描预览 rows 里「品牌/年份/季节/品类/款色」列的取值，去重。
+ * - 店仓：由 storeIds 或 storeMessages[].store 反查门店档案的 主营品牌/分公司/部门/销售区域/区部。
+ * 供筛选时取值，也兼容旧预警（无 dims 时按此补算）。
+ */
+export function computeAlertDims(
+  a: { storeIds?: string[]; preview?: AlertTask['preview'] },
+  stores: Store[]
+): AlertDims | undefined {
+  const dims: AlertDims = {};
+
+  const columns = a.preview?.columns ?? [];
+  const rows = (a.preview?.rows ?? []).slice(0, 200);
+  if (columns.length && rows.length) {
+    const pick = (aliases: string[]): string[] => {
+      const col = productCol(columns, aliases);
+      if (!col) return [];
+      return Array.from(new Set(rows.map((r) => String((r as Record<string, unknown>)[col] ?? '').trim()).filter(Boolean)));
+    };
+    const brand = pick(['品牌', '品牌名', 'brand']);
+    const year = pick(['年份', 'year', '年']);
+    const season = pick(['季节', 'season']);
+    const category = pick(['品类', '类别', 'category', '大类']);
+    const style = pick(['款色', '款号', '款', 'style', 'SKU', '款色编码']);
+    const product: AlertDims['product'] = {};
+    if (brand.length) product.brand = brand;
+    if (year.length) product.year = year;
+    if (season.length) product.season = season;
+    if (category.length) product.category = category;
+    if (style.length) product.style = style;
+    if (Object.keys(product).length) dims.product = product;
+  }
+
+  // 店仓维度：优先 storeIds；旧预警无 storeIds 时用 storeMessages 的店仓名回退匹配
+  let sts: Store[] = [];
+  const sids = (a.storeIds ?? []).filter(Boolean);
+  if (sids.length) sts = stores.filter((s) => sids.includes(s.id));
+  if (!sts.length) {
+    const names = new Set<string>();
+    (a.preview?.storeMessages ?? []).forEach((sm) => sm.store && names.add(sm.store));
+    if (names.size) sts = stores.filter((s) => names.has(s.name));
+  }
+  if (sts.length) {
+    const uniq = (f: (st: Store) => string | undefined): string[] =>
+      Array.from(new Set(sts.map(f).filter(Boolean))) as string[];
+    const store: AlertDims['store'] = {};
+    const brand = uniq((st) => storeDimValues(st).brand);
+    const company = uniq((st) => storeDimValues(st).company);
+    const department = uniq((st) => storeDimValues(st).department);
+    const salesArea = uniq((st) => storeDimValues(st).salesArea);
+    const district = uniq((st) => storeDimValues(st).district);
+    if (brand.length) store.brand = brand;
+    if (company.length) store.company = company;
+    if (department.length) store.department = department;
+    if (salesArea.length) store.salesArea = salesArea;
+    if (district.length) store.district = district;
+    if (Object.keys(store).length) dims.store = store;
+  }
+
+  return Object.keys(dims).length ? dims : undefined;
 }
 
 export function buildAlertsForRule(
@@ -201,7 +282,7 @@ export function buildAlertsForRule(
         m === 'store' && curStores.length
           ? Array.from(new Set(curStores.map((s) => s.store).filter(Boolean)))
           : (recipients?.[0]?.names ?? []);
-      return {
+      const obj = {
         ruleId: rule.id,
         ruleName: rule.name,
         level: lv,
@@ -228,6 +309,7 @@ export function buildAlertsForRule(
         notified: curNames.slice(),
         status: 'new' as const,
       };
+      return { ...obj, dims: computeAlertDims(obj, storesList) };
     };
     if (m === 'store' && storeMessages?.length) {
       return storeMessages.map((sm) => mk(actionTitle, sm));

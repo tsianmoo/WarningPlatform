@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Bell, ClipboardList, Eye, History, MessageSquare, RotateCcw, Send, X } from 'lucide-react';
-import { useStore } from '@/lib/store';
+import { useStore, computeAlertDims } from '@/lib/store';
 import { resolvePerm, canView, filterAlertsByScope, resolveAuthAccount } from '@/lib/perm';
 import type { AlertStatus, AlertTask, NotifyMode } from '@/lib/types';
 import { PERSONNEL } from '@/lib/types';
@@ -62,7 +62,34 @@ function ElapsedCell({ createdAt }: { createdAt: number }) {
   return <span className="text-gray-400 tabular-nums">{now ? formatElapsed(createdAt, now) : '—'}</span>;
 }
 
-const emptyFilter = { kw: '', level: 'all' as string, status: 'all' as string, person: 'all' as string, start: '', end: '' };
+const emptyFilter = {
+  kw: '',
+  level: 'all' as string,
+  status: 'all' as string,
+  person: 'all' as string,
+  start: '',
+  end: '',
+  pBrand: 'all' as string, pYear: 'all' as string, pSeason: 'all' as string, pCategory: 'all' as string, pStyle: 'all' as string,
+  sBrand: 'all' as string, sCompany: 'all' as string, sDept: 'all' as string, sSalesArea: 'all' as string, sDistrict: 'all' as string,
+};
+
+/** 商品维度筛选定义（取值来自预警自身的商品维度） */
+const PRODUCT_DIMS: { key: keyof typeof emptyFilter; label: string; get: (a: AlertTask) => string[] | undefined }[] = [
+  { key: 'pBrand', label: '品牌', get: (a) => a.dims?.product?.brand },
+  { key: 'pYear', label: '年份', get: (a) => a.dims?.product?.year },
+  { key: 'pSeason', label: '季节', get: (a) => a.dims?.product?.season },
+  { key: 'pCategory', label: '品类', get: (a) => a.dims?.product?.category },
+  { key: 'pStyle', label: '款色', get: (a) => a.dims?.product?.style },
+];
+
+/** 店仓维度筛选定义（取值来自命中店仓的门店档案字段） */
+const STORE_DIMS: { key: keyof typeof emptyFilter; label: string; get: (a: AlertTask) => string[] | undefined }[] = [
+  { key: 'sBrand', label: '主营品牌', get: (a) => a.dims?.store?.brand },
+  { key: 'sCompany', label: '分公司', get: (a) => a.dims?.store?.company },
+  { key: 'sDept', label: '部门', get: (a) => a.dims?.store?.department },
+  { key: 'sSalesArea', label: '销售区域', get: (a) => a.dims?.store?.salesArea },
+  { key: 'sDistrict', label: '区部', get: (a) => a.dims?.store?.district },
+];
 
 /** 快捷日期标签定义 */
 const QUICK_TAGS: { key: string; label: string }[] = [

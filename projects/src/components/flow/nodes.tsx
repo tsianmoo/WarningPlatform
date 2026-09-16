@@ -2,7 +2,7 @@
 
 import React, { memo, useEffect, useState, useMemo, useRef, createContext, useContext } from 'react';
 import { Handle, Position, useReactFlow, useEdges, useNodes, type NodeProps } from '@xyflow/react';
-import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus } from 'lucide-react';
+import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus, ChevronDown } from 'lucide-react';
 import {
   KIND_COLOR,
   KIND_LABEL,
@@ -4740,16 +4740,24 @@ const RankNode = memo(({ id, data }: NodeProps) => {
   );
 });
 
-const CALC_FN_HINT = [
-  'IF(条件, 真值, 假值) 例如 IF([库存]=0,\'无货\',\'有货\')',
-  'CONCAT(文本1,文本2,…) 文本拼接；或 [字段]&\'-\'&[字段]',
-  'TEXT(值) 转文本；NUMBER(文本) 转数值',
-  'SUBSTR(文本,起始[,长度]) 取文本；LEFT(文本,n) RIGHT(文本,n) LEN(文本)',
-  '当前日期 TODAY()；当前时间 NOW()；DATE(年,月,日) 拼日期',
-  'YEAR(日期)/MONTH(日期)/DAY(日期) 取年月日',
-  'DATEDIFF(日期A,日期B) 返回相差天数（A-B）',
+/** 计算列函数库：name 函数名；desc 用途；usage 用法示例；tag 点击插入的完整公式模板 */
+const CALC_FNS: { name: string; desc: string; usage: string; tag: string }[] = [
+  { name: 'IF', desc: '条件判断，满足返回真值，否则返回假值', usage: 'IF([库存]=0,\'无货\',\'有货\')', tag: 'IF([条件],[真值],[假值])' },
+  { name: 'DATEDIFF', desc: '计算两个日期的相差天数（日期A-日期B）', usage: 'DATEDIFF(TODAY(),[上货日期])', tag: 'DATEDIFF([日期A],[日期B])' },
+  { name: 'CONCAT', desc: '文本拼接，把多个文本连成一个', usage: 'CONCAT([店铺],\'-\',[款色])', tag: 'CONCAT([文本1],[文本2])' },
+  { name: 'TEXT', desc: '把值转为文本', usage: 'TEXT([数量])', tag: 'TEXT([值])' },
+  { name: 'NUMBER', desc: '把文本转为数值', usage: 'NUMBER([价格文本])', tag: 'NUMBER([文本])' },
+  { name: 'SUBSTR', desc: '从文本中截取一段（起始从0开始，可带长度）', usage: 'SUBSTR([款色],0,3)', tag: 'SUBSTR([文本],0,3)' },
+  { name: 'LEFT', desc: '取文本左边 n 个字符', usage: 'LEFT([款色],2)', tag: 'LEFT([文本],2)' },
+  { name: 'RIGHT', desc: '取文本右边 n 个字符', usage: 'RIGHT([款色],2)', tag: 'RIGHT([文本],2)' },
+  { name: 'LEN', desc: '返回文本长度', usage: 'LEN([款色])', tag: 'LEN([文本])' },
+  { name: 'YEAR', desc: '从日期中取年份', usage: 'YEAR([出库日期])', tag: 'YEAR([日期])' },
+  { name: 'MONTH', desc: '从日期中取月份', usage: 'MONTH([出库日期])', tag: 'MONTH([日期])' },
+  { name: 'DAY', desc: '从日期中取几号', usage: 'DAY([出库日期])', tag: 'DAY([日期])' },
+  { name: 'DATE', desc: '按 年,月,日 拼成一个日期', usage: 'DATE(2026,8,10)', tag: 'DATE(2026,1,1)' },
+  { name: 'TODAY', desc: '获取当前日期（年月日）', usage: 'DATEDIFF(TODAY(),[上货日期])', tag: 'TODAY()' },
+  { name: 'NOW', desc: '获取当前日期和时间', usage: 'NOW()', tag: 'NOW()' },
 ];
-const CALC_FN_LIST = ['IF', 'CONCAT', 'TEXT', 'NUMBER', 'SUBSTR', 'LEFT', 'RIGHT', 'LEN', 'YEAR', 'MONTH', 'DAY', 'DATE', 'TODAY', 'NOW', 'DATEDIFF'];
 
 /** 添加列（calc）节点：选择数据表或节点结果，逐行用函数公式追加计算列 */
 const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
@@ -4768,6 +4776,13 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
       ? (d.sourceNode ? inferNodeCols(allNodes, tables, d.sourceNode).map((c) => c.label || c.key) : [])
       : (table?.fields.map((f) => f.alias || f.key) ?? []);
   const cols = Array.isArray(d.columns) ? d.columns : [];
+  const [activeCol, setActiveCol] = useState<number | null>(null);
+  const [fnOpen, setFnOpen] = useState(true);
+  const insFn = (tag: string) => {
+    const i = activeCol != null ? activeCol : cols.length - 1;
+    if (i < 0) return;
+    setCol(i, { expr: (cols[i]?.expr || '') + tag });
+  };
   const setCol = (i: number, patch: Partial<CalcColumn>) => {
     const arr = cols.slice();
     arr[i] = { ...arr[i], ...patch };
@@ -4842,13 +4857,14 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
             <div className="flex items-center gap-1">
               <input
                 value={c.label}
+                onFocus={() => setActiveCol(i)}
                 onChange={(e) => setCol(i, { label: e.target.value })}
                 placeholder="新列名，如：上货天数"
                 className={`${inputCls} flex-1`}
               />
               <button
                 type="button"
-                onClick={() => update({ columns: cols.filter((_, k) => k !== i) } as Partial<CalcNodeData>)}
+                onClick={() => { update({ columns: cols.filter((_, k) => k !== i) } as Partial<CalcNodeData>); if (activeCol === i) setActiveCol(null); }}
                 className="text-[10px] text-red-400 hover:text-red-600"
               >
                 删
@@ -4856,9 +4872,10 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
             </div>
             <input
               value={c.expr}
+              onFocus={() => setActiveCol(i)}
               onChange={(e) => setCol(i, { expr: e.target.value })}
               placeholder="公式，如 DATEDIFF(TODAY(),[上货日期])"
-              className={inputCls}
+              className={`${inputCls} ${activeCol === i ? 'ring-1 ring-fuchsia-300' : ''}`}
             />
           </div>
         ))}
@@ -4870,26 +4887,36 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
           <Plus size={12} /> 添加计算列
         </button>
 
-        <div className="mt-2 rounded-md bg-gray-50 px-2 py-1.5 text-[10px] leading-relaxed text-gray-500">
-          <div className="mb-0.5 font-medium text-gray-600">可用函数（可插入多个字段组合计算）</div>
-          {CALC_FN_HINT.map((h) => (
-            <div key={h}>· {h}</div>
-          ))}
-          <div className="mt-1 flex flex-wrap gap-1">
-            {CALC_FN_LIST.map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (cols.length) setCol(cols.length - 1, { expr: (cols[cols.length - 1].expr || '') + (f === 'TODAY' || f === 'NOW' ? `${f}()` : `${f}(`) });
-                }}
-                className="rounded bg-white px-1.5 py-0.5 text-[10px] text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100"
-              >
-                {f}
-              </button>
-            ))}
-          </div>
+        <div className="mt-2 rounded-md border border-fuchsia-100 bg-fuchsia-50/30">
+          <button
+            type="button"
+            onClick={() => setFnOpen(!fnOpen)}
+            className="flex w-full items-center justify-between px-2 py-1.5 text-left text-[11px] font-medium text-fuchsia-700 hover:bg-fuchsia-50"
+          >
+            <span>⌘ 添加函数（点击插入完整公式到当前计算列）</span>
+            <ChevronDown size={12} className={`transition ${fnOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {fnOpen && (
+            <div className="max-h-56 space-y-1 overflow-y-auto px-1.5 pb-1.5">
+              {CALC_FNS.map((f) => (
+                <button
+                  key={f.name}
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); insFn(f.tag); }}
+                  onMouseDown={(e) => e.preventDefault()}
+                  className="block w-full rounded-md border border-gray-100 bg-white px-2 py-1 text-left transition hover:border-fuchsia-200 hover:bg-fuchsia-50/60"
+                >
+                  <span className="font-mono text-[11px] font-semibold text-fuchsia-600">{f.name}</span>
+                  <span className="ml-1.5 text-[10px] text-gray-400">插入</span>
+                  <div className="text-[10px] leading-tight text-gray-600">{f.desc}</div>
+                  <div className="font-mono text-[10px] leading-tight text-gray-400">用法：{f.usage}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="text-[10px] leading-relaxed text-gray-400">
+          <span className="text-gray-500">提示</span>：字段用 <code className="text-fuchsia-600">[字段名]</code> 引用（点击上方字段按钮插入）；文本拼接也可用 <code className="text-fuchsia-600">&amp;</code>，比较用 <code className="text-fuchsia-600">= &gt; &lt; &gt;= &lt;= &lt;&gt;</code>，多个条件用 <code className="text-fuchsia-600">AND / OR</code>。插入的公式模板里的 <code className="text-fuchsia-600">[参数]</code> 请替换成实际字段或值。
         </div>
       </div>
     </NodeShell>

@@ -951,6 +951,30 @@ export function uid(prefix = 'id'): string {
 export type AlertStatus = 'new' | 'accepted' | 'processing' | 'done' | 'failed';
 
 /** 预警工单（由规则触发产生的待办预警） */
+/** 商品维度（XI生预警预览行中的商品列提取，值来自预警自身命中内容） */
+export interface AlertProductDims {
+  brand?: string[];
+  year?: string[];
+  season?: string[];
+  category?: string[];
+  style?: string[];
+}
+
+/** 店仓维度（由命中店仓反查门店档案字段提取） */
+export interface AlertStoreDims {
+  brand?: string[];
+  company?: string[];
+  department?: string[];
+  salesArea?: string[];
+  district?: string[];
+}
+
+/** 预警可筛选维度：商品 / 店仓 两类，均按已有预警字段统计 */
+export interface AlertDims {
+  product?: AlertProductDims;
+  store?: AlertStoreDims;
+}
+
 export interface AlertTask {
   id: string;
   ruleId: string;
@@ -983,6 +1007,8 @@ export interface AlertTask {
   dealerIds?: string[];
   /** 命中店仓 id（按数据权限归集门店预警） */
   storeIds?: string[];
+  /** 可筛选维度（商品/店仓，供列表按维度筛选，来自预警自身命中内容） */
+  dims?: AlertDims;
   /** 通知到的接收方名称（"只看到本人"时匹配 assignee/notified） */
   notified?: string[];
   status: AlertStatus;
