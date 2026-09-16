@@ -4765,7 +4765,7 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
   const table = tables.find((t) => t.id === d.tableId) ?? tables[0];
   const availFields: string[] =
     source === 'node'
-      ? (d.sourceNode ? [d.sourceNodeLabel || ''] : [])
+      ? (d.sourceNode ? inferNodeCols(allNodes, tables, d.sourceNode).map((c) => c.label || c.key) : [])
       : (table?.fields.map((f) => f.alias || f.key) ?? []);
   const cols = Array.isArray(d.columns) ? d.columns : [];
   const setCol = (i: number, patch: Partial<CalcColumn>) => {
