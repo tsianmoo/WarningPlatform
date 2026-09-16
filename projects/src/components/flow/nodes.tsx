@@ -4782,7 +4782,7 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
   const insertIntoExpr = (i: number, text: string) => {
     if (i < 0 || !cols[i]) return;
     const el = colExprRefs.current[i];
-    const ex = cols[i]?.expr || '';
+    const ex = el ? el.value : (cols[i]?.expr || '');
     const pos = el && el.selectionStart != null ? el.selectionStart : ex.length;
     const next = ex.slice(0, pos) + text + ex.slice(pos);
     setCol(i, { expr: next });
@@ -4890,7 +4890,7 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
             </div>
             <input
               ref={(el) => { colExprRefs.current[i] = el; }}
-              value={c.expr}
+              defaultValue={c.expr}
               onFocus={() => setActiveCol(i)}
               onClick={() => setActiveCol(i)}
               onKeyUp={() => setActiveCol(i)}
