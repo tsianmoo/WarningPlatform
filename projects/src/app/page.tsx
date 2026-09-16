@@ -299,7 +299,15 @@ function Shell() {
       {/* 侧边栏 */}
       {withSidebar && (
         <aside className="flex w-56 shrink-0 flex-col border-r bg-white">
-          <div className="flex items-center px-4 py-5">
+          <div
+            className="flex items-center"
+            style={{
+              paddingTop: brand.padding?.top ?? 20,
+              paddingRight: brand.padding?.right ?? 16,
+              paddingBottom: brand.padding?.bottom ?? 20,
+              paddingLeft: brand.padding?.left ?? 16,
+            }}
+          >
             {brand.logo && <img src={brand.logo} alt="logo" className="mr-2 h-7 w-7 object-contain" />}
             <div
               className="truncate"

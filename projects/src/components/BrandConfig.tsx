@@ -3,6 +3,9 @@ import { ImageIcon, Trash2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { DEFAULT_HOME_CONFIG, FONT_OPTIONS, HomeTitleStyle } from '@/lib/types';
 
+type Pad = { top: number; right: number; bottom: number; left: number };
+type Brand = HomeTitleStyle & { logo?: string; padding?: Pad };
+
 function hexToRgba(hex: string, alpha: number): string {
   const h = (hex || '#000000').replace('#', '');
   const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
@@ -17,9 +20,11 @@ function numClamp(v: number, min: number, max: number): number {
 
 export default function BrandConfig({ onHome }: { onHome: () => void }) {
   const { state, updateHomeConfig } = useStore();
-  const brand: HomeTitleStyle & { logo?: string } = state.config.brand || DEFAULT_HOME_CONFIG.brand;
-  const patch = (p: Partial<HomeTitleStyle & { logo?: string }>) =>
-    updateHomeConfig((c) => ({ ...c, brand: { ...c.brand, ...p } }));
+  const brand: Brand = state.config.brand || DEFAULT_HOME_CONFIG.brand;
+  const pad: Pad = brand.padding || { top: 20, right: 16, bottom: 20, left: 16 };
+  const patch = (p: Partial<Brand>) => updateHomeConfig((c) => ({ ...c, brand: { ...c.brand, ...p } }));
+  const patchPad = (k: keyof Pad, v: number) =>
+    patch({ padding: { top: pad.top, right: pad.right, bottom: pad.bottom, left: pad.left, [k]: numClamp(v, 0, 80) } });
 
   const onLogo = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -39,7 +44,7 @@ export default function BrandConfig({ onHome }: { onHome: () => void }) {
         {/* 实时预览 */}
         <div className="mb-5 rounded-xl border border-dashed border-gray-200 bg-gray-50/70 p-4">
           <div className="mb-2 text-xs text-gray-400">实时预览</div>
-          <div className="flex items-center gap-2 px-2 py-3">
+          <div className="flex items-center gap-2" style={{ paddingTop: pad.top, paddingRight: pad.right, paddingBottom: pad.bottom, paddingLeft: pad.left }}>
             {brand.logo && <img src={brand.logo} alt="logo" className="h-8 w-8 object-contain" />}
             <span
               style={{
@@ -166,6 +171,37 @@ export default function BrandConfig({ onHome }: { onHome: () => void }) {
               onChange={(e) => patch({ opacity: Number(e.target.value) / 100 })}
               className="w-full"
             />
+          </div>
+        </div>
+
+        {/* 内边距（上 右 下 左） */}
+        <div className="mt-4 border-t border-gray-100 pt-4">
+          <div className="mb-1 text-sm font-medium text-gray-700">内边距（px）</div>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {(
+              [
+                ['top', '上', numClamp(pad.top, 0, 80)],
+                ['right', '右', numClamp(pad.right, 0, 80)],
+                ['bottom', '下', numClamp(pad.bottom, 0, 80)],
+                ['left', '左', numClamp(pad.left, 0, 80)],
+              ] as [keyof Pad, string, number][]
+            ).map(([k, label, v]) => (
+              <div key={k}>
+                <label className="mb-1 block text-xs text-gray-500">{label}：{Math.round(v)}</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range" min={0} max={80} value={v}
+                    onChange={(e) => patchPad(k, Number(e.target.value))}
+                    className="flex-1"
+                  />
+                  <input
+                    type="number" min={0} max={80} value={v}
+                    onChange={(e) => patchPad(k, Number(e.target.value))}
+                    className="w-14 rounded-md border border-gray-300 px-1 py-1 text-center text-xs outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>

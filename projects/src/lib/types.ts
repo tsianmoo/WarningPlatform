@@ -1449,7 +1449,7 @@ export interface HomeConfig {
   /** 侧边栏导航菜单（命名 + 排序），顺序即显示顺序 */
   navMenus: NavMenuEntry[];
   /** 侧边栏品牌（左上角）：系统名称 + LOGO，名称支持字号/字重/颜色透明度/字间距 */
-  brand: HomeTitleStyle & { logo?: string };
+  brand: HomeTitleStyle & { logo?: string; padding?: { top: number; right: number; bottom: number; left: number } };
   /** 权限配置载体（岗位权限表 + 单用户覆盖），随 config 一并持久化 */
   permissions?: RolePerm[];
   permOverrides?: PersonPermOverride[];
@@ -1490,6 +1490,7 @@ export const DEFAULT_HOME_CONFIG: HomeConfig = {
     text: 'DIANNIU.YJ', logo: '',
     font: 'system-ui', size: 15, weight: 700, letterSpacing: 2,
     color: '#000000', opacity: 1, x: 0, y: 0, marginLeft: 0,
+    padding: { top: 20, right: 16, bottom: 20, left: 16 },
   },
 };
 
