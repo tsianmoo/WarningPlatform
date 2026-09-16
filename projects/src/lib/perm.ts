@@ -27,6 +27,7 @@ export const ALL_MODULES: PermModule[] = [
   'people',
   'attrs',
   'homecfg',
+  'datasync',
   'perms',
 ];
 

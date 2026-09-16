@@ -1,6 +1,7 @@
 import { createServer } from 'http';
 import { parse } from 'url';
 import next from 'next';
+import { startSchedulerOnce } from './lib/server/sync/scheduler';
 
 const dev = process.env.COZE_PROJECT_ENV !== 'PROD';
 const hostname = process.env.HOSTNAME || 'localhost';
@@ -11,6 +12,11 @@ const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
 app.prepare().then(() => {
+  try {
+    startSchedulerOnce();
+  } catch (err) {
+    console.error('[sync] scheduler start failed', err);
+  }
   const server = createServer(async (req, res) => {
     try {
       const parsedUrl = parse(req.url!, true);

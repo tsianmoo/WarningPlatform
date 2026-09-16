@@ -1173,6 +1173,7 @@ export type PermModule =
   | 'people'      // 人事-人员管理
   | 'attrs'       // 人事-属性管理
   | 'homecfg'     // 系统-首页管理
+  | 'datasync'    // 数据同步平台
   | 'perms';      // 系统-权限管理
 
 /** 权限操作码（可勾选的最小操作单元，越细越好） */

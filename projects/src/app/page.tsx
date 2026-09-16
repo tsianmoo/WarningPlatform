@@ -3,7 +3,7 @@
 import { useEffect, useState, Fragment } from 'react';
 import type { Person } from '@/lib/types';
 import { useRouter } from 'next/navigation';
-import { Table2, BellRing, ShieldAlert, Shield, LayoutDashboard, Activity, Briefcase, Users, Settings, Maximize, Minimize, LogOut, UploadCloud, Server, ClipboardList, ChevronRight, ListOrdered } from 'lucide-react';
+import { Table2, BellRing, Shield, LayoutDashboard, Activity, Briefcase, Users, Settings, Maximize, Minimize, LogOut, UploadCloud, ClipboardList, ChevronRight, ListOrdered } from 'lucide-react';
 import { StoreProvider, useStore } from '@/lib/store';
 import { DEFAULT_NAV_MENUS, NavMenuEntry, NavMenuKey } from '@/lib/types';
 import NavConfig from '@/components/NavConfig';
@@ -19,22 +19,10 @@ import { DealerStoreManage } from '@/components/DealerStoreManage';
 import EmployeeManage from '@/components/EmployeeManage';
 import { HomeConfig } from '@/components/HomeConfig';
 import PermissionManage from '@/components/PermissionManage';
+import DataSyncPlatform from '@/components/sync/DataSyncPlatform';
 import { resolvePerm, canView, resolveAuthAccount } from '@/lib/perm';
 
 type View = 'home' | 'tables' | 'apitable' | 'formtable' | 'rules' | 'new' | 'edit' | 'alerts' | 'people' | 'attrs' | 'dealer' | 'store' | 'dattrs' | 'sattrs' | 'emp' | 'eattrs' | 'homecfg' | 'perms' | 'navcfg';
-
-function ApiDataPlaceholder({ onHome }: { onHome: () => void }) {
-  return (
-    <div className="flex h-full min-h-[60vh] flex-col items-center justify-center gap-3 text-center">
-      <Server size={40} className="text-gray-300" />
-      <div className="text-lg font-medium text-gray-700">API数据表</div>
-      <div className="max-w-sm text-sm text-gray-400">通过 API 接入外部数据表的模块即将上线，敬请期待。</div>
-      <button onClick={onHome} className="mt-2 rounded-md bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700">
-        返回首页
-      </button>
-    </div>
-  );
-}
 
 function FormFillPlaceholder({ onHome }: { onHome: () => void }) {
   return (
@@ -153,7 +141,7 @@ function Shell() {
   } else if (view === 'tables') {
     content = <DataTableManager />;
   } else if (view === 'apitable') {
-    content = <ApiDataPlaceholder onHome={goHome} />;
+    content = <DataSyncPlatform />;
   } else if (view === 'formtable') {
     content = <FormFillPlaceholder onHome={goHome} />;
   } else if (view === 'new') {
@@ -208,20 +196,20 @@ function Shell() {
   const renderMenu = (key: NavMenuKey, label: string): React.ReactNode => {
     switch (key) {
       case 'home':
-        return <NavItem active={view === 'home'} icon={<LayoutDashboard size={17} />} label={label} onClick={goHome} />;
+        return <NavItem active={view === 'home'} icon={<LayoutDashboard size={18} strokeWidth={1.75} />} label={label} onClick={goHome} />;
       case 'rules':
         return can('rules') ? (
-          <NavItem active={currentView === 'rules' || currentView === 'new' || currentView === 'edit'} icon={<BellRing size={17} />} label={label} onClick={() => goRules()} />
+          <NavItem active={currentView === 'rules' || currentView === 'new' || currentView === 'edit'} icon={<BellRing size={18} strokeWidth={1.75} />} label={label} onClick={() => goRules()} />
         ) : null;
       case 'alerts':
         return can('alerts') ? (
-          <NavItem active={currentView === 'alerts'} icon={<Activity size={17} />} label={label} onClick={() => navigate('alerts')} />
+          <NavItem active={currentView === 'alerts'} icon={<Activity size={18} strokeWidth={1.75} />} label={label} onClick={() => navigate('alerts')} />
         ) : null;
       case 'datatables':
         return can('datatables') ? (
           <div className="pt-1">
-            <button onClick={() => toggleGroup('datatables')} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-800 hover:bg-gray-50">
-              <Table2 size={17} className="text-gray-400" />
+            <button onClick={() => toggleGroup('datatables')} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] font-medium text-gray-800 hover:bg-gray-50">
+              <Table2 size={17} strokeWidth={1.75} className="text-gray-400" />
               <span className="flex-1">{label}</span>
               <ChevronRight size={16} className={`text-gray-400 transition-transform ${openGroup === 'datatables' ? 'rotate-90' : ''}`} />
             </button>
@@ -237,8 +225,8 @@ function Shell() {
       case 'org':
         return can('dealer') || can('store') || can('dattrs') || can('sattrs') ? (
           <div className="pt-1">
-            <button onClick={() => toggleGroup('org')} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-800 hover:bg-gray-50">
-              <Briefcase size={17} className="text-gray-400" />
+            <button onClick={() => toggleGroup('org')} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] font-medium text-gray-800 hover:bg-gray-50">
+              <Briefcase size={17} strokeWidth={1.75} className="text-gray-400" />
               <span className="flex-1">{label}</span>
               <ChevronRight size={16} className={`text-gray-400 transition-transform ${openGroup === 'org' ? 'rotate-90' : ''}`} />
             </button>
@@ -257,8 +245,8 @@ function Shell() {
       case 'hr':
         return can('people') || can('attrs') ? (
           <div className="pt-1">
-            <button onClick={() => toggleGroup('hr')} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-800 hover:bg-gray-50">
-              <Users size={17} className="text-gray-400" />
+            <button onClick={() => toggleGroup('hr')} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] font-medium text-gray-800 hover:bg-gray-50">
+              <Users size={17} strokeWidth={1.75} className="text-gray-400" />
               <span className="flex-1">{label}</span>
               <ChevronRight size={16} className={`text-gray-400 transition-transform ${openGroup === 'hr' ? 'rotate-90' : ''}`} />
             </button>
@@ -273,16 +261,16 @@ function Shell() {
       case 'sys':
         return (
           <div className="pt-1">
-            <button onClick={() => toggleGroup('sys')} className="mb-1 flex w-full items-center gap-1.5 rounded-lg px-3 py-1 text-left">
-              <Settings size={14} className="text-gray-500" />
-              <span className="flex-1 text-xs font-medium text-gray-500">{label}</span>
-              <ChevronRight size={14} className={`text-gray-400 transition-transform ${openGroup === 'sys' ? 'rotate-90' : ''}`} />
+            <button onClick={() => toggleGroup('sys')} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] font-medium text-gray-800 hover:bg-gray-50">
+              <Settings size={17} strokeWidth={1.75} className="text-gray-400" />
+              <span className="flex-1">{label}</span>
+              <ChevronRight size={16} className={`text-gray-400 transition-transform ${openGroup === 'sys' ? 'rotate-90' : ''}`} />
             </button>
             {openGroup === 'sys' && (
               <>
-                <NavItem active={currentView === 'navcfg'} icon={<ListOrdered size={15} />} label="导航栏管理" nested onClick={() => navigate('navcfg')} />
-                {can('homecfg') && <NavItem active={currentView === 'homecfg'} icon={<LayoutDashboard size={15} />} label="首页管理" nested onClick={() => navigate('homecfg')} />}
-                {can('perms') && <NavItem active={currentView === 'perms'} icon={<Shield size={15} />} label="权限管理" nested onClick={() => navigate('perms')} />}
+                <NavItem active={currentView === 'navcfg'} icon={<ListOrdered size={16} strokeWidth={1.75} />} label="导航栏管理" nested onClick={() => navigate('navcfg')} />
+                {can('homecfg') && <NavItem active={currentView === 'homecfg'} icon={<LayoutDashboard size={16} strokeWidth={1.75} />} label="首页管理" nested onClick={() => navigate('homecfg')} />}
+                {can('perms') && <NavItem active={currentView === 'perms'} icon={<Shield size={16} strokeWidth={1.75} />} label="权限管理" nested onClick={() => navigate('perms')} />}
               </>
             )}
           </div>
@@ -297,14 +285,8 @@ function Shell() {
       {/* 侧边栏 */}
       {withSidebar && (
         <aside className="flex w-56 shrink-0 flex-col border-r bg-white">
-          <div className="flex items-center gap-2.5 px-4 py-4">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white">
-              <ShieldAlert size={20} />
-            </span>
-            <div>
-              <div className="text-sm font-bold text-gray-800">预警规则平台</div>
-              <div className="text-[10px] text-gray-400">Alert Rule Config</div>
-            </div>
+          <div className="flex items-center px-4 py-5">
+            <div className="text-[15px] font-bold tracking-[0.08em] text-black">DIANNIU.YJ</div>
           </div>
           <nav className="flex-1 space-y-1 px-2 py-2">
             {!ready ? (
@@ -438,7 +420,7 @@ function NavItem({
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-2.5 rounded-lg py-2 text-sm transition ${
+      className={`flex w-full items-center gap-2.5 rounded-lg py-2 text-[13px] transition ${
         nested ? 'pl-8 pr-3' : 'px-3'
       } ${active ? 'bg-blue-50 font-medium text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
     >
