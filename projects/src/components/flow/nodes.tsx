@@ -4778,10 +4778,27 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
   const cols = Array.isArray(d.columns) ? d.columns : [];
   const [activeCol, setActiveCol] = useState<number | null>(null);
   const [fnOpen, setFnOpen] = useState(true);
+  const colExprRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const insertIntoExpr = (i: number, text: string) => {
+    if (i < 0 || !cols[i]) return;
+    const el = colExprRefs.current[i];
+    const ex = cols[i]?.expr || '';
+    const pos = el && el.selectionStart != null ? el.selectionStart : ex.length;
+    const next = ex.slice(0, pos) + text + ex.slice(pos);
+    setCol(i, { expr: next });
+    const caret = pos + text.length;
+    setTimeout(() => {
+      const node = colExprRefs.current[i];
+      if (node) {
+        node.focus();
+        node.setSelectionRange(caret, caret);
+      }
+    }, 0);
+  };
   const insFn = (tag: string) => {
-    const i = activeCol != null ? activeCol : cols.length - 1;
+    const i = activeCol != null ? activeCol : (cols.length ? cols.length - 1 : -1);
     if (i < 0) return;
-    setCol(i, { expr: (cols[i]?.expr || '') + tag });
+    insertIntoExpr(i, tag);
   };
   const setCol = (i: number, patch: Partial<CalcColumn>) => {
     const arr = cols.slice();
@@ -4840,10 +4857,11 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                if (cols.length) setCol(cols.length - 1, { expr: (cols[cols.length - 1].expr || '') + `[${f}]` });
+                const i = activeCol != null ? activeCol : (cols.length ? cols.length - 1 : -1);
+                insertIntoExpr(i, `[${f}]`);
               }}
               className="rounded bg-white px-1.5 py-0.5 text-[10px] text-fuchsia-700 ring-1 ring-fuchsia-200 hover:bg-fuchsia-100"
-              title={`点击把字段 [${f}] 追加到最后一个计算列公式`}
+              title={`点击把字段 [${f}] 插入到当前计算列公式的光标处`}
             >
               {f}
             </button>
@@ -4871,8 +4889,11 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
               </button>
             </div>
             <input
+              ref={(el) => { colExprRefs.current[i] = el; }}
               value={c.expr}
               onFocus={() => setActiveCol(i)}
+              onClick={() => setActiveCol(i)}
+              onKeyUp={() => setActiveCol(i)}
               onChange={(e) => setCol(i, { expr: e.target.value })}
               placeholder="例：DATEDIFF(TODAY(),[上货日期]) 或 [当前日期]-[最小(出库日期)]"
               className={`${inputCls} ${activeCol === i ? 'ring-1 ring-fuchsia-300' : ''}`}
