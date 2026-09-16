@@ -254,7 +254,7 @@ export function computeCompareWindow(
   if (mode === 'yoY') {
     cs = new Date(start.getFullYear() - n, start.getMonth(), Math.min(start.getDate(), 28));
     ce = new Date(end.getFullYear() - n, end.getMonth(), Math.min(end.getDate(), 28));
-    label = `${n}年前同期`;
+    label = `${n === 1 ? '' : n + '年'}同期`;
   } else {
     const gran = granularityOf(preset, tw);
     cs = shiftGran(start, gran, -n);

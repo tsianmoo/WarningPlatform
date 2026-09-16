@@ -1593,7 +1593,16 @@ function evalNode(
       const cmpValByKey = new Map<string, number[]>();
       if (cmpGroups && cmpMode) {
         for (const [k, cg] of cmpGroups) {
-          cmpValByKey.set(k, metrics.map((mt, mi) => (mt.fn === 'count' ? cg.recs.length : agg(mt.fn, cg.nums[mi]))));
+          cmpValByKey.set(
+            k,
+            metrics.map((mt, mi) => {
+              const fn = mt.fn;
+              if (fn === 'activeDays') return aggActiveDays(cg.recs, dateKey, mt.key);
+              if (fn === 'countDistinct') return aggCountDistinct(cg.recs.map((r) => r[mt.key]));
+              if (fn === 'count') return cg.recs.length;
+              return agg(fn, cg.nums[mi]);
+            })
+          );
         }
       }
       const out = [...groups.values()].map((g) => {
@@ -1619,9 +1628,9 @@ function evalNode(
             row[`${mLabels[mi]} · ${cmpLabel}`] = Number.isFinite(cv) ? fmtNum(cv) : '—';
             if (Number.isFinite(val) && Number.isFinite(cv)) {
               const rate = val !== 0 ? ((val - cv) / cv) * 100 : cv !== 0 ? -100 : 0;
-              row[`${mLabels[mi]} · 增长率%`] = fmtNum(rate);
+              row[`${mLabels[mi]} · 同比`] = Number.isFinite(rate) ? rate.toFixed(2) : '—';
             } else {
-              row[`${mLabels[mi]} · 增长率%`] = '—';
+              row[`${mLabels[mi]} · 同比`] = '—';
             }
           }
         });
@@ -1632,14 +1641,14 @@ function evalNode(
         ...dateCols.map((dc) => [dc.key, dc.value] as const),
         ...dims.map((x) => [groupLabel(x.label, x.gran), ''] as const),
         ...mLabels.map((m) => [m, ''] as const),
-        ...(cmpMode && cmpGroups ? mLabels.flatMap((m) => [[`${m} · ${cmpLabel}`, ''] as const, [`${m} · 增长率%`, ''] as const]) : []),
+        ...(cmpMode && cmpGroups ? mLabels.flatMap((m) => [[`${m} · ${cmpLabel}`, ''] as const, [`${m} · 同比`, ''] as const]) : []),
       ]);
       const finalOut = out.length ? out : [emptyRow];
       const idx = metrics.findIndex((m) => m.key === metricField);
       const defaultMLabel = idx >= 0 ? mLabels[idx] : (gd.resultLabel || `${fnLabel(gd.metricFn || 'sum')}(${gd.metricFieldLabel || metricField})`);
       return {
         title: '分组聚合',
-        columns: [...dateCols.map((dc) => dc.label), ...dimLabels, ...mLabels, ...(cmpMode && cmpGroups ? mLabels.flatMap((m) => [`${m} · ${cmpLabel}`, `${m} · 增长率%`]) : [])],
+        columns: [...dateCols.map((dc) => dc.label), ...dimLabels, ...mLabels, ...(cmpMode && cmpGroups ? mLabels.flatMap((m) => [`${m} · ${cmpLabel}`, `${m} · 同比`]) : [])],
         rows: cap(finalOut),
         shape: 'table',
         scalar:

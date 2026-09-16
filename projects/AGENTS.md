@@ -229,3 +229,4 @@
 - **test_run 的 curl 并行执行**：读/写断言不要在一次 batch 里依赖顺序（POST 建数据可能晚于同批 GET）；需要时先单独跑一次写、再跑一次读。
 - **oracledb 类型过严**：`oracle.ts` 用自定义 `OraConn` 桩接口（execute/cancel/close/commit）规避 @types 泛型报错；`streamQuery`/`exec` 内 conn 取 `any` 处理。
 - **驱动扩展**：新增厂商 → 在 `driver.ts` 加 `getXxx()` + 注册 + 置 `DRIVER_SUPPORTED`，并实现 `Driver` 接口全部方法（Oracle 有 `getPrimaryKeys` 可选方法）。
+- **分组聚合同期/环比增长计算**：`evaluate.ts` 的对比期聚合（`cmpValByKey`）需与当期走同一套指标分支（`aggActiveDays`/`aggCountDistinct`/`count`/`agg`）。否则 `countDistinct` 等指标会落到通用 `agg` 默认分支返回 NaN，导致同期值与同比列显示 `—`，用户常误以为「没输出」。增长率列名「增长率%」已统一为「同比」，值用 `toFixed(2)` 保留两位小数；同期列名由「N年前同期」简化为「同期」。
