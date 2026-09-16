@@ -4864,6 +4864,27 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
           {availFields.length === 0 && <span className="text-[10px] text-fuchsia-400">先选择数据表或节点结果即会出现可插入字段</span>}
         </div>
 
+        <div className="mt-1 flex flex-wrap items-center gap-1">
+          <span className="text-[10px] text-gray-400">快捷键：</span>
+          {['+', '-', '*', '/', '(', ')', ',', '=', '<', '>', "'", '"'].map((sym) => (
+            <button
+              key={sym}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                const i = activeCol != null ? activeCol : (cols.length ? cols.length - 1 : -1);
+                const el = colExprRefs.current[i];
+                if (el) el.insertText(sym, -1);
+              }}
+              className="rounded bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-600 ring-1 ring-gray-200 hover:bg-gray-100"
+              title={`插入符号 ${sym}`}
+            >
+              {sym}
+            </button>
+          ))}
+          <span className="text-[10px] text-gray-400">（点击插入到当前公式光标处）</span>
+        </div>
+
         <div className={rowLabel}>② 计算列</div>
         {cols.map((c, i) => (
           <div key={i} className="space-y-1 rounded-md border border-gray-100 bg-gray-50/60 p-1.5">

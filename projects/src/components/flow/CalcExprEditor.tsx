@@ -1,9 +1,9 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef } from 'react';
 
 export type CalcExprEditorHandle = {
-  /** 在光标处插入一个字段标签（会切成标签块） */
+  /** 在光标处插入一个字段标签（不可编辑块） */
   insertField: (name: string) => void;
-  /** 在光标处插入普通文本（函数模板等），光标置于指定偏移处 */
+  /** 在光标处插入普通文本（计算符号/函数模板等），caret 指定插入文本内部的光标偏移（-1 末尾） */
   insertText: (text: string, caret?: number) => void;
 };
 
@@ -31,186 +31,156 @@ interface Props {
   placeholder?: string;
 }
 
+const FIELD_CLASS = 'mx-0.5 inline-flex items-center gap-0.5 rounded bg-blue-100 px-1 text-blue-700';
+
 const CalcExprEditor = forwardRef<CalcExprEditorHandle, Props>(function CalcExprEditor(
   { value, onChange, onFocus, placeholder },
   ref
 ) {
-  const [local, setLocal] = useState(value);
-  const [epoch, setEpoch] = useState(0); // 段结构变化时 +1，强制重建 input 保住正确初值
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const activeRef = useRef<{ seg: number; pos: number }>({ seg: -1, pos: 0 });
+  const rootRef = useRef<HTMLDivElement>(null);
   const lastRef = useRef(value);
 
-  const segs = useMemo(() => parseSegs(local), [local]);
+  const makeField = (name: string): HTMLElement => {
+    const span = document.createElement('span');
+    span.contentEditable = 'false';
+    span.className = FIELD_CLASS;
+    span.dataset.field = name;
+    const lab = document.createElement('span');
+    lab.textContent = name;
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.textContent = '✕';
+    del.title = '删除该字段';
+    del.className = 'cursor-pointer text-blue-400 hover:text-red-500';
+    del.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      span.remove();
+      flush();
+    });
+    span.appendChild(lab);
+    span.appendChild(del);
+    return span;
+  };
 
-  // 外部值（如切换节点/其它编辑）变化时同步，避免循环
-  useEffect(() => {
-    if (value !== lastRef.current) {
-      lastRef.current = value;
-      setLocal(value);
-    }
-  }, [value]);
+  const build = (s: string) => {
+    const root = rootRef.current;
+    if (!root) return;
+    root.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    parseSegs(s).forEach((sg) => {
+      if (sg.type === 'field') frag.appendChild(makeField(sg.value));
+      else frag.appendChild(document.createTextNode(sg.value));
+    });
+    root.appendChild(frag);
+  };
 
   const serialize = (): string => {
+    const root = rootRef.current;
+    if (!root) return value;
     let out = '';
-    segs.forEach((sg, i) => {
-      if (sg.type === 'field') out += '[' + sg.value + ']';
-      else out += inputRefs.current[i] ? inputRefs.current[i]!.value : sg.value;
+    root.childNodes.forEach((n) => {
+      if (n.nodeType === Node.TEXT_NODE) {
+        out += n.textContent ?? '';
+      } else if (n.nodeType === Node.ELEMENT_NODE) {
+        const f = (n as HTMLElement).getAttribute('data-field');
+        if (f != null) out += '[' + f + ']';
+      }
     });
     return out;
   };
 
-  const emit = (s: string) => {
+  const flush = () => {
+    const s = serialize();
     lastRef.current = s;
-    setLocal(s);
     onChange(s);
   };
 
-  const queueFocus = (seg: number, pos: number) => {
-    setTimeout(() => {
-      const el = inputRefs.current[seg];
-      if (el) {
-        el.focus();
-        const p = Math.max(0, Math.min(pos, el.value.length));
-        el.setSelectionRange(p, p);
-      }
-    }, 0);
+  const placeRange = (r: Range) => {
+    const sel = window.getSelection();
+    if (!sel) return;
+    sel.removeAllRanges();
+    sel.addRange(r);
+    rootRef.current?.focus();
   };
+
+  // 初始挂载构建一次内容
+  useLayoutEffect(() => {
+    build(value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 外部 value 与本地不一致（切换节点/其它编辑）时重建，避免光标被重置
+  useEffect(() => {
+    if (value !== lastRef.current) {
+      lastRef.current = value;
+      build(value);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
 
   useImperativeHandle(ref, () => ({
     insertField(name: string) {
-      const tok = '[' + name + ']';
-      const { seg, pos } = activeRef.current;
-      const sg = seg >= 0 ? segs[seg] : undefined;
-      let newStr: string;
-      let fromIdx = seg >= 0 ? seg : 0;
-      if (sg && sg.type === 'text') {
-        const el = inputRefs.current[seg];
-        const p = el && el === document.activeElement ? (el.selectionStart ?? pos) : pos;
-        newStr = serializeReplace(segs, seg, sg.value.slice(0, p) + tok + sg.value.slice(p));
+      const root = rootRef.current;
+      if (!root) return;
+      root.focus();
+      const span = makeField(name);
+      const sel = window.getSelection();
+      const hasSel = !!sel && sel.rangeCount > 0 && root.contains(sel.anchorNode);
+      if (!hasSel) {
+        root.appendChild(span);
+        const r = document.createRange();
+        r.setStartAfter(span);
+        r.collapse(true);
+        placeRange(r);
       } else {
-        newStr = local + tok;
-        fromIdx = -1; // 追加到最后，从末尾找刚插入的字段
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        range.insertNode(span);
+        range.setStartAfter(span);
+        range.collapse(true);
+        placeRange(range);
       }
-      emit(newStr);
-      setEpoch((e) => e + 1); // 文本段被切分，需重建 input
-      // 定位到插入字段之后的文本段，便于继续输入
-      const ns = parseSegs(newStr);
-      let target = -1;
-      if (fromIdx >= 0) {
-        for (let k = fromIdx; k < ns.length; k++) {
-          if (ns[k].type === 'field' && ns[k].value === name) {
-            for (let m = k + 1; m < ns.length; m++) {
-              if (ns[m].type === 'text') {
-                target = m;
-                break;
-              }
-            }
-            break;
-          }
-        }
-      } else {
-        for (let k = ns.length - 1; k >= 0; k--) {
-          if (ns[k].type === 'field' && ns[k].value === name) {
-            for (let m = k + 1; m < ns.length; m++) {
-              if (ns[m].type === 'text') {
-                target = m;
-                break;
-              }
-            }
-            break;
-          }
-        }
-      }
-      queueFocus(target, 0);
+      flush();
     },
     insertText(text: string, caret = -1) {
-      const { seg, pos } = activeRef.current;
-      const sg = seg >= 0 ? segs[seg] : undefined;
-      if (sg && sg.type === 'text') {
-        const el = inputRefs.current[seg];
-        const p = el && el === document.activeElement ? (el.selectionStart ?? pos) : pos;
-        const newV = sg.value.slice(0, p) + text + sg.value.slice(p);
-        const nextSegs = parselessReplace(segs, seg, newV);
-        emit(segsToStr(nextSegs));
-        if (el) el.value = newV;
-        const caretPos = caret >= 0 ? p + caret : p + text.length;
-        queueFocus(seg, caretPos);
+      const root = rootRef.current;
+      if (!root) return;
+      root.focus();
+      const tn = document.createTextNode(text);
+      const sel = window.getSelection();
+      const hasSel = !!sel && sel.rangeCount > 0 && root.contains(sel.anchorNode);
+      const pos = caret >= 0 ? caret : text.length;
+      if (!hasSel) {
+        root.appendChild(tn);
+        const r = document.createRange();
+        r.setStart(tn, Math.max(0, Math.min(pos, tn.length)));
+        r.collapse(true);
+        placeRange(r);
       } else {
-        emit(local + text);
-        queueFocus(segs.length - 1, local.length + (caret >= 0 ? caret : text.length));
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        range.insertNode(tn);
+        range.setStart(tn, Math.max(0, Math.min(pos, tn.length)));
+        range.collapse(true);
+        placeRange(range);
       }
+      flush();
     },
   }));
 
-  const onInput = () => emit(serialize());
-
-  const track = (i: number, e: React.SyntheticEvent<HTMLInputElement>) => {
-    const el = e.target as HTMLInputElement;
-    activeRef.current = { seg: i, pos: el.selectionStart ?? 0 };
-    onFocus();
-  };
-
-  const delField = (i: number) => {
-    const nextSegs = segs.filter((_, idx) => idx !== i);
-    emit(segsToStr(nextSegs));
-    setEpoch((e) => e + 1);
-    queueFocus(Math.max(0, i - 1), 0);
-  };
-
   return (
-    <div className="flex w-full flex-wrap items-center gap-0.5 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm focus-within:border-blue-400">
-      {segs.map((sg, i) =>
-        sg.type === 'text' ? (
-          <input
-            key={`t:${i}:${epoch}`}
-            ref={(el) => {
-              inputRefs.current[i] = el;
-            }}
-            defaultValue={sg.value}
-            onInput={onInput}
-            onFocus={(e) => track(i, e)}
-            onClick={(e) => track(i, e)}
-            onKeyUp={(e) => track(i, e as React.KeyboardEvent<HTMLInputElement>)}
-            className="min-w-[2em] flex-1 border-none bg-transparent outline-none"
-            placeholder={sg.value ? undefined : placeholder}
-          />
-        ) : (
-          <span
-            key={`f:${i}:${epoch}`}
-            className="inline-flex items-center gap-0.5 rounded bg-blue-100 px-1 text-blue-700"
-          >
-            {sg.value}
-            <button
-              type="button"
-              title="删除该字段"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={(e) => {
-                e.preventDefault();
-                delField(i);
-              }}
-              className="text-blue-400 hover:text-red-500"
-            >
-              ✕
-            </button>
-          </span>
-        )
-      )}
-    </div>
+    <div
+      ref={rootRef}
+      contentEditable
+      suppressContentEditableWarning
+      spellCheck={false}
+      onInput={flush}
+      onFocus={onFocus}
+      data-placeholder={placeholder}
+      className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs leading-relaxed text-gray-700 outline-none focus:ring-1 focus:ring-fuchsia-400 empty:before:text-gray-400 empty:before:content-[attr(data-placeholder)]"
+    />
   );
 });
-
-function serializeReplace(segs: Seg[], idx: number, newVal: string): string {
-  const next = segs.map((sg, i) => (i === idx ? { ...sg, value: newVal } : sg));
-  return segsToStr(next);
-}
-
-function parselessReplace(segs: Seg[], idx: number, newVal: string): Seg[] {
-  return segs.map((sg, i) => (i === idx ? { ...sg, value: newVal } : sg));
-}
-
-function segsToStr(segs: Seg[]): string {
-  return segs.map((sg) => (sg.type === 'field' ? '[' + sg.value + ']' : sg.value)).join('');
-}
 
 export default CalcExprEditor;
