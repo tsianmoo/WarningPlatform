@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, BellRing, ArrowLeft, Trash2, Users, CalendarClock, Table2, Pencil, PlayCircle, PauseCircle, Copy } from 'lucide-react';
+import { Plus, BellRing, ArrowLeft, Trash2, Users, CalendarClock, Table2, Pencil, PlayCircle, PauseCircle, Copy, Search } from 'lucide-react';
 import type { AlertRule, RuleGroup } from '@/lib/types';
 import { useStore, formatDateTime } from '@/lib/store';
 import { resolvePerm, canOper } from '@/lib/perm';
@@ -27,11 +27,9 @@ const RULE_STATUS: Record<AlertRule['status'], { label: string; cls: string }> =
 export function RuleList({
   onNew,
   onEdit,
-  onHome,
 }: {
   onNew: () => void;
   onEdit: (id: string) => void;
-  onHome?: () => void;
 }) {
   const { state, removeRule, updateRule, addRule, activateRule, addRuleGroup, removeRuleGroup, updateRuleGroup } = useStore();
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -41,6 +39,8 @@ export function RuleList({
   const can = (op: Parameters<typeof canOper>[2], _rid?: string) => canOper(perm, 'rules', op);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string>('all');
+  const [statusId, setStatusId] = useState<'all' | AlertRule['status']>('all');
+  const [search, setSearch] = useState('');
   const [confirm, setConfirm] = useState<{ kind: 'delete' | 'copy'; rule: AlertRule } | null>(null);
   const [catMgr, setCatMgr] = useState<{ open: boolean; editing: RuleGroup | null; name: string }>({ open: false, editing: null, name: '' });
   const ruleGroups = state.ruleGroups ?? [];
@@ -67,24 +67,72 @@ export function RuleList({
 
   const catOf = (r: AlertRule) => ruleGroups.find((g) => g.id === r.groupId) ?? null;
 
-  const visibleRules = categoryId === 'all' ? state.rules : state.rules.filter((r) => r.groupId === categoryId);
+  const q = search.trim().toLowerCase();
+  const visibleRules = state.rules.filter((r) =>
+    (categoryId === 'all' || r.groupId === categoryId) &&
+    (statusId === 'all' || r.status === statusId) &&
+    (!q || r.name.toLowerCase().includes(q) || (r.description ?? '').toLowerCase().includes(q))
+  );
 
   return (
     <div className="flex h-full flex-col overflow-y-auto px-8 pb-10 pt-6">
-      <div className="mb-5 flex flex-wrap items-center gap-2">
+      <div className="mb-5 flex flex-col gap-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={() => setStatusId('all')}
+              className={`rounded-md px-2.5 py-1 text-xs transition ${
+                statusId === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              全部
+            </button>
+            {(['draft', 'active', 'paused'] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatusId(s)}
+                className={`rounded-md px-2.5 py-1 text-xs transition ${
+                  statusId === s ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {RULE_STATUS[s].label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 focus-within:border-gray-400">
+              <Search size={14} className="shrink-0 text-gray-400" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="搜索规则…"
+                className="w-36 bg-transparent text-sm outline-none placeholder:text-gray-300 sm:w-44"
+              />
+            </div>
+            {can('create') && (
+              <button
+                onClick={onNew}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-gray-900 px-3.5 py-1.5 text-sm font-medium text-white transition hover:bg-gray-700"
+              >
+                <Plus size={15} /> 新建规则
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             onClick={() => setCategoryId('all')}
-            className={`rounded-full px-3 py-1.5 text-sm transition ${
+            className={`rounded-md px-2.5 py-1 text-xs transition ${
               categoryId === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
-            全部
+            全部分类
           </button>
           {ruleGroups.map((g) => (
             <button
               key={g.id}
               onClick={() => setCategoryId(g.id)}
-              className={`rounded-full px-3 py-1.5 text-sm transition ${
+              className={`rounded-md px-2.5 py-1 text-xs transition ${
                 categoryId === g.id ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
@@ -93,30 +141,10 @@ export function RuleList({
           ))}
           <button
             onClick={() => setCatMgr({ open: true, editing: null, name: '' })}
-            className="inline-flex items-center gap-1 rounded-full border border-dashed border-gray-300 px-3 py-1.5 text-sm text-gray-500 transition hover:border-gray-400 hover:text-gray-700"
+            className="inline-flex items-center gap-1 rounded-md border border-dashed border-gray-300 px-2.5 py-1 text-xs text-gray-500 transition hover:border-gray-400 hover:text-gray-700"
           >
-            <Pencil size={13} /> 管理分类
+            <Pencil size={12} /> 管理分类
           </button>
-        </div>
-
-      <div className="mb-6 flex flex-wrap items-center justify-end gap-3">
-        <div className="flex items-center gap-3">
-          {onHome && (
-            <button
-              onClick={onHome}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm text-gray-600 transition hover:border-gray-300 hover:text-gray-900"
-            >
-              <ArrowLeft size={15} strokeWidth={2} /> 返回
-            </button>
-          )}
-          {can('create') && (
-          <button
-            onClick={onNew}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700"
-          >
-            <Plus size={16} /> 新建规则
-          </button>
-          )}
         </div>
       </div>
 

@@ -163,7 +163,7 @@ function Shell() {
     content = rule ? (
       <RuleConfigurator key={rule.id} draft={rule} onBack={() => goRules()} />
     ) : (
-      <RuleList onNew={startNew} onEdit={startEdit} onHome={goHome} />
+      <RuleList onNew={startNew} onEdit={startEdit} />
     );
   } else if (view === 'alerts') {
     content = <AlertList />;
@@ -190,7 +190,7 @@ function Shell() {
   } else if (view === 'navcfg') {
     content = <NavConfig onHome={() => navigate('home')} />;
   } else {
-    content = <RuleList onNew={startNew} onEdit={startEdit} onHome={goHome} />;
+    content = <RuleList onNew={startNew} onEdit={startEdit} />;
   }
 
   // 登录态/数据未就绪时，主内容与菜单统一显示加载态，避免退出或切换账号时闪出旧首页/默认页
