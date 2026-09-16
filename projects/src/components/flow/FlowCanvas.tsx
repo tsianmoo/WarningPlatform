@@ -296,6 +296,7 @@ function CanvasInner({
         onNodeDragStop={onNodeDragStop}
         onNodeContextMenu={handleDeleteNode}
         connectionMode={ConnectionMode.Loose}
+        zoomOnScroll={false}
         defaultEdgeOptions={{ type: 'default', reconnectable: true }}
         elevateEdgesOnSelect
         deleteKeyCode={['Backspace', 'Delete']}
