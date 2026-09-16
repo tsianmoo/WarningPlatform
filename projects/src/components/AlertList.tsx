@@ -636,12 +636,12 @@ export function AlertList() {
                             key={h.id}
                             ref={h.id === open.id ? activeRef : undefined}
                             onClick={() => setOpenId(h.id)}
-                            className={`w-full rounded-lg px-3 py-2 text-left transition-colors ${h.id === open.id ? 'bg-white shadow-sm ring-1 ring-black/10' : 'hover:bg-white/70'}`}
+                            className={`w-full rounded-lg px-3 py-2 text-left transition-colors ${h.id === open.id ? 'bg-indigo-50 ring-1 ring-indigo-300' : 'hover:bg-indigo-50/70 hover:ring-1 hover:ring-indigo-100'}`}
                           >
                             <div className="flex items-center gap-1.5">
                               <i className={`h-1.5 w-1.5 shrink-0 rounded-full ${hl.dot}`} />
-                              <span className={`min-w-0 flex-1 truncate text-[12px] font-medium ${h.id === open.id ? 'text-gray-900' : 'text-gray-700'}`}>{h.title || '—'}</span>
-                              {h.id === open.id ? <span className="shrink-0 rounded bg-gray-800 px-1 py-px text-[9px] font-semibold text-white">查看中</span> : null}
+                              <span className={`min-w-0 flex-1 truncate text-[12px] font-medium ${h.id === open.id ? 'text-indigo-700' : 'text-gray-700'}`}>{h.title || '—'}</span>
+                              {h.id === open.id ? <span className="shrink-0 rounded bg-indigo-600 px-1 py-px text-[9px] font-semibold text-white">查看中</span> : null}
                             </div>
                             <div className="mt-1 flex items-center justify-between text-[11px]">
                               <span className="text-gray-400">{new Date(h.createdAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
