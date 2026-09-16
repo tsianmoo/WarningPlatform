@@ -49,7 +49,24 @@ function FormFillPlaceholder({ onHome }: { onHome: () => void }) {
 
 function Shell() {
   const { state, updatePerson, ready } = useStore();
-  const [view, setView] = useState<View>('home');
+  const VIEWS = ['home', 'tables', 'apitable', 'formtable', 'rules', 'new', 'edit', 'alerts', 'people', 'attrs', 'dealer', 'store', 'dattrs', 'sattrs', 'emp', 'eattrs', 'homecfg', 'perms'] as const;
+  const [view, setView] = useState<View>(() => {
+    if (typeof window === 'undefined') return 'home';
+    const h = window.location.hash.replace(/^#/, '');
+    return (VIEWS as readonly string[]).includes(h) ? (h as View) : 'home';
+  });
+  useEffect(() => {
+    const onHash = () => {
+      const h = window.location.hash.replace(/^#/, '');
+      if ((VIEWS as readonly string[]).includes(h)) setView(h as View);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  const navigate = (v: View) => {
+    setView(v);
+    if (typeof window !== 'undefined' && window.location.hash !== '#' + v) window.location.hash = v;
+  };
   const [editingId, setEditingId] = useState<string | null>(null);
   const router = useRouter();
   const [fsOn, setFsOn] = useState(false);
@@ -80,33 +97,33 @@ function Shell() {
   };
   const logout = () => {
     setMeName('');
-    setView('home');
+    navigate('home');
     localStorage.removeItem('dn_auth');
     router.push('/login');
   };
 
-  const goHome = () => setView('home');
+  const goHome = () => navigate('home');
   const goRules = (t?: View) => {
-    setView(t ?? 'rules');
+    navigate(t ?? 'rules');
   };
 
   const startNew = () => {
     if (state.tables.length === 0) {
       alert('请先在「数据表管理」中上传一张数据表，之后即可创建预警规则');
-      setView('tables');
+      navigate('tables');
       return;
     }
-    setView('new');
+    navigate('new');
   };
 
   const startEdit = (id: string) => {
     setEditingId(id);
-    setView('edit');
+    navigate('edit');
   };
 
   let content;
   if (view === 'home') {
-    content = <Dashboard onGoTables={() => setView('tables')} onGoRules={() => setView('rules')} />;
+    content = <Dashboard onGoTables={() => navigate('tables')} onGoRules={() => navigate('rules')} />;
   } else if (view === 'tables') {
     content = <DataTableManager onHome={goHome} />;
   } else if (view === 'apitable') {
@@ -127,7 +144,7 @@ function Shell() {
   } else if (view === 'dealer') {
     content = <DealerStoreManage kind="dealer" />;
   } else if (view === 'emp') {
-    content = <EmployeeManage onBack={() => setView('dealer')} />;
+    content = <EmployeeManage onBack={() => navigate('dealer')} />;
   } else if (view === 'store') {
     content = <DealerStoreManage kind="store" />;
   } else if (view === 'dattrs') {
@@ -141,7 +158,7 @@ function Shell() {
   } else if (view === 'attrs') {
     content = <AttrManage />;
   } else if (view === 'homecfg') {
-    content = <HomeConfig onBack={() => setView('home')} />;
+    content = <HomeConfig onBack={() => navigate('home')} />;
   } else if (view === 'perms') {
     content = <PermissionManage />;
   } else {
@@ -191,21 +208,21 @@ function Shell() {
                 active={currentView === 'tables'}
                 icon={<span className="text-gray-400">·</span>}
                 label="上传数据表"
-                onClick={() => setView('tables')}
+                onClick={() => navigate('tables')}
               />
               <NavItem
                 nested
                 active={currentView === 'apitable'}
                 icon={<span className="text-gray-400">·</span>}
                 label="API数据表"
-                onClick={() => setView('apitable')}
+                onClick={() => navigate('apitable')}
               />
               <NavItem
                 nested
                 active={currentView === 'formtable'}
                 icon={<span className="text-gray-400">·</span>}
                 label="在线填报表"
-                onClick={() => setView('formtable')}
+                onClick={() => navigate('formtable')}
               />
             </div>
             )}
@@ -222,7 +239,7 @@ function Shell() {
               active={currentView === 'alerts'}
               icon={<Activity size={17} />}
               label="预警列表"
-              onClick={() => setView('alerts')}
+              onClick={() => navigate('alerts')}
             />
             )}
             {(can('dealer') || can('store') || can('dattrs') || can('sattrs')) && (
@@ -237,7 +254,7 @@ function Shell() {
                 active={currentView === 'dealer'}
                 icon={<span className="text-gray-400">·</span>}
                 label="经销商管理"
-                onClick={() => setView('dealer')}
+                onClick={() => navigate('dealer')}
               />
               )}
               {can('dattrs') && (
@@ -246,7 +263,7 @@ function Shell() {
                 active={currentView === 'dattrs'}
                 icon={<span className="text-gray-400">·</span>}
                 label="经销商属性"
-                onClick={() => setView('dattrs')}
+                onClick={() => navigate('dattrs')}
               />
               )}
               {can('store') && (
@@ -255,7 +272,7 @@ function Shell() {
                 active={currentView === 'store'}
                 icon={<span className="text-gray-400">·</span>}
                 label="店仓管理"
-                onClick={() => setView('store')}
+                onClick={() => navigate('store')}
               />
               )}
               {can('sattrs') && (
@@ -264,7 +281,7 @@ function Shell() {
                 active={currentView === 'sattrs'}
                 icon={<span className="text-gray-400">·</span>}
                 label="店仓属性"
-                onClick={() => setView('sattrs')}
+                onClick={() => navigate('sattrs')}
               />
               )}
               {can('dealer') && (
@@ -273,7 +290,7 @@ function Shell() {
                 active={currentView === 'emp'}
                 icon={<span className="text-gray-400">·</span>}
                 label="员工管理"
-                onClick={() => setView('emp')}
+                onClick={() => navigate('emp')}
               />
               )}
               {can('dealer') && (
@@ -282,7 +299,7 @@ function Shell() {
                 active={currentView === 'eattrs'}
                 icon={<span className="text-gray-400">·</span>}
                 label="员工属性"
-                onClick={() => setView('eattrs')}
+                onClick={() => navigate('eattrs')}
               />
               )}
             </div>
@@ -299,7 +316,7 @@ function Shell() {
                 active={currentView === 'people'}
                 icon={<span className="text-gray-400">·</span>}
                 label="用户管理"
-                onClick={() => setView('people')}
+                onClick={() => navigate('people')}
               />
               )}
               {can('attrs') && (
@@ -308,7 +325,7 @@ function Shell() {
                 active={currentView === 'attrs'}
                 icon={<span className="text-gray-400">·</span>}
                 label="属性管理"
-                onClick={() => setView('attrs')}
+                onClick={() => navigate('attrs')}
               />
               )}
             </div>
@@ -326,7 +343,7 @@ function Shell() {
                 icon={<LayoutDashboard size={15} />}
                 label="首页管理"
                 nested
-                onClick={() => setView('homecfg')}
+                onClick={() => navigate('homecfg')}
               />
               )}
               {can('perms') && (
@@ -335,7 +352,7 @@ function Shell() {
                 icon={<Shield size={15} />}
                 label="权限管理"
                 nested
-                onClick={() => setView('perms')}
+                onClick={() => navigate('perms')}
               />
               )}
             </div>
