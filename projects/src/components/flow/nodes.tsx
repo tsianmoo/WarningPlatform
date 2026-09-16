@@ -49,6 +49,7 @@ import {
   type RankItem,
   type CalcNodeData,
   type CalcColumn,
+  type LinkJoinNodeData,
 } from '@/lib/types';
 import { useStore } from '@/lib/store';
 import TimeComponent from './TimeComponent';
@@ -73,7 +74,8 @@ type AnyData =
   | FilterNodeData
   | ElapsedNodeData
   | RankNodeData
-  | CalcNodeData;
+  | CalcNodeData
+  | LinkJoinNodeData;
 
 const KIND_ICON: Record<FlowNode['kind'], React.ReactNode> = {
   trigger: <Play size={13} strokeWidth={2.5} />,
@@ -95,6 +97,7 @@ const KIND_ICON: Record<FlowNode['kind'], React.ReactNode> = {
   elapsed: <CalendarRange size={13} strokeWidth={2.5} />,
   rank: <TrendingUp size={13} strokeWidth={2.5} />,
   calc: <TableProperties size={13} strokeWidth={2.5} />,
+  linkjoin: <Link2 size={13} strokeWidth={2.5} />,
 };
 
 function useNodeUpdater(id: string) {
@@ -237,6 +240,7 @@ function nodeKindCn(kind: FlowNode['kind']) {
     logic: '逻辑关联',
     rank: '排名',
     calc: '添加公式列',
+    linkjoin: '其他表添加列',
   };
   return map[kind];
 }
@@ -585,6 +589,14 @@ function getNodeOutputs(allNodes: ReturnType<typeof useNodes>, selfId: string): 
         out.push({ ref: { nodeId: n.id, nodeKind: 'calc', outputKind: 'column', label } });
         break;
       }
+      case 'linkjoin': {
+        const lj = n.data as unknown as LinkJoinNodeData;
+        const adds = (Array.isArray(lj.addFields) ? lj.addFields : []).map((f) => f.label || f.key);
+        out.push({
+          ref: { nodeId: n.id, nodeKind: 'linkjoin', outputKind: 'column', label: adds.length ? `其他表添加列(${adds.join('、')})` : '其他表添加列' },
+        });
+        break;
+      }
       case 'diff': {
         const df = n.data as unknown as DiffNodeData;
         out.push({ ref: { nodeId: n.id, nodeKind: 'diff', outputKind: 'column', label: str(df.resultLabel) || '反匹配结果' } });
@@ -799,6 +811,23 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
         if (seen.has(lab)) continue;
         seen.add(lab);
         base.push({ key: lab, label: lab });
+      }
+      return base;
+    }
+    case 'linkjoin': {
+      const lj = data as LinkJoinNodeData;
+      const base: ColOpt[] = [];
+      const pushUniqC = (c: ColOpt) => {
+        if (c.key && !base.some((b) => b.key === c.key)) base.push(c);
+      };
+      if (lj.mainSource === 'node' && lj.mainNode) {
+        for (const c of inferNodeCols(allNodes, tables, lj.mainNode)) pushUniqC(c);
+      } else if (lj.mainTableId) {
+        const t = tables.find((x) => x.id === lj.mainTableId);
+        if (t) for (const f of t.fields) pushUniqC({ key: f.key, label: f.alias || f.key });
+      }
+      for (const f of (Array.isArray(lj.addFields) ? lj.addFields : [])) {
+        if (f && f.key) pushUniqC({ key: f.label || f.key, label: f.label || f.key });
       }
       return base;
     }
@@ -5010,6 +5039,196 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
   );
 });
 
+const LinkJoinNode = memo(function LinkJoinNode({ id, data }: NodeProps) {
+  const fnode = { id, kind: 'linkjoin' as const, data, position: { x: 0, y: 0 } } as FlowNode;
+  const d = data as unknown as LinkJoinNodeData;
+  const update = useNodeUpdater(id);
+  const tables = useRuleTables();
+  const allNodes = useNodes();
+  const inputCls = 'w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-400';
+  const rowLabel = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
+  const nodeOutputs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'column');
+
+  const mainSource = d.mainSource ?? 'table';
+  const srcSource = d.srcSource ?? 'table';
+  const mainTable = tables.find((t) => t.id === d.mainTableId);
+  const srcTable = tables.find((t) => t.id === d.srcTableId);
+  const mainFields: string[] =
+    mainSource === 'node'
+      ? (d.mainNode ? inferNodeCols(allNodes, tables, d.mainNode).map((c) => c.label || c.key) : [])
+      : (mainTable?.fields.map((f) => f.alias || f.key) ?? []);
+  const srcFields: string[] =
+    srcSource === 'node'
+      ? (d.srcNode ? inferNodeCols(allNodes, tables, d.srcNode).map((c) => c.label || c.key) : [])
+      : (srcTable?.fields.map((f) => f.alias || f.key) ?? []);
+  // 同名对同名：匹配键候选只需源表存在同名键即可在两侧使用；目标列候选取源表字段
+  const srcFieldSet = new Set(srcFields);
+  const matchCandidates = Array.from(new Set([...mainFields, ...srcFields])).filter((f) => srcFieldSet.has(f));
+  const keys = Array.isArray(d.matchKeys) ? d.matchKeys : [];
+  const addFields = Array.isArray(d.addFields) ? d.addFields : [];
+
+  const setKeyField = (i: number, field: string) => {
+    const arr = keys.slice();
+    arr[i] = { field };
+    update({ matchKeys: arr } as Partial<LinkJoinNodeData>);
+  };
+  const removeKey = (i: number) => {
+    update({ matchKeys: keys.filter((_, k) => k !== i) } as Partial<LinkJoinNodeData>);
+  };
+  const toggleAdd = (f: string) => {
+    const has = addFields.some((c) => c.key === f);
+    update({ addFields: has ? addFields.filter((c) => c.key !== f) : [...addFields, { key: f, label: f }] } as Partial<LinkJoinNodeData>);
+  };
+
+  const [rl, setRl] = useState(d.resultLabel ?? '');
+
+  return (
+    <NodeShell fnode={fnode}>
+      <div className="space-y-1.5">
+        <DataSourcePicker
+          source={mainSource}
+          sourceNode={d.mainNode}
+          nodeLabel="① 主表：引用上游节点"
+          nodePlaceholder="选择主表节点结果…"
+          nodeOptions={nodeOutputs}
+          onSourceChange={(v) =>
+            update({
+              mainSource: v,
+              mainNode: v === 'node' ? (d.mainNode ?? nodeOutputs[0]?.ref.nodeId) : undefined,
+              mainNodeLabel:
+                v === 'node'
+                  ? nodeOutputs.find((o) => o.ref.nodeId === (d.mainNode ?? nodeOutputs[0]?.ref.nodeId))?.ref.label
+                  : undefined,
+            } as Partial<LinkJoinNodeData>)
+          }
+          onNodeChange={(ref) => update({ mainNode: ref?.nodeId, mainNodeLabel: ref?.label } as Partial<LinkJoinNodeData>)}
+          tableBlock={
+            <div>
+              <div className={rowLabel}>① 主表（目标表）</div>
+              <select
+                value={mainTable?.id ?? ''}
+                onChange={(e) => {
+                  const t = tables.find((x) => x.id === e.target.value);
+                  if (t) update({ mainTableId: t.id, mainTableName: t.name } as Partial<LinkJoinNodeData>);
+                }}
+                className={inputCls}
+              >
+                <option value="">选择主表…</option>
+                {tables.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+          }
+        />
+
+        <DataSourcePicker
+          source={srcSource}
+          sourceNode={d.srcNode}
+          nodeLabel="② 源表：引用上游节点"
+          nodePlaceholder="选择源表节点结果…"
+          nodeOptions={nodeOutputs}
+          onSourceChange={(v) =>
+            update({
+              srcSource: v,
+              srcNode: v === 'node' ? (d.srcNode ?? nodeOutputs[0]?.ref.nodeId) : undefined,
+              srcNodeLabel:
+                v === 'node'
+                  ? nodeOutputs.find((o) => o.ref.nodeId === (d.srcNode ?? nodeOutputs[0]?.ref.nodeId))?.ref.label
+                  : undefined,
+            } as Partial<LinkJoinNodeData>)
+          }
+          onNodeChange={(ref) => update({ srcNode: ref?.nodeId, srcNodeLabel: ref?.label } as Partial<LinkJoinNodeData>)}
+          tableBlock={
+            <div>
+              <div className={rowLabel}>② 源表（取列来源）</div>
+              <select
+                value={srcTable?.id ?? ''}
+                onChange={(e) => {
+                  const t = tables.find((x) => x.id === e.target.value);
+                  if (t) update({ srcTableId: t.id, srcTableName: t.name } as Partial<LinkJoinNodeData>);
+                }}
+                className={inputCls}
+              >
+                <option value="">选择源表…</option>
+                {tables.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+          }
+        />
+
+        <div className="rounded-md border border-gray-100 bg-gray-50/60 p-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-gray-600">③ 匹配方式（同名对同名）</span>
+            <button
+              type="button"
+              onClick={() => {
+                const cand = matchCandidates.find((c) => !keys.some((k) => k.field === c)) ?? matchCandidates[0] ?? '';
+                if (cand) update({ matchKeys: [...keys, { field: cand }] } as Partial<LinkJoinNodeData>);
+              }}
+              className="text-[10px] text-purple-600 hover:text-purple-800"
+            >
+              + 添加匹配键
+            </button>
+          </div>
+          {keys.length === 0 && (
+            <div className="mt-1 rounded-md bg-amber-50 px-2 py-1 text-[10px] leading-relaxed text-amber-700">
+              未配置匹配键时：取源表第一行，把所选目标列的值填充到主表每一行。
+            </div>
+          )}
+          {keys.map((k, i) => (
+            <div key={i} className="mt-1 flex items-center gap-1">
+              <select value={k.field} onChange={(e) => setKeyField(i, e.target.value)} className={`${inputCls} flex-1`}>
+                <option value="">选择同名键字段…</option>
+                {matchCandidates.map((f) => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+              <button type="button" onClick={() => removeKey(i)} className="text-[10px] text-red-400 hover:text-red-600">删</button>
+            </div>
+          ))}
+          {keys.length > 0 && matchCandidates.length === 0 && (
+            <div className="mt-1 text-[10px] text-gray-400">主表与源表暂无同名字段，请先选择主表与源表。</div>
+          )}
+        </div>
+
+        <div className="rounded-md border border-gray-100 bg-gray-50/60 p-1.5">
+          <div className="mb-1 text-[11px] font-medium text-gray-600">④ 添加目标列（来自源表）</div>
+          {srcFields.length === 0 && <div className="text-[10px] text-gray-400">请先选择源表或源节点结果。</div>}
+          <div className="flex flex-wrap gap-1">
+            {srcFields.filter(Boolean).map((f) => {
+              const on = addFields.some((c) => c.key === f);
+              return (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => toggleAdd(f)}
+                  className={`rounded px-1.5 py-0.5 text-[10px] ring-1 transition ${on ? 'bg-purple-600 text-white ring-purple-600' : 'bg-white text-gray-600 ring-gray-200 hover:bg-gray-100'}`}
+                >
+                  {on ? '✓ ' : ''}{f}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <div className={rowLabel}>⑤ 结果命名（可选）</div>
+          <input
+            value={rl}
+            onChange={(e) => setRl(e.target.value)}
+            onBlur={() => update({ resultLabel: rl } as Partial<LinkJoinNodeData>)}
+            placeholder="如：追加后的结果"
+            className={inputCls}
+          />
+        </div>
+      </div>
+    </NodeShell>
+  );
+});
+
 export const nodeTypes = {
   trigger: TriggerNode,
   field: FieldNode,
@@ -5030,6 +5249,7 @@ export const nodeTypes = {
   logic: LogicNode,
   rank: RankNode,
   calc: CalcNode,
+  linkjoin: LinkJoinNode,
 };
 
 TopNNode.displayName = 'TopNNode';
@@ -5050,6 +5270,8 @@ ActionNode.displayName = 'ActionNode';
 TimeNode.displayName = 'TimeNode';
 ElapsedNode.displayName = 'ElapsedNode';
 RankNode.displayName = 'RankNode';
+
+LinkJoinNode.displayName = 'LinkJoinNode';
 
 /** 依据 kind 创建默认数据 */
 export function createNodeData(
@@ -5233,6 +5455,22 @@ export function createNodeData(
         sourceNode: '',
         sourceNodeLabel: '',
         columns: [],
+      };
+    case 'linkjoin':
+      return {
+        mainSource: 'table',
+        mainTableId: '',
+        mainTableName: '',
+        mainNode: '',
+        mainNodeLabel: '',
+        srcSource: 'table',
+        srcTableId: '',
+        srcTableName: '',
+        srcNode: '',
+        srcNodeLabel: '',
+        matchKeys: [],
+        addFields: [],
+        resultLabel: '',
       };
     default:
       return {};

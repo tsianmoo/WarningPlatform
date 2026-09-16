@@ -23,6 +23,7 @@ import type {
   ExprToken,
   RankNodeData,
   CalcNodeData,
+  LinkJoinNodeData,
 } from './types';
 import { resolveTimeWindow, resolveElapsedDays, compareModes, computeCompareWindow } from './time';
 import type { TimeWindow } from './types';
@@ -1061,6 +1062,66 @@ function evalNode(
         rows: outRows,
         shape: 'table',
         note: `${srcName}·追加计算列：${calcCols.map((c) => c.label).join('、')}`,
+      };
+    }
+
+    case 'linkjoin': {
+      const jd = d as unknown as LinkJoinNodeData;
+      const main = resolveRowset({ tableId: jd.mainTableId, source: jd.mainSource || 'table', sourceNode: jd.mainNode }, tables, byId, incoming);
+      const src = resolveRowset(
+        { tableId: jd.srcTableId, source: jd.srcSource || 'table', sourceNode: jd.srcNode, sourceTable: jd.srcTableName },
+        tables,
+        byId,
+        incoming,
+      );
+      if (!main || !src) {
+        return { title: '其他表添加列', columns: [], rows: [], shape: 'table', note: '请分别选择主表与源表（数据表或节点结果），并配置匹配键与要添加的列。' };
+      }
+      const keys = (Array.isArray(jd.matchKeys) ? jd.matchKeys : []).map((k) => k.field).filter((x) => x && x.trim());
+      const addFields = (Array.isArray(jd.addFields) ? jd.addFields : []).filter((f) => f && f.key);
+      const mainRows = allRows(main.t);
+      const srcRows = allRows(src.t);
+      const mainCols = main.t.fields.map((f) => f.key);
+      const addLabels = addFields.map((f) => f.label || f.key);
+      const joinColumns = [...mainCols, ...addLabels];
+      const pick = (hit: Record<string, unknown> | undefined, f: { key: string }): string | number => {
+        if (!hit) return '';
+        const v = hit[f.key];
+        return v === undefined || v === null ? '' : (typeof v === 'string' || typeof v === 'number' ? v : String(v));
+      };
+      if (!keys.length) {
+        const single = (srcRows[0] || {}) as Record<string, unknown>;
+        const rows = mainRows.map((r) => {
+          const o = { ...r } as Record<string, string | number>;
+          for (const f of addFields) o[f.label || f.key] = pick(single, f);
+          return o;
+        });
+        return {
+          title: '其他表添加列',
+          columns: joinColumns,
+          rows,
+          shape: 'table',
+          note: `无匹配键：取源表「${src.from}」首行字段值逐行补入`,
+        };
+      }
+      const keyOf = (row: Record<string, unknown>) => keys.map((k) => String(row[k] ?? '')).join('␟');
+      const index = new Map<string, Record<string, unknown>>();
+      for (const s of srcRows) {
+        const kk = keyOf(s);
+        if (!index.has(kk)) index.set(kk, s);
+      }
+      const rows = mainRows.map((r) => {
+        const o = { ...r } as Record<string, string | number>;
+        const hit = index.get(keyOf(r));
+        for (const f of addFields) o[f.label || f.key] = pick(hit, f);
+        return o;
+      });
+      return {
+        title: '其他表添加列',
+        columns: joinColumns,
+        rows,
+        shape: 'table',
+        note: `按匹配键（${keys.join('、')}）对齐源「${src.from}」，取列：${addLabels.join('、')||'（未选）'}；未匹配的行留空`,
       };
     }
 
@@ -2537,6 +2598,8 @@ function collectNodeDataRefs(node: FlowNode): string[] {
   push(d.factNode as unknown);
   push(d.universeNodeId as unknown);
   push(d.refNode as unknown);
+  push(d.mainNode as unknown);
+  push(d.srcNode as unknown);
   push(d.leftNode as unknown);
   push((d.left as { nodeId?: unknown } | null | undefined)?.nodeId);
   push((d.right as { nodeId?: unknown } | null | undefined)?.nodeId);

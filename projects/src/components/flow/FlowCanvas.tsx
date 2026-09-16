@@ -410,6 +410,7 @@ export function PalettePanel({
     { kind: 'time', label: '时间窗口', desc: '今天/本周/本月…', payload: { kind: 'time' }, color: KIND_COLOR.time.border, dot: KIND_COLOR.time.dot },
     { kind: 'elapsed', label: '已过天数', desc: '本周/月/季/年/区间已过天数', payload: { kind: 'elapsed' }, color: KIND_COLOR.elapsed.border, dot: KIND_COLOR.elapsed.dot },
     { kind: 'calc', label: '添加公式列', desc: '公式计算追加新列·IF/拼接/日期差', payload: { kind: 'calc' }, color: KIND_COLOR.calc.border, dot: KIND_COLOR.calc.dot },
+    { kind: 'linkjoin', label: '其他表添加列', desc: '跨表/节点按匹配键取列追加', payload: { kind: 'linkjoin' }, color: KIND_COLOR.linkjoin.border, dot: KIND_COLOR.linkjoin.dot },
     { kind: 'action', label: '预警动作', desc: '终点·通知', payload: { kind: 'action' }, color: KIND_COLOR.action.border, dot: KIND_COLOR.action.dot },
   ];
 
@@ -417,7 +418,7 @@ export function PalettePanel({
   const NODE_GROUPS: { title: string; kinds: FlowNode['kind'][] }[] = [
     { title: '数据与窗口', kinds: ['trigger', 'base', 'relation', 'lookup', 'time', 'elapsed'] },
     { title: '筛选与排名', kinds: ['topn', 'rank', 'filter', 'diff', 'filljoin'] },
-    { title: '计算与统计', kinds: ['compute', 'groupby', 'baseline', 'calc'] },
+    { title: '计算与统计', kinds: ['compute', 'groupby', 'baseline', 'calc', 'linkjoin'] },
     { title: '条件与输出', kinds: ['condition', 'logic', 'action'] },
   ];
 
@@ -436,6 +437,7 @@ export function PalettePanel({
     compute: Calculator,
     groupby: Layers,
     baseline: BarChart3,
+    linkjoin: Combine,
     condition: GitBranch,
     logic: Waypoints,
     action: Bell,

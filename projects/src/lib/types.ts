@@ -72,6 +72,7 @@ export type NodeKind =
   | 'elapsed' // 已过天数（本周/月/季/年或自定义区间，已过去的天数，标量）
   | 'logic' // 逻辑关联（如果/且/或），串联多个判断
   | 'calc' // 添加列（选择数据表/节点，逐行用函数公式计算追加新列：IF/CONCAT/文本/当前日期/日期函数/时间差）
+  | 'linkjoin' // 其他表添加列（把另一张表/节点结果按匹配键对齐后，取列附加到当前表）
 
 /** 比较运算符 */
 export type Operator =
@@ -650,6 +651,33 @@ export interface FillJoinNodeData {
   factReturnLabel?: string;
 }
 
+/** 其他表添加列节点数据：把另一张表/另一个节点的结果，按匹配键对齐后取列附加到主表 */
+/** 主表与源表均可来自数据表或节点结果 */
+export interface LinkJoinNodeData {
+  /** 主表（要添加列的对象）来源：table=数据表 / node=节点结果 */
+  mainSource?: 'table' | 'node';
+  /** 主表为数据表时的表 id / 名称 */
+  mainTableId?: string;
+  mainTableName?: string;
+  /** 主表为节点结果时的节点引用 */
+  mainNode?: string;
+  mainNodeLabel?: string;
+  /** 源表（从中取列）来源 */
+  srcSource?: 'table' | 'node';
+  /** 源表为数据表时的表 id / 名称 */
+  srcTableId?: string;
+  srcTableName?: string;
+  /** 源表为节点结果时的节点引用 */
+  srcNode?: string;
+  srcNodeLabel?: string;
+  /** 匹配键对：主表字段与源表字段同名（同名对同名），可配多对；为空=不匹配，源表当作单值逐行填充 */
+  matchKeys?: Array<{ field: string; }>;
+  /** 从源表取哪些列追加到主表 */
+  addFields?: Array<{ key: string; label: string }>;
+  /** 结果命名（可选备注） */
+  resultLabel?: string;
+}
+
 /** 预警动作节点数据 */
 export interface ActionNodeData {
   /** 类型：提醒 / 预警（新结构，替代 level） */
@@ -742,6 +770,7 @@ export interface FlowNode {
     | FilterNodeData
     | ElapsedNodeData
     | CalcNodeData
+    | LinkJoinNodeData
     | Record<string, unknown>;
   position: { x: number; y: number };
 }
@@ -908,6 +937,7 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   elapsed: '已过天数',
   rank: '排名',
   calc: '添加公式列',
+  linkjoin: '其他表添加列',
 };
 
 /** 节点分类色 */
@@ -934,6 +964,7 @@ export const KIND_COLOR: Record<
   elapsed: { bg: '#ECFEFF', border: '#0891B2', text: '#155E75', dot: '#0891B2' },
   rank: { bg: '#EFF6FF', border: '#2563EB', text: '#1D4ED8', dot: '#2563EB' },
   calc: { bg: '#FDF4FF', border: '#D946EF', text: '#A21CAF', dot: '#D946EF' },
+  linkjoin: { bg: '#FAF5FF', border: '#9333EA', text: '#6B21A8', dot: '#9333EA' },
 };
 
 /** 预警类型（级别→类型：提醒/预警） */
