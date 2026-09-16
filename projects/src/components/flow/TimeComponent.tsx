@@ -56,7 +56,7 @@ export default function TimeComponent({ value, onChange, hideAllToggle }: Props)
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-md border border-border bg-white p-2 shadow-lg">
+          <div className="absolute left-0 top-full z-50 mt-1 w-full rounded-md border border-border bg-white p-2 shadow-lg">
             {(['point', 'recent'] as const).map((g) => (
               <div key={g} className="mb-1.5">
                 <div className="mb-0.5 px-1 text-[9px] font-medium uppercase tracking-wide text-slate-400">
