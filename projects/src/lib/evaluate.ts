@@ -8,6 +8,7 @@ import type {
   BaseNodeData,
   LookupNodeData,
   GroupByNodeData,
+  GroupMetric,
   BaselineNodeData,
   FillJoinNodeData,
   FieldNodeData,
@@ -1597,6 +1598,88 @@ function evalNode(
       const mLabels = metrics.map((mt) => mt.outLabel || `${fnLabel(mt.fn)}(${mt.label || mt.key})`);
       const dimLabels = dims.map((x) => groupLabel(x.label, x.gran));
       const dateKey = gd.dateField || t.fields.find((f) => f.type === 'date')?.key || '';
+      // —— Mode B：至少一个聚合指标自带时间窗 → 逐指标按自身窗口过滤聚合，输出宽表多列（含各自同期/环期）——
+      const rawMetricsB = (Array.isArray(gd.metrics) ? gd.metrics : []) as unknown as (GroupMetric & { timeWindow?: TimeWindow })[];
+      const hasMetricTw = rawMetricsB.some((m) => m.timeWindow && m.timeWindow.preset !== 'all');
+      if (hasMetricTw) {
+        const metricDefsB = metrics.map((mt, mi) => {
+          const raw = rawMetricsB[mi];
+          return {
+            mt, mi,
+            out: mLabels[mi],
+            key: mt.key, fn: mt.fn, isDate: mt.isDate,
+            tw: raw?.timeWindow && raw.timeWindow.preset !== 'all' ? raw.timeWindow : undefined,
+          };
+        });
+        type CmpB = { mode: 'yoY' | 'ring'; groups: Map<string, { nums: number[][]; keys: string[]; recs: Record<string, unknown>[] }> };
+        const metricGroupsB = metricDefsB.map((def) => {
+          const rowsF = def.tw && dateKey ? srcRows.filter((r) => inWindow(r[dateKey], def.tw)) : srcRows;
+          const g = buildGroups(rowsF, dims, [metrics[def.mi]]);
+          const cmp: CmpB[] = [];
+          if (def.tw && dateKey) {
+            const twr = resolveTimeWindow(def.tw, new Date());
+            const modes = compareModes((def.tw as { compare?: { mode?: 'yoY' | 'ring'; modes?: ('yoY' | 'ring')[] } }).compare);
+            for (const mode of modes) {
+              const cw = computeCompareWindow(def.tw, def.tw.preset, twr.start, twr.end, new Date(), mode);
+              const cRows = srcRows.filter((r) => inRange(r[dateKey] as unknown as string, cw.start, cw.end));
+              cmp.push({ mode, groups: buildGroups(cRows, dims, [metrics[def.mi]]) });
+            }
+          }
+          return { def, g, cmp };
+        });
+        const aggVal = (g: { nums: number[][]; keys: string[]; recs: Record<string, unknown>[] } | undefined, def: typeof metricDefsB[number]): number => {
+          if (!g) return NaN;
+          const rr = g.recs || [];
+          const fn = def.fn;
+          if (fn === 'activeDays') return aggActiveDays(rr, dateKey, def.key);
+          if (fn === 'countDistinct') return aggCountDistinct(rr.map((x) => x[def.key]));
+          if (fn === 'count') return rr.length;
+          return agg(fn, g.nums?.[0] ?? []);
+        };
+        const colKeysB: string[] = [];
+        for (const d of metricGroupsB) {
+          colKeysB.push(d.def.out);
+          for (const c of d.cmp) colKeysB.push(`${d.def.out} · ${c.mode === 'yoY' ? '同期' : '环期'}`);
+          for (const c of d.cmp) colKeysB.push(`${d.def.out} · ${c.mode === 'yoY' ? '同比' : '环比'}`);
+        }
+        const groupKeySetB = new Set<string>();
+        for (const d of metricGroupsB) for (const k of d.g.keys()) groupKeySetB.add(k);
+        const outB: Record<string, string | number>[] = [];
+        for (const k of groupKeySetB) {
+          const row: Record<string, string | number> = {};
+          const keysArr = k.split('␟');
+          dimLabels.forEach((lab, i) => (row[lab] = keysArr[i] ?? ''));
+          for (const d of metricGroupsB) {
+            const g = d.g.get(k);
+            const val = aggVal(g, d.def);
+            row[d.def.out] = Number.isFinite(val) ? fmtNum(val) : '0';
+            for (const c of d.cmp) {
+              const cv = aggVal(c.groups.get(k), d.def);
+              row[`${d.def.out} · ${c.mode === 'yoY' ? '同期' : '环期'}`] = Number.isFinite(cv) ? fmtNum(cv) : '—';
+              if (Number.isFinite(val) && Number.isFinite(cv)) {
+                const rate = val !== 0 ? ((val - cv) / cv) * 100 : cv !== 0 ? -100 : 0;
+                row[`${d.def.out} · ${c.mode === 'yoY' ? '同比' : '环比'}`] = Number.isFinite(rate) ? `${rate.toFixed(2)}%` : '—';
+              } else {
+                row[`${d.def.out} · ${c.mode === 'yoY' ? '同比' : '环比'}`] = '—';
+              }
+            }
+          }
+          outB.push(row);
+        }
+        const emptyRowB: Record<string, string> = Object.fromEntries([
+          ...dimLabels.map((lab) => [lab, ''] as const),
+          ...colKeysB.map((ck) => [ck, ''] as const),
+        ]);
+        const finalOutB = outB.length ? outB : [emptyRowB];
+        return {
+          title: '分组聚合',
+          columns: [...dimLabels, ...colKeysB],
+          rows: cap(finalOutB),
+          shape: 'table',
+          scalar: undefined,
+          note: `来自「${rs.from}」按 ${dimLabels.join('、')} 分组，${metricDefsB.map((x) => x.out).join('、')}（各指标独立时间窗），共 ${outB.length} 组。`,
+        };
+      }
       // 时间窗起止日期列：解析出的统计窗口范围（如 2026/09/01 ~ 2026/09/30），置于结果首列
       const fmtD = (x: Date) => `${x.getFullYear()}/${String(x.getMonth() + 1).padStart(2, '0')}/${String(x.getDate()).padStart(2, '0')}`;
       // 时间窗粒度：选什么显什么——只显示与所选窗口匹配的一个周期天数（+ 固定的已过天数）

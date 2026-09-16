@@ -462,6 +462,8 @@ export interface GroupMetric {
   fn: 'sum' | 'count' | 'avg' | 'max' | 'min' | 'countDistinct' | 'activeDays';
   /** 该指标的结果列名（默认取 fn(字段名)） */
   resultLabel?: string;
+  /** 该指标独立的统计时间窗（可选）：设置了则按此窗口过滤聚合，同一字段可配多条不同窗口（累销/近3天/本月…）；未设置回退到节点级 timeWindow */
+  timeWindow?: TimeWindow;
 }
 
 /** 过滤条件运算符 */

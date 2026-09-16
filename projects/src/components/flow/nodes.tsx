@@ -690,18 +690,29 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
         if (!metrics.length && s(data.resultLabel)) cols.push({ key: s(data.resultLabel), label: s(data.resultLabel) });
       }
       // 对比列：与 evaluate 分组聚合输出对齐（同比/环比/同期/环期），当时间窗启用了对比时追加
+      const metricKeys = () => metrics.map((m) => s(m.resultLabel) || `${fnTxt(m.fn)}(${s(m.fieldLabel) || s(m.fieldKey)})`).filter(Boolean);
+      const pushCmpFor = (mktxt: string, modes: string[]) => {
+        for (const md of Array.from(new Set(modes))) {
+          const valN = md === 'yoY' ? '同期' : '环期';
+          const grwN = md === 'yoY' ? '同比' : '环比';
+          cols.push({ key: `${mktxt} · ${valN}`, label: `${mktxt} · ${valN}` });
+          cols.push({ key: `${mktxt} · ${grwN}`, label: `${mktxt} · ${grwN}` });
+        }
+      };
       const cmpConf = data.timeWindow && typeof data.timeWindow === 'object' ? (data.timeWindow as { compare?: { mode?: string; modes?: string[] } }).compare : undefined;
       if (cmpConf) {
         const modes = (Array.isArray(cmpConf.modes) && cmpConf.modes.length ? cmpConf.modes : cmpConf.mode ? [cmpConf.mode] : []).filter(Boolean) as string[];
-        const metricKeys = metrics.map((m) => s(m.resultLabel) || `${fnTxt(m.fn)}(${s(m.fieldLabel) || s(m.fieldKey)})`).filter(Boolean);
-        for (const mk of metricKeys) {
-          for (const md of Array.from(new Set(modes))) {
-            const valN = md === 'yoY' ? '同期' : '环期';
-            const grwN = md === 'yoY' ? '同比' : '环比';
-            cols.push({ key: `${mk} · ${valN}`, label: `${mk} · ${valN}` });
-            cols.push({ key: `${mk} · ${grwN}`, label: `${mk} · ${grwN}` });
-          }
-        }
+        for (const mk of metricKeys()) pushCmpFor(mk, modes);
+      }
+      // 指标级时间窗（Mode B）：每条指标自带时间窗时，额外补该指标自己的同期/环期列
+      for (const m of metrics) {
+        const mtw = (m as { timeWindow?: { compare?: { mode?: string; modes?: string[] } } }).timeWindow;
+        const mcmp = mtw && typeof mtw === 'object' ? mtw.compare : undefined;
+        if (!mcmp) continue;
+        const modes = (Array.isArray(mcmp.modes) && mcmp.modes.length ? mcmp.modes : mcmp.mode ? [mcmp.mode] : []).filter(Boolean) as string[];
+        if (!modes.length) continue;
+        const mk = s(m.resultLabel) || `${fnTxt(m.fn)}(${s(m.fieldLabel) || s(m.fieldKey)})`;
+        if (mk) pushCmpFor(mk, modes);
       }
       return cols;
     }
@@ -3404,66 +3415,83 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
         return (
           <div className="space-y-1">
             {shown.map((mt, idx) => (
-              <div key={mt.id || idx} className="flex items-center gap-1">
-                <select
-                  value={mt.fieldKey}
-                  onChange={(e) => {
-                    const f = fields.find((x) => x.key === e.target.value);
-                    const next = [...shown];
-                    next[idx] = { ...mt, fieldKey: e.target.value, fieldLabel: f?.alias || f?.key || '', id: mt.id || `gm_${Date.now()}_${idx}` };
-                    setMetrics(next);
-                  }}
-                  className="min-w-0 flex-1 rounded-md border bg-white px-1.5 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                  title={mt.fieldLabel || mt.fieldKey || '选择指标字段'}
-                >
-                  <option value="">选择指标字段…</option>
-                  {fields.map((f) => (
-                    <option key={f.key} value={f.key}>
-                      {f.alias || f.key}
-                      {f.type === 'number' ? '' : '（文本）'}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={mt.fn}
-                  onChange={(e) => {
-                    const next = [...shown];
-                    next[idx] = { ...mt, fn: e.target.value as GroupMetric['fn'], id: mt.id || `gm_${Date.now()}_${idx}` };
-                    setMetrics(next);
-                  }}
-                  className="shrink-0 w-[5rem] truncate rounded-md border bg-white px-1.5 py-1 text-[9px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                  title={AGG_FN_OPTIONS.find((a) => a.value === mt.fn)?.label || mt.fn}
-                >
-                  {AGG_FN_OPTIONS.map((a) => (
-                    <option key={a.value} value={a.value}>
-                      {a.label}
-                    </option>
-                  ))}
-                </select>
-                {(shown.length > 1 || metrics.length > 0) && (
-                  <button
-                    type="button"
-                    onClick={() => setMetrics(shown.filter((_, i) => i !== idx))}
-                    className="shrink-0 rounded px-1 text-[11px] text-red-500 hover:bg-red-50"
+              <div key={mt.id || idx} className="space-y-1 rounded-md border border-gray-200 bg-white p-1.5">
+                <div className="flex items-center gap-1">
+                  <select
+                    value={mt.fieldKey}
+                    onChange={(e) => {
+                      const f = fields.find((x) => x.key === e.target.value);
+                      const next = [...shown];
+                      next[idx] = { ...mt, fieldKey: e.target.value, fieldLabel: f?.alias || f?.key || '', id: mt.id || `gm_${Date.now()}_${idx}` };
+                      setMetrics(next);
+                    }}
+                    className="min-w-0 flex-1 rounded-md border bg-white px-1.5 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    title={mt.fieldLabel || mt.fieldKey || '选择指标字段'}
                   >
-                    ✕
-                  </button>
-                )}
-                <input
-                  value={mt.resultLabel || ''}
-                  onChange={(e) => {
-                    const next = [...shown];
-                    next[idx] = { ...mt, resultLabel: e.target.value, id: mt.id || `gm_${Date.now()}_${idx}` };
-                    setMetrics(next);
-                  }}
-                  placeholder="结果字段名"
-                  className="min-w-0 w-[7.5rem] shrink-0 rounded-md border bg-white px-1.5 py-1 text-[9px] text-gray-700 placeholder:text-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                />
+                    <option value="">选择指标字段…</option>
+                    {fields.map((f) => (
+                      <option key={f.key} value={f.key}>
+                        {f.alias || f.key}
+                        {f.type === 'number' ? '' : '（文本）'}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={mt.fn}
+                    onChange={(e) => {
+                      const next = [...shown];
+                      next[idx] = { ...mt, fn: e.target.value as GroupMetric['fn'], id: mt.id || `gm_${Date.now()}_${idx}` };
+                      setMetrics(next);
+                    }}
+                    className="shrink-0 w-[5rem] truncate rounded-md border bg-white px-1.5 py-1 text-[9px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    title={AGG_FN_OPTIONS.find((a) => a.value === mt.fn)?.label || mt.fn}
+                  >
+                    {AGG_FN_OPTIONS.map((a) => (
+                      <option key={a.value} value={a.value}>
+                        {a.label}
+                      </option>
+                    ))}
+                  </select>
+                  {(shown.length > 1 || metrics.length > 0) && (
+                    <button
+                      type="button"
+                      onClick={() => setMetrics(shown.filter((_, i) => i !== idx))}
+                      className="shrink-0 rounded px-1 text-[11px] text-red-500 hover:bg-red-50"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="min-w-0 flex-1">
+                    <TimeComponent
+                      value={mt.timeWindow}
+                      onChange={(tw) => {
+                        const ntw = tw && tw.preset !== 'all' ? tw : undefined;
+                        const next = [...shown];
+                        next[idx] = { ...mt, timeWindow: ntw, id: mt.id || `gm_${Date.now()}_${idx}` };
+                        setMetrics(next);
+                        // 任一聚合指标一旦使用自己的时间窗，即清空节点级③全局时间窗，避免双窗歧义
+                        if (ntw) update({ timeWindow: undefined } as Partial<GroupByNodeData>);
+                      }}
+                    />
+                  </div>
+                  <input
+                    value={mt.resultLabel || ''}
+                    onChange={(e) => {
+                      const next = [...shown];
+                      next[idx] = { ...mt, resultLabel: e.target.value, id: mt.id || `gm_${Date.now()}_${idx}` };
+                      setMetrics(next);
+                    }}
+                    placeholder="结果名(累销/近3天…)"
+                    className="min-w-0 w-[6.5rem] shrink-0 rounded-md border bg-white px-1.5 py-1 text-[9px] text-gray-700 placeholder:text-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  />
+                </div>
               </div>
             ))}
             <button
               type="button"
-              onClick={() => setMetrics([...shown.filter((m) => m.fieldKey), { id: `gm_${Date.now()}_${shown.length}`, fieldKey: '', fieldLabel: '', fn: 'countDistinct', resultLabel: '' }])}
+              onClick={() => setMetrics([...shown.filter((m) => m.fieldKey), { id: `gm_${Date.now()}_${shown.length}`, fieldKey: '', fieldLabel: '', fn: 'sum', resultLabel: '' }])}
               className="text-[11px] text-indigo-600 hover:text-indigo-800"
             >
               + 添加聚合指标
