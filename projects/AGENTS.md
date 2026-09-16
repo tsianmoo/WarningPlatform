@@ -218,6 +218,7 @@
 - **SQL 安全**：`ql-validate.ts` 用**词法白名单**（仅 SELECT/WITH，词法扫描剔除注释与多语句），非正则硬匹配；`dangerHints` 给出「全表扫描 SELECT *、无日期条件」黄色警告不阻断。
 - **告警**：`alert.ts` 支持 webhook/wecom/dingtalk/feishu/smtp；`dispatchAlerts` 带收敛（suppressed Map，`10min` 默认静默窗）；字段沿用 `AlertChannel` 的 `host/port/user/passwordEnc/to/webhookUrl/tls`，勿用 endpoint/pass。
 - **审计**：写操作经 `audit(req, action, type, id, name, diff)` 落 `sync_audit`（diff 为 JSON 字符串截断 4000）。
+- **⚠️ useToast 必须稳定 `toast`**：`src/components/sync/ui.tsx` 的 `useToast` 返回的 `toast`（`push`）必须用 `useCallback` 包裹、整体用 `useMemo` 返回。各 Manager `load` 均 `useCallback(..., [toast])` 再 `useEffect([load])`；若 `toast` 每次渲染变化会触发**无限循环 `Maximum update depth exceeded`** → 进入「数据同步平台」疯狂闪烁 + 循环请求造成满屏 `Failed to fetch`。已封装稳定化，勿撤销。
 
 ## 运行与验证
 - 预览 / 部署复用既有 `scripts/dev.sh` 与 `scripts/build.sh`（`tsx src/server.ts`；build 用 tsup 打 `dist/server.js`）。**注**：`sync-store.ts` 里对 `@/lib/...` 的动态 `require` 在 tsup 打包时不重写别名，prod 下可能不生效，但 `server.ts` 已用静态 import 启动 scheduler，功能不受影响。

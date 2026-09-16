@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 
 /** 数据同步权限门禁：容器注入 can(op) 回调（op: create/edit/delete/run/download/view） */
 export const PermCtx = createContext<(op: string) => boolean>(() => true);
@@ -52,24 +52,29 @@ export function Modal({ title, open, onClose, children, wide }: { title: string;
   );
 }
 
-/** 简单 toast */
+/** 简单 toast：push 用 useCallback 稳定化，避免作为 useEffect/useCallback 依赖时每次渲染变化导致无限循环 */
 export function useToast() {
   const [toasts, setToasts] = useState<{ id: number; msg: string; kind: 'ok' | 'err' }[]>([]);
-  const push = (msg: string, kind: 'ok' | 'err' = 'ok') => {
+  const push = useCallback((msg: string, kind: 'ok' | 'err' = 'ok') => {
     const id = Date.now() + Math.random();
     setToasts((t) => [...t, { id, msg, kind }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3500);
-  };
-  const ToastView = toasts.length ? (
-    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
-      {toasts.map((t) => (
-        <div key={t.id} className={`rounded-md px-3 py-2 text-sm text-white shadow-lg ${t.kind === 'ok' ? 'bg-green-600' : 'bg-red-600'}`}>
-          {t.msg}
+  }, []);
+  return useMemo(
+    () => ({
+      toast: push,
+      ToastView: toasts.length ? (
+        <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
+          {toasts.map((t) => (
+            <div key={t.id} className={`rounded-md px-3 py-2 text-sm text-white shadow-lg ${t.kind === 'ok' ? 'bg-green-600' : 'bg-red-600'}`}>
+              {t.msg}
+            </div>
+          ))}
         </div>
-      ))}
-    </div>
-  ) : null;
-  return { toast: push, ToastView };
+      ) : null,
+    }),
+    [push, toasts]
+  );
 }
 
 export function Empty({ text }: { text: string }) {
