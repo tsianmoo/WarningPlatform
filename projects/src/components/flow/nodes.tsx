@@ -4920,6 +4920,7 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
         </div>
 
         <div className={rowLabel}>② 计算列</div>
+        <div className="max-h-[300px] space-y-1 overflow-y-auto pr-0.5">
         {cols.map((c, i) => (
           <div key={i} className="space-y-1 rounded-md border border-gray-100 bg-gray-50/60 p-1.5">
             <div className="flex items-center gap-1">
@@ -4953,6 +4954,7 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
             </div>
           </div>
         ))}
+        </div>
         <button
           type="button"
           onClick={() => update({ columns: [...cols, { label: '', expr: '' }] } as Partial<CalcNodeData>)}
