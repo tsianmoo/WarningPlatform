@@ -123,7 +123,7 @@ function Shell() {
       <RuleList onNew={startNew} onEdit={startEdit} onHome={goHome} />
     );
   } else if (view === 'alerts') {
-    content = <AlertList onBack={goHome} />;
+    content = <AlertList />;
   } else if (view === 'dealer') {
     content = <DealerStoreManage kind="dealer" />;
   } else if (view === 'emp') {

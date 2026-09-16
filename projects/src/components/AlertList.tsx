@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Bell, ClipboardList, Eye, History, MessageSquare, RotateCcw, Send, X } from 'lucide-react';
+import { Bell, ClipboardList, Eye, History, MessageSquare, RotateCcw, Send, X } from 'lucide-react';
 import { useStore, computeAlertDims } from '@/lib/store';
 import { resolvePerm, canView, filterAlertsByScope, resolveAuthAccount } from '@/lib/perm';
 import type { AlertStatus, AlertTask, NotifyMode } from '@/lib/types';
@@ -239,6 +239,11 @@ function ElapsedCell({ createdAt }: { createdAt: number }) {
 
 const emptyFilter = {
   kw: '',
+  ruleKw: '',
+  productKw: '',
+  storeKw: '',
+  userKw: '',
+  personKw: '',
   level: 'all' as string,
   status: 'all' as string,
   person: 'all' as string,
@@ -265,6 +270,15 @@ const STORE_DIMS: { key: keyof typeof emptyFilter; label: string; get: (a: Alert
   { key: 'sSalesArea', label: '销售区域', get: (a) => a.dims?.store?.salesArea },
   { key: 'sDistrict', label: '区部', get: (a) => a.dims?.store?.district },
 ];
+
+/** 文本型关键词检索辅助（分别聚合商品/店仓/用户/人员相关字段，统一小写便于子串匹配） */
+const prodTextOf = (a: AlertTask): string => [...new Set(PRODUCT_DIMS.flatMap((d) => d.get(a) ?? []).filter(Boolean))].join(' ').toLowerCase();
+const storeTextOf = (a: AlertTask): string =>
+  [...new Set([...STORE_DIMS.flatMap((d) => d.get(a) ?? []), ...(a.preview?.storeMessages ?? []).map((s) => s.store)].filter(Boolean))].join(' ').toLowerCase();
+const userTextOf = (a: AlertTask): string =>
+  [...new Set([a.assignee, a.handoffTo, ...(a.notified ?? [])].filter(Boolean))].join(' ').toLowerCase();
+const personTextOf = (a: AlertTask): string =>
+  [...new Set([a.createdBy, a.dept, ...(a.notified ?? []), ...(a.comments ?? []).map((c) => c.by)].filter(Boolean))].join(' ').toLowerCase();
 
 /** 快捷日期标签定义 */
 const QUICK_TAGS: { key: string; label: string }[] = [
@@ -311,7 +325,7 @@ function quickRange(key: string): { start: string; end: string } {
   return { start: '', end: '' };
 }
 
-export function AlertList({ onBack }: { onBack: () => void }) {
+export function AlertList() {
   const { state, updateAlertStatus } = useStore();
   const PEOPLE = PERSONNEL as unknown as { name: string; dept: string }[];
   const [meName] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : ''));
@@ -323,9 +337,7 @@ export function AlertList({ onBack }: { onBack: () => void }) {
     () => filterAlertsByScope(state.alerts ?? [], scopePerson ?? me, perm.dataScope, state.stores ?? []),
     [state.alerts, scopePerson, me, perm.dataScope, state.stores]
   );
-  const pending = alerts.filter((a) => a.status === 'new' || a.status === 'accepted' || a.status === 'processing').length;
 
-  
   const [handoffId, setHandoffId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [showHist, setShowHist] = useState(false);
@@ -391,7 +403,12 @@ export function AlertList({ onBack }: { onBack: () => void }) {
     const start = filter.start ? new Date(filter.start + 'T00:00:00').getTime() : null;
     const end = filter.end ? new Date(filter.end + 'T23:59:59').getTime() : null;
     return enriched.filter((a) => {
-      if (filter.kw && !(`${a.ruleName || a.title}`.toLowerCase().includes(filter.kw.toLowerCase()))) return false;
+      if (filter.kw && !`${a.title}`.toLowerCase().includes(filter.kw.toLowerCase())) return false;
+      if (filter.ruleKw && !`${a.ruleName}`.toLowerCase().includes(filter.ruleKw.toLowerCase())) return false;
+      if (filter.productKw && !prodTextOf(a).includes(filter.productKw.toLowerCase())) return false;
+      if (filter.storeKw && !storeTextOf(a).includes(filter.storeKw.toLowerCase())) return false;
+      if (filter.userKw && !userTextOf(a).includes(filter.userKw.toLowerCase())) return false;
+      if (filter.personKw && !personTextOf(a).includes(filter.personKw.toLowerCase())) return false;
       if (filter.level !== 'all' && (a.level ?? 'warn') !== filter.level) return false;
       if (filter.status !== 'all' && a.status !== filter.status) return false;
       if (filter.person !== 'all' && a.assignee !== filter.person && a.handoffTo !== filter.person) return false;
@@ -405,10 +422,11 @@ export function AlertList({ onBack }: { onBack: () => void }) {
 
   const stats = useMemo(() => {
     const total = filtered.length;
+    const pending = filtered.filter((a) => a.status === 'new').length;
+    const processing = filtered.filter((a) => a.status === 'accepted' || a.status === 'processing').length;
     const done = filtered.filter((a) => a.status === 'done').length;
-    const failed = filtered.filter((a) => a.status === 'failed').length;
-    const undone = total - done - failed;
-    return { total, done, undone, failed };
+    const rate = total ? Math.round((done / total) * 100) : 0;
+    return { total, pending, processing, done, rate };
   }, [filtered]);
 
   const applyQuick = (key: string) => {
@@ -424,22 +442,43 @@ export function AlertList({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="flex h-screen flex-col bg-[#F7F8FA]">
-      {/* 顶栏 */}
-      <div className="flex items-center gap-3 border-b border-gray-100 bg-white px-6 py-3.5">
-        <button onClick={onBack} className="rounded-md p-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700" title="返回">
-          <ArrowLeft size={17} />
-        </button>
-        <h1 className="text-sm font-semibold text-gray-800">预警列表</h1>
-        {pending > 0 && <span className="text-xs font-medium text-gray-400">{pending} 条待处理</span>}
-      </div>
-
-      {/* 筛选栏 */}
+      {/* 搜索与筛选栏 */}
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-white px-6 py-2.5">
         <input
           value={filter.kw}
           onChange={(e) => setFilter({ ...filter, kw: e.target.value })}
           placeholder="标题"
-          className="h-7 w-40 rounded border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none transition-colors focus:border-gray-400"
+          className="h-7 w-36 rounded border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none transition-colors focus:border-gray-400"
+        />
+        <input
+          value={filter.ruleKw}
+          onChange={(e) => setFilter({ ...filter, ruleKw: e.target.value })}
+          placeholder="规则"
+          className="h-7 w-36 rounded border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none transition-colors focus:border-gray-400"
+        />
+        <input
+          value={filter.productKw}
+          onChange={(e) => setFilter({ ...filter, productKw: e.target.value })}
+          placeholder="商品"
+          className="h-7 w-28 rounded border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none transition-colors focus:border-gray-400"
+        />
+        <input
+          value={filter.storeKw}
+          onChange={(e) => setFilter({ ...filter, storeKw: e.target.value })}
+          placeholder="店仓"
+          className="h-7 w-28 rounded border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none transition-colors focus:border-gray-400"
+        />
+        <input
+          value={filter.userKw}
+          onChange={(e) => setFilter({ ...filter, userKw: e.target.value })}
+          placeholder="用户"
+          className="h-7 w-28 rounded border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none transition-colors focus:border-gray-400"
+        />
+        <input
+          value={filter.personKw}
+          onChange={(e) => setFilter({ ...filter, personKw: e.target.value })}
+          placeholder="人员"
+          className="h-7 w-28 rounded border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none transition-colors focus:border-gray-400"
         />
         <input type="date" value={filter.start} onChange={(e) => setFilter({ ...filter, start: e.target.value })} className={SelectCls} />
         <span className="text-xs text-gray-300">至</span>
@@ -526,10 +565,10 @@ export function AlertList({ onBack }: { onBack: () => void }) {
       <div className="border-b border-gray-100 bg-white px-6 py-2.5">
         <div className="grid grid-cols-4 gap-3">
           {[
-            { label: '预警条数', value: stats.total, text: 'text-gray-800', sub: `${filtered.length} 条` },
-            { label: '已完成', value: stats.done, text: 'text-green-600', sub: `done` },
-            { label: '未完成', value: stats.undone, text: 'text-amber-600', sub: `new/accepted/processing` },
-            { label: '无法完成', value: stats.failed, text: 'text-red-500', sub: `failed` },
+            { label: '待处理条数', value: stats.pending, text: 'text-amber-600', sub: 'new' },
+            { label: '处理中条数', value: stats.processing, text: 'text-blue-600', sub: 'accepted/processing' },
+            { label: '已完成条数', value: stats.done, text: 'text-green-600', sub: 'done' },
+            { label: '完成率', value: `${stats.rate}%`, text: 'text-gray-800', sub: `共 ${stats.total} 条` },
           ].map((s) => (
             <div key={s.label} className="rounded-lg border border-gray-100 bg-[#F7F8FA] px-3 py-2.5">
               <div className="text-[11px] text-gray-400">{s.label}</div>
