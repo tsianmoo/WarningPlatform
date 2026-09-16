@@ -19,14 +19,9 @@ import {
   Inbox,
   FolderPlus,
   FolderInput,
-  ArrowUp,
-  ArrowDown,
-  Lock,
-  Unlock,
 } from 'lucide-react';
 import { useStore, formatDateTime } from '@/lib/store';
 import { resolvePerm, canOper } from '@/lib/perm';
-import { Input } from '@/components/ui/input';
 import { parseTableFile, buildTableFromRows } from '@/lib/parser';
 import { uid, type FieldType, type DataTable, type AlertRule } from '@/lib/types';
 import { toast } from 'sonner';
@@ -56,7 +51,7 @@ const TYPE_LABEL: Record<FieldType, string> = {
 };
 
 export function DataTableManager() {
-  const { state, addTable, updateTable, removeTable, setActiveTable, renameField, setFieldType, toggleFieldVisible, toggleFieldLock, moveField, addField, addTableGroup, updateTableGroup, removeTableGroup } = useStore();
+  const { state, addTable, updateTable, removeTable, setActiveTable, renameField, setFieldType, addTableGroup, updateTableGroup, removeTableGroup } = useStore();
   const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
   const me = state.persons.find((p) => p.name === meName) ?? null;
   const perm = resolvePerm(me, state.config);
@@ -70,17 +65,8 @@ export function DataTableManager() {
   } | null>(null);
   const [moveTable, setMoveTable] = useState<DataTable | null>(null);
   const [moveTarget, setMoveTarget] = useState('');
-  const [rightTab, setRightTab] = useState<'fields' | 'preview'>('fields');
-  const [openAddField, setOpenAddField] = useState(false);
-  const [newField, setNewField] = useState({
-    key: '',
-    alias: '',
-    type: 'string' as FieldType,
-    defaultValue: '',
-  });
   const uploadGroupRef = useRef('');
   const uploadRef = useRef<HTMLInputElement>(null);
-  const fillRef = useRef<HTMLInputElement>(null);
   const setUploadGroup = (g: string) => {
     uploadGroupRef.current = g;
   };
@@ -107,65 +93,6 @@ export function DataTableManager() {
       const table: DataTable = { id: uid('tbl'), createdAt: Date.now(), group, ...next };
       addTable(table);
       toast.success(`已导入「${table.name}」，共 ${table.rowCount} 行`);
-    } catch (e) {
-      toast.error('数据解析失败，请检查文件格式');
-      console.error(e);
-    }
-  };
-
-  // 手动建列：先创建空表并配置字段列，再通过 handleFill 按列对齐导入数据
-  const createBlank = (group = '') => {
-    const table: DataTable = {
-      id: uid('tbl'),
-      createdAt: Date.now(),
-      name: '未命名表',
-      fileName: '',
-      fields: [],
-      previewRows: [],
-      rowCount: 0,
-      group,
-    };
-    addTable(table);
-    setActiveTable(table.id);
-    setRightTab('fields');
-    setOpenAddField(true);
-    toast.info('已创建空表，请先在右侧「添加字段」定义列结构，再上传文件按列导入');
-  };
-
-  // 将文件按预先配置的字段列对齐填充到已有的表（仅保留字段中声明的列）
-  const handleFill = async (t: DataTable, file: File) => {
-    try {
-      const { rows } = await parseTableFile(file);
-      if (!rows.length) {
-        toast.error('文件内容为空或未解析出数据');
-        return;
-      }
-      const known = new Set(t.fields.map((f) => f.key));
-      const unknown = Object.keys(rows[0]).filter((k) => !known.has(k));
-      const previewRows = rows.slice(0, 50).map((r) => {
-        const o: Record<string, string> = {};
-        for (const f of t.fields) o[f.key] = String(r[f.key] ?? '');
-        return o;
-      });
-      const fullRows: Record<string, string | number | boolean>[] = rows.map((r) => {
-        const o: Record<string, string | number | boolean> = {};
-        for (const f of t.fields) {
-          const v = r[f.key];
-          o[f.key] = typeof v === 'number' && !Number.isNaN(v) ? v : typeof v === 'boolean' ? v : String(v ?? '');
-        }
-        return o;
-      });
-      updateTable(t.id, {
-        name: file.name.replace(/\.[^.]+$/, ''),
-        fileName: file.name,
-        previewRows,
-        rowCount: rows.length,
-        rows: fullRows,
-      });
-      toast.success(
-        `已导入 ${rows.length} 行` +
-          (unknown.length ? `；已忽略未配置列：${unknown.slice(0, 5).join('、')}` : '')
-      );
     } catch (e) {
       toast.error('数据解析失败，请检查文件格式');
       console.error(e);
@@ -348,17 +275,6 @@ export function DataTableManager() {
               e.target.value = '';
             }}
           />
-          <input
-            ref={fillRef}
-            type="file"
-            accept=".xlsx,.xls,.xlsm,.csv,.txt"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void handleFill(active, f);
-              e.target.value = '';
-            }}
-          />
           <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
             <div className="text-sm font-medium text-gray-700">数据表</div>
             <div className="flex items-center gap-2">
@@ -378,10 +294,6 @@ export function DataTableManager() {
                   >
                     <UploadCloud size={14} className="mr-2 text-gray-400" />
                     上传数据表
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => createBlank(uploadGroupRef.current)}>
-                    <Table2 size={14} className="mr-2 text-gray-400" />
-                    手动建列（先配列再上传）
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onSelect={createGroup}>
@@ -650,57 +562,19 @@ export function DataTableManager() {
                 <table className="w-full text-sm">
                   <thead className="text-left text-xs text-gray-400">
                     <tr className="border-b border-gray-100">
-                      <th className="w-12 px-2 py-2.5 text-center font-medium">显示</th>
                       <th className="px-4 py-2.5 font-medium">字段（列名）</th>
                       <th className="px-4 py-2.5 font-medium">标签值</th>
                       <th className="px-4 py-2.5 font-medium">类型</th>
                       <th className="px-4 py-2.5 font-medium">样例</th>
-                      <th className="px-4 py-2.5 text-right font-medium">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {active.rowCount === 0 && !active.fileName && (
-                            <button
-                              onClick={() => fillRef.current?.click()}
-                              className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-100"
-                              title="按已配置列对齐导入文件数据"
-                            >
-                              <UploadCloud size={13} /> 导入数据
-                            </button>
-                          )}
-                          <button
-                            onClick={() => setOpenAddField(true)}
-                            className="inline-flex items-center gap-1 rounded-md bg-gray-900 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-gray-700"
-                          >
-                            <Plus size={13} /> 添加字段
-                          </button>
-                        </div>
-                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {active.fields.map((f, fi) => (
-                      <tr
-                        key={f.key}
-                        className={`group/border border-b border-gray-50 hover:bg-gray-50/40 ${f.hidden ? 'opacity-45' : ''}`}
-                      >
-                        <td className="px-2 py-2.5 text-center">
-                          <label className="inline-flex cursor-pointer items-center">
-                            <input
-                              type="checkbox"
-                              checked={!f.hidden}
-                              onChange={() => toggleFieldVisible(active.id, f.key)}
-                              className="h-4 w-4 cursor-pointer rounded border-gray-300 accent-gray-900"
-                            />
-                          </label>
-                        </td>
+                    {active.fields.map((f) => (
+                      <tr key={f.key} className="group/border border-b border-gray-50 hover:bg-gray-50/40">
                         <td className="px-4 py-2.5">
                           <span className="inline-flex items-center gap-2 rounded-md px-2 py-1 text-xs text-gray-700">
                             <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: f.tagColor }} />
                             <span className="font-mono">{f.key}</span>
-                            {f.locked && (
-                              <span className="inline-flex items-center gap-0.5 text-[10px] text-gray-400">
-                                <Lock size={11} />
-                              </span>
-                            )}
                           </span>
                         </td>
                         <td className="px-4 py-2.5">
@@ -708,20 +582,17 @@ export function DataTableManager() {
                             <Tags size={13} className="shrink-0 text-gray-300" />
                             <input
                               value={f.alias}
-                              disabled={f.locked}
                               onChange={(e) => renameField(active.id, f.key, e.target.value)}
-                              className="w-40 rounded-md border border-transparent px-2 py-1 text-sm text-gray-800 placeholder:text-gray-300 focus:border-gray-300 focus:outline-none focus:ring-1 focus:ring-gray-200 disabled:bg-transparent disabled:text-gray-500"
+                              className="w-40 rounded-md border border-transparent px-2 py-1 text-sm text-gray-800 placeholder:text-gray-300 focus:border-gray-300 focus:outline-none focus:ring-1 focus:ring-gray-200"
                               placeholder="点击输入标签"
-                              title={f.locked ? '字段已锁定，不可修改' : undefined}
                             />
                           </div>
                         </td>
                         <td className="px-4 py-2.5">
                           <select
                             value={f.type}
-                            disabled={f.locked}
                             onChange={(e) => setFieldType(active.id, f.key, e.target.value as FieldType)}
-                            className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 outline-none hover:border-gray-300 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 outline-none hover:border-gray-300"
                           >
                             {(['string', 'number', 'date', 'boolean'] as FieldType[]).map((t) => (
                               <option key={t} value={t}>
@@ -731,158 +602,50 @@ export function DataTableManager() {
                           </select>
                         </td>
                         <td className="max-w-[180px] truncate px-4 py-2.5 text-xs text-gray-400">{f.sample || '—'}</td>
-                        <td className="px-4 py-2.5">
-                          <div className="flex items-center justify-end gap-0.5">
-                            <button
-                              onClick={() => moveField(active.id, f.key, 'up')}
-                              disabled={fi === 0}
-                              className="rounded-md p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30"
-                              title="上移"
-                            >
-                              <ArrowUp size={14} />
-                            </button>
-                            <button
-                              onClick={() => moveField(active.id, f.key, 'down')}
-                              disabled={fi === active.fields.length - 1}
-                              className="rounded-md p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30"
-                              title="下移"
-                            >
-                              <ArrowDown size={14} />
-                            </button>
-                            <button
-                              onClick={() => toggleFieldLock(active.id, f.key)}
-                              className={`ml-1 rounded-md p-1 transition hover:bg-gray-100 ${
-                                f.locked ? 'text-amber-500' : 'text-gray-400 hover:text-gray-700'
-                              }`}
-                              title={f.locked ? '解锁字段' : '锁定字段（锁定后不可改标签/类型）'}
-                            >
-                              {f.locked ? <Lock size={14} /> : <Unlock size={14} />}
-                            </button>
-                          </div>
-                        </td>
                       </tr>
                     ))}
                     {active.fields.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-400">
+                        <td colSpan={4} className="px-4 py-10 text-center text-sm text-gray-400">
                           该表未解析出字段
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
-              </div>
 
-              {rightTab === 'preview' && (
-                <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-                  <div className="border-t border-gray-100 bg-gray-50/60 px-6 py-4">
-                    <div className="mb-2 text-xs font-medium text-gray-500">数据预览 · 前 {active.previewRows.length} 行</div>
-                    <div className="overflow-auto rounded-xl border border-gray-150 bg-white">
-                      <table className="w-full text-xs">
-                        <thead className="bg-gray-50 text-left text-gray-500">
-                          <tr>
-                            {active.fields.filter((f) => !f.hidden).map((f) => (
-                              <th key={f.key} className="whitespace-nowrap px-3 py-2 font-medium">
-                                {f.alias || f.key}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {active.previewRows.map((r, i) => (
-                            <tr key={i} className="border-t border-gray-50">
-                              {active.fields.filter((f) => !f.hidden).map((f) => (
-                                <td key={f.key} className="whitespace-nowrap px-3 py-2 text-gray-500">
-                                  {r[f.key] ?? ''}
-                                </td>
-                              ))}
-                            </tr>
+              <div className="border-t border-gray-100 bg-gray-50/60 px-6 py-4">
+                <div className="mb-2 text-xs font-medium text-gray-500">数据预览 · 前 {active.previewRows.length} 行</div>
+                <div className="overflow-auto rounded-xl border border-gray-150 bg-white">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 text-left text-gray-500">
+                      <tr>
+                        {active.fields.map((f) => (
+                          <th key={f.key} className="whitespace-nowrap px-3 py-2 font-medium">
+                            {f.alias || f.key}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {active.previewRows.map((r, i) => (
+                        <tr key={i} className="border-t border-gray-50">
+                          {active.fields.map((f) => (
+                            <td key={f.key} className="whitespace-nowrap px-3 py-2 text-gray-500">
+                              {r[f.key] ?? ''}
+                            </td>
                           ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              )}
+              </div>
+              </div>
             </>
           )}
         </section>
       </div>
-
-      <AlertDialog open={openAddField} onOpenChange={(v) => !v && setOpenAddField(false)}>
-        <AlertDialogContent className="max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle>添加字段</AlertDialogTitle>
-            <AlertDialogDescription>
-              手动添加字段可保证数据表列结构正确，上传文件时将按此列对齐，避免导入错乱。字段锁定后可防止误改。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="grid gap-3 py-2">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">字段名（列名 key）</label>
-              <Input
-                value={newField.key}
-                onChange={(e) => setNewField({ ...newField, key: e.target.value })}
-                placeholder="例如 style_no"
-                className="font-mono"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">标签（别名）</label>
-                <Input
-                  value={newField.alias}
-                  onChange={(e) => setNewField({ ...newField, alias: e.target.value })}
-                  placeholder="例如 款号"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">类型</label>
-                <select
-                  value={newField.type}
-                  onChange={(e) => setNewField({ ...newField, type: e.target.value as FieldType })}
-                  className="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700 outline-none focus:border-gray-300"
-                >
-                  {(['string', 'number', 'date', 'boolean'] as FieldType[]).map((t) => (
-                    <option key={t} value={t}>
-                      {TYPE_LABEL[t]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">默认值（可选，用于回填已存在行）</label>
-              <Input
-                value={newField.defaultValue}
-                onChange={(e) => setNewField({ ...newField, defaultValue: e.target.value })}
-                placeholder="留空则不回填"
-              />
-            </div>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setOpenAddField(false)}>取消</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={!newField.key.trim() || !!active?.fields.some((f) => f.key === newField.key.trim())}
-              onClick={() => {
-                if (!active) return;
-                addField(active.id, {
-                  key: newField.key.trim(),
-                  alias: newField.alias.trim(),
-                  type: newField.type,
-                  defaultValue: newField.defaultValue,
-                });
-                toast.success(`已添加字段「${newField.key.trim()}」`);
-                setNewField({ key: '', alias: '', type: 'string', defaultValue: '' });
-                setOpenAddField(false);
-                setRightTab('fields');
-              }}
-            >
-              添加字段
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <AlertDialog open={!!openDelete} onOpenChange={(v) => !v && setOpenDelete(null)}>
         <AlertDialogContent>
