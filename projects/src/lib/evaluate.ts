@@ -1600,7 +1600,7 @@ function evalNode(
       const dateKey = gd.dateField || t.fields.find((f) => f.type === 'date')?.key || '';
       // —— Mode B：至少一个聚合指标自带时间窗 → 逐指标按自身窗口过滤聚合，输出宽表多列（含各自同期/环期）——
       const rawMetricsB = (Array.isArray(gd.metrics) ? gd.metrics : []) as unknown as (GroupMetric & { timeWindow?: TimeWindow })[];
-      const hasMetricTw = rawMetricsB.some((m) => m.timeWindow && m.timeWindow.preset !== 'all');
+      const hasMetricTw = rawMetricsB.some((m) => !!m.timeWindow);
       if (hasMetricTw) {
         const metricDefsB = metrics.map((mt, mi) => {
           const raw = rawMetricsB[mi];

@@ -10,6 +10,7 @@ interface Props {
   onChange: (tw: TimeWindow) => void;
   compact?: boolean;
   hideAllToggle?: boolean;
+  disabled?: boolean;
 }
 
 const GROUP_LABEL: Record<string, string> = {
@@ -27,7 +28,7 @@ const COMPARE_OPTIONS: { value: 'yoY' | 'ring'; label: string; hint: string }[] 
   { value: 'ring', label: '环期', hint: '上一时段' },
 ];
 
-export default function TimeComponent({ value, onChange, hideAllToggle }: Props) {
+export default function TimeComponent({ value, onChange, hideAllToggle, disabled }: Props) {
   const [open, setOpen] = useState(false);
   const tw: TimeWindow = useMemo(() => value ?? { preset: 'thisWeek' }, [value]);
   const resolved = useMemo(() => resolveTimeWindow(tw), [tw]);
@@ -45,8 +46,9 @@ export default function TimeComponent({ value, onChange, hideAllToggle }: Props)
       <div className="relative min-w-0 flex-1">
         <button
         type="button"
+        disabled={disabled}
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50/50 px-2 py-1 text-left text-xs text-emerald-700 transition hover:bg-emerald-50"
+        className="flex w-full items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50/50 px-2 py-1 text-left text-xs text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400 disabled:hover:bg-slate-50"
       >
         <Clock size={12} strokeWidth={2.2} className="shrink-0 text-emerald-600" />
         <span className="shrink-0 truncate font-medium">{presetLabel(tw.preset)}</span>
@@ -232,10 +234,11 @@ export default function TimeComponent({ value, onChange, hideAllToggle }: Props)
       )}
       </div>
       {!hideAllToggle && (
-        <label className="flex shrink-0 cursor-pointer select-none items-center gap-1 pl-0.5 text-[11px] font-medium text-emerald-700">
+        <label className={`flex shrink-0 select-none items-center gap-1 pl-0.5 text-[11px] font-medium text-emerald-700 ${disabled ? 'cursor-not-allowed text-slate-400' : 'cursor-pointer'}`}>
           <input
             type="checkbox"
-            className="h-3.5 w-3.5 accent-emerald-600"
+            disabled={disabled}
+            className="h-3.5 w-3.5 accent-emerald-600 disabled:opacity-40"
             checked={tw.preset === 'all'}
             onChange={(e) => onChange({ ...tw, preset: e.target.checked ? 'all' : tw.preset === 'all' ? 'thisMonth' : tw.preset })}
           />

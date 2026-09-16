@@ -27,6 +27,7 @@ import {
   type DiffNodeData,
   type GroupByNodeData,
   type GroupMetric,
+  type TimeWindow,
   type BaselineNodeData,
   type FillJoinNodeData,
   type BaseNodeData,
@@ -3199,6 +3200,11 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
   const fields = source === 'node' ? nodeFields : tableFields;
   const dateFields = fields.some((f) => f.type === 'date') ? fields.filter((f) => f.type === 'date') : fields;
 
+  // ③/⑤ 互斥：节点级③与聚合指标级⑤（含不限日期）二选一
+  const metricTws = (Array.isArray(d.metrics) ? d.metrics : []) as (GroupMetric & { timeWindow?: TimeWindow })[];
+  const isMetricTw = metricTws.some((m) => !!m.timeWindow);
+  const clearMetricTws = () => update({ metrics: metricTws.map((m) => ({ ...m, timeWindow: undefined })) } as Partial<GroupByNodeData>);
+
   const rowLabel = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
   const inputCls =
     'w-full rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400';
@@ -3273,19 +3279,21 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
 
             <div className="mb-1 mt-2 flex items-center justify-between">
               <div className="text-[11px] font-medium text-gray-500">③ 统计时间窗</div>
-              <label className="flex shrink-0 cursor-pointer select-none items-center gap-1 text-[10px] font-medium text-gray-600">
+              <label className={`flex shrink-0 select-none items-center gap-1 text-[10px] font-medium ${isMetricTw ? 'cursor-not-allowed text-slate-400' : 'cursor-pointer text-gray-600'}`}>
                 <input
                   type="checkbox"
-                  className="h-3 w-3 accent-indigo-600"
+                  disabled={isMetricTw}
+                  className="h-3 w-3 accent-indigo-600 disabled:opacity-40"
                   checked={d.timeWindow?.preset === 'all'}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    clearMetricTws();
                     update({
                       timeWindow: {
                         ...(d.timeWindow ?? { preset: 'specificMonth' }),
                         preset: e.target.checked ? 'all' : d.timeWindow?.preset === 'all' ? 'thisMonth' : (d.timeWindow?.preset ?? 'specificMonth'),
                       },
                     } as Partial<GroupByNodeData>)
-                  }
+                  }}
                 />
                 不限日期
               </label>
@@ -3293,8 +3301,12 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
             <div className="w-full min-w-0">
               <TimeComponent
                 value={d.timeWindow ?? { preset: 'specificMonth' }}
-                onChange={(tw) => update({ timeWindow: tw } as Partial<GroupByNodeData>)}
+                onChange={(tw) => {
+                  clearMetricTws();
+                  update({ timeWindow: tw } as Partial<GroupByNodeData>);
+                }}
                 hideAllToggle
+                disabled={isMetricTw}
               />
             </div>
           </>
@@ -3466,13 +3478,13 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
                   <div className="min-w-0 flex-1">
                     <TimeComponent
                       value={mt.timeWindow}
+                      disabled={!!d.timeWindow}
                       onChange={(tw) => {
-                        const ntw = tw && tw.preset !== 'all' ? tw : undefined;
                         const next = [...shown];
-                        next[idx] = { ...mt, timeWindow: ntw, id: mt.id || `gm_${Date.now()}_${idx}` };
+                        next[idx] = { ...mt, timeWindow: tw, id: mt.id || `gm_${Date.now()}_${idx}` };
                         setMetrics(next);
-                        // 任一聚合指标一旦使用自己的时间窗，即清空节点级③全局时间窗，避免双窗歧义
-                        if (ntw) update({ timeWindow: undefined } as Partial<GroupByNodeData>);
+                        // 任一聚合指标一旦设置时间窗（含不限日期），即清空③全局时间窗（③⑤互斥）
+                        update({ timeWindow: undefined } as Partial<GroupByNodeData>);
                       }}
                     />
                   </div>
