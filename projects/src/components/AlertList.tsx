@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, ClipboardList, Eye, MessageSquare, RotateCcw, Send, X } from 'lucide-react';
 import { useStore, computeAlertDims } from '@/lib/store';
 import { resolvePerm, canView, filterAlertsByScope, resolveAuthAccount } from '@/lib/perm';
+import { toast } from 'sonner';
 import type { AlertStatus, AlertTask, NotifyMode } from '@/lib/types';
 import { PERSONNEL } from '@/lib/types';
 
@@ -155,6 +156,8 @@ export function AlertList() {
   );
 
   const [handoffId, setHandoffId] = useState<string | null>(null);
+  const [handoffDept, setHandoffDept] = useState('');
+  useEffect(() => { setHandoffDept(''); }, [handoffId]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [showHist, setShowHist] = useState(true);
   const [histTab, setHistTab] = useState<'all' | 'style'>('all');
@@ -884,40 +887,83 @@ export function AlertList() {
         );
       })()}
 
-      {/* 转交弹窗 */}
-      {handoffId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/20 p-4 backdrop-blur-sm" onClick={() => setHandoffId(null)}>
-          <div className="w-full max-w-xs rounded-lg border border-gray-200 bg-white p-5 shadow-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-800">转交给其他人</h3>
-              <button onClick={() => setHandoffId(null)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
-                <X size={15} />
-              </button>
-            </div>
-            <div className="max-h-64 space-y-0.5 overflow-auto">
-              {PEOPLE.map((p) => (
-                <button
-                  key={p.name}
-                  onClick={() => {
-                    updateAlertStatus(handoffId, {
-                      assignee: p.name,
-                      handoffTo: p.name,
-                      dept: p.dept,
-                      status: 'processing',
-                      updatedAt: Date.now(),
-                    });
-                    setHandoffId(null);
-                  }}
-                  className="flex w-full items-center justify-between rounded px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
-                >
-                  <span>{p.name}</span>
-                  <span className="text-xs text-gray-400">{p.dept}</span>
+      {/* 转交弹窗：门店预警→仅门店人员；用户预警→人事管理任意用户，可按部门筛选 */}
+      {handoffId && (() => {
+        const a = alerts.find((x) => x.id === handoffId) ?? null;
+        const modes = (a?.preview?.recipients ?? []).map((r) => r.mode);
+        const isStoreAlert =
+          modes.includes('store') || modes.includes('employee') || (!!a?.storeIds?.length && !modes.includes('person'));
+        const storeName = (id?: string) => (id ? (state.stores ?? []).find((s) => s.id === id)?.name || '' : '');
+        const orgName = (id?: string) => (id ? (state.orgs ?? []).find((o) => o.id === id)?.name || '' : '');
+        const seenS = new Set<string>();
+        const storeCands: { name: string; tag: string }[] = [];
+        (state.employees ?? []).forEach((e) => {
+          if (e.name && !seenS.has(e.name)) { seenS.add(e.name); storeCands.push({ name: e.name, tag: storeName(e.storeId) }); }
+        });
+        const seenU = new Set<string>();
+        const userCands: { name: string; tag: string }[] = [];
+        (state.persons ?? [])
+          .filter((p) => p.enabled !== false)
+          .forEach((p) => {
+            if (p.name && !seenU.has(p.name)) { seenU.add(p.name); userCands.push({ name: p.name, tag: orgName(p.orgId) }); }
+          });
+        const all =
+          isStoreAlert
+            ? (storeCands.length ? storeCands : PEOPLE.map((p) => ({ name: p.name, tag: p.dept })))
+            : (userCands.length ? userCands : PEOPLE.map((p) => ({ name: p.name, tag: p.dept })));
+        const deptOpts = isStoreAlert ? [] : [...new Set((userCands.length ? userCands : PEOPLE.map((p) => ({ name: p.name, tag: p.dept }))).map((p) => p.tag).filter(Boolean))];
+        const filtered = isStoreAlert ? all : all.filter((p) => !handoffDept || p.tag === handoffDept);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/20 p-4 backdrop-blur-sm" onClick={() => setHandoffId(null)}>
+            <div className="alert-pop w-full max-w-sm rounded-xl border border-gray-200 bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-[15px] font-semibold text-gray-800">{isStoreAlert ? '转交给门店人员' : '转交给用户'}</h3>
+                <button onClick={() => setHandoffId(null)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                  <X size={15} />
                 </button>
-              ))}
+              </div>
+              {!isStoreAlert && deptOpts.length > 1 ? (
+                <div className="mb-2.5 flex items-center gap-2">
+                  <span className="shrink-0 text-xs text-gray-400">按部门筛选</span>
+                  <select
+                    value={handoffDept}
+                    onChange={(e) => setHandoffDept(e.target.value)}
+                    className="h-8 min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none focus:border-gray-300"
+                  >
+                    <option value="">全部部门</option>
+                    {deptOpts.map((d) => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+              ) : null}
+              <div className="max-h-64 space-y-0.5 overflow-auto">
+                {filtered.length === 0 ? (
+                  <p className="py-6 text-center text-xs text-gray-300">暂无可用选择对象</p>
+                ) : (
+                  filtered.map((p) => (
+                    <button
+                      key={p.name}
+                      onClick={() => {
+                        updateAlertStatus(handoffId, {
+                          assignee: p.name,
+                          handoffTo: p.name,
+                          dept: p.tag || a?.dept || '',
+                          status: 'processing',
+                          updatedAt: Date.now(),
+                        });
+                        setHandoffId(null);
+                      }}
+                      className="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                    >
+                      <span>{p.name}</span>
+                      <span className="text-xs text-gray-400">{p.tag || ''}</span>
+                    </button>
+                  ))
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* 操作二次确认弹窗 */}
       {confirm && (
@@ -979,9 +1025,27 @@ function buildActions(
   const okHandoff = okFail;
   const acts: AlertAction[] = [
     { label: '开始处理', cls: okStart ? blue : gray, fn: okStart ? () => ask({ title: '确认开始处理该预警？', desc: '确认后将开始计算处理时长，你将成为该预警的处理人。', onOk: () => upd({ status: 'processing', startedAt: Date.now(), assignee: a.assignee || who }) }) : () => {} },
-    { label: '完成', cls: okDone ? blue : gray, fn: okDone ? () => ask({ title: '标记为已处理', needText: true, required: true, placeholder: '请填写处理方案：如何处理、如何解决该预警。（必填）', onOk: (t) => upd({ status: 'done', handledAt: Date.now(), resolution: t }) }) : () => {} },
+    {
+      label: '完成',
+      cls: okDone ? blue : gray,
+      fn: okDone ? () => {
+        const planText = (a.plan || '').trim();
+        if (planText.length < 20) {
+          toast.error(`预警处理方式未达标：请先在下方填写处理方式（当前 ${planText.length} 字，需不少于 20 字），填写完成后才能点「完成」。`);
+          return;
+        }
+        ask({
+          title: '标记为已处理',
+          desc: '预警处理方式已达标，请补充处理方案后确认完成。',
+          needText: true,
+          required: true,
+          placeholder: '请填写处理方案：如何处理、如何解决该预警。（必填）',
+          onOk: (t) => upd({ status: 'done', handledAt: Date.now(), resolution: t }),
+        });
+      } : () => {},
+    },
     { label: '转交', cls: okHandoff ? 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50' : gray, fn: okHandoff ? () => handoff(a.id) : () => {} },
-    { label: '无法完成', cls: okFail ? blue : gray, fn: okFail ? () => ask({ title: '标记为无法完成', needText: true, required: true, placeholder: '请说明无法完成的原因。（必填）', onOk: (t) => upd({ status: 'failed', handledAt: Date.now(), failedReason: t }) }) : () => {} },
+    { label: '无法完成', cls: okFail ? blue : gray, fn: okFail ? () => ask({ title: '标记为无法完成', desc: '请填写无法完成的原因，确认后该预警将标记为「无法完成」。', needText: true, required: true, placeholder: '请填写无法完成的原因。（必填）', onOk: (t) => upd({ status: 'failed', handledAt: Date.now(), failedReason: t }) }) : () => {} },
   ];
   return acts;
 }
