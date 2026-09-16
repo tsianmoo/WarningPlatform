@@ -4814,6 +4814,15 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
   const [activeCol, setActiveCol] = useState<number | null>(null);
   const [fnOpen, setFnOpen] = useState(true);
   const colExprRefs = useRef<(CalcExprEditorHandle | null)[]>([]);
+  const colListRef = useRef<HTMLDivElement | null>(null);
+  const prevColCount = useRef(cols.length);
+  useEffect(() => {
+    if (cols.length > prevColCount.current) {
+      const el = colListRef.current;
+      if (el) requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+    }
+    prevColCount.current = cols.length;
+  }, [cols.length]);
   const insertField = (i: number, name: string) => {
     if (i < 0) return;
     const el = colExprRefs.current[i];
@@ -4920,7 +4929,7 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
         </div>
 
         <div className={rowLabel}>② 计算列</div>
-        <div className="max-h-[300px] space-y-1 overflow-y-auto pr-0.5">
+        <div ref={colListRef} className="max-h-[300px] space-y-1 overflow-y-scroll pr-0.5 [scrollbar-width:thin] [scrollbar-color:#d8b4fe_transparent]">
         {cols.map((c, i) => (
           <div key={i} className="space-y-1 rounded-md border border-gray-100 bg-gray-50/60 p-1.5">
             <div className="flex items-center gap-1">
@@ -4957,7 +4966,9 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
         </div>
         <button
           type="button"
-          onClick={() => update({ columns: [...cols, { label: '', expr: '' }] } as Partial<CalcNodeData>)}
+          onClick={() => {
+            update({ columns: [...cols, { label: '', expr: '' }] } as Partial<CalcNodeData>);
+          }}
           className="flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-fuchsia-300 bg-fuchsia-50/50 py-1 text-[11px] text-fuchsia-600 transition hover:bg-fuchsia-100"
         >
           <Plus size={12} /> 添加计算列
