@@ -472,6 +472,8 @@ type StoreApi = {
   updateHomeConfig: (patch: Partial<HomeConfig> | ((c: HomeConfig) => HomeConfig)) => void;
   setPermissions: (roles: RolePerm[]) => void;
   setPermOverrides: (ovs: PersonPermOverride[]) => void;
+  /** 立即把当前状态同步到服务端（跳过防抖），用于「保存」按钮等强一致场景 */
+  flushNow: () => void;
   resetAll: () => void;
 };
 
@@ -983,6 +985,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
   }, [state]);
 
+  // 页面关闭/刷新前强制兜底落库，避免防抖未触发导致本次改动丢失
+  useEffect(() => {
+    const flush = () => {
+      if (pushTimer.current) clearTimeout(pushTimer.current);
+      try {
+        const payload = JSON.stringify({
+          tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], tableGroups: state.tableGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] },
+        });
+        navigator.sendBeacon(STATE_API, new Blob([payload], { type: 'application/json' }));
+      } catch { /* 忽略 */ }
+    };
+    window.addEventListener('beforeunload', flush);
+    return () => window.removeEventListener('beforeunload', flush);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
   const api = useMemo<StoreApi>(() => {
     const dispatch = (t: string, payload?: unknown) => setState((s) => reducer(s, { type: t, payload }));
     return {
@@ -1101,6 +1119,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       updateHomeConfig: (patch) => dispatch('UPDATE_CONFIG', patch),
       setPermissions: (roles) => dispatch('SET_PERMISSIONS', roles),
       setPermOverrides: (ovs) => dispatch('SET_PERM_OVERRIDES', ovs),
+      flushNow: () => {
+        if (pushTimer.current) clearTimeout(pushTimer.current);
+        void pushRemoteState(state);
+      },
       moveOrg: (id, dir) => {
         const target = state.orgs.find((o) => o.id === id);
         if (!target) return;

@@ -64,7 +64,7 @@ function emptyPage(): PagePerm {
 }
 
 export default function PermissionManage() {
-  const { state, setPermissions } = useStore();
+  const { state, setPermissions, flushNow } = useStore();
   const [posts, setPosts] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [draft, setDraft] = useState<RolePerm | null>(null);
@@ -131,6 +131,7 @@ export default function PermissionManage() {
     const others = state.permissions.filter((r) => !(r.post === draft.post && (r.subjectKind ?? 'post') === kind));
     const final: RolePerm = { ...draft, subjectKind: kind, pages: draft.pages ?? {}, dataScope: draft.dataScope ?? null };
     setPermissions([...others, final]);
+    flushNow(); // 保存后立即落库，避免防抖窗口内刷新丢失
     setSelected(null);
     setDraft(null);
   };
