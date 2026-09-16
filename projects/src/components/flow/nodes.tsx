@@ -3183,6 +3183,7 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
   const rowLabel = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
   const inputCls =
     'w-full rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400';
+  const [rlVal, setRlVal] = useState<string>(typeof d.resultLabel === 'string' ? d.resultLabel : '');
 
   return (
     <NodeShell fnode={fnode} width={420}>
@@ -3465,8 +3466,12 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
 
       <div className={rowLabel}>结果命名</div>
       <input
-        value={d.resultLabel}
-        onChange={(e) => update({ resultLabel: e.target.value })}
+        value={rlVal}
+        onChange={(e) => setRlVal(e.target.value)}
+        onBlur={() => {
+          const v = rlVal.trim();
+          if (v !== (typeof d.resultLabel === 'string' ? d.resultLabel : '')) update({ resultLabel: v });
+        }}
         placeholder="如：8月各店仓成交金额"
         className={inputCls}
       />
