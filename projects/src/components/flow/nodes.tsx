@@ -2,7 +2,7 @@
 
 import React, { memo, useEffect, useState, useMemo, useRef, createContext, useContext } from 'react';
 import { Handle, Position, useReactFlow, useEdges, useNodes, type NodeProps } from '@xyflow/react';
-import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus, ChevronDown, ChartSpline } from 'lucide-react';
+import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus, ChevronDown } from 'lucide-react';
 import CalcExprEditor, { type CalcExprEditorHandle } from './CalcExprEditor';
 import {
   KIND_COLOR,
@@ -49,7 +49,6 @@ import {
   type RankItem,
   type CalcNodeData,
   type CalcColumn,
-  type LinkAnalysisNodeData,
 } from '@/lib/types';
 import { useStore } from '@/lib/store';
 import TimeComponent from './TimeComponent';
@@ -96,7 +95,6 @@ const KIND_ICON: Record<FlowNode['kind'], React.ReactNode> = {
   elapsed: <CalendarRange size={13} strokeWidth={2.5} />,
   rank: <TrendingUp size={13} strokeWidth={2.5} />,
   calc: <TableProperties size={13} strokeWidth={2.5} />,
-  linkanalysis: <ChartSpline size={13} strokeWidth={2.5} />,
 };
 
 function useNodeUpdater(id: string) {
@@ -239,7 +237,6 @@ function nodeKindCn(kind: FlowNode['kind']) {
     logic: '逻辑关联',
     rank: '排名',
     calc: '添加列',
-    linkanalysis: '关联分析',
   };
   return map[kind];
 }
@@ -1989,85 +1986,7 @@ const BaseNode = memo(({ id, data }: NodeProps) => {
   );
 });
 
-// ---------- 关联分析节点（选表+列映射，供预警详情做关联洞察） ----------
-const ROW_LBL = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
-const LINK_COL_ALIASES: Record<'styleCol' | 'storeCol' | 'salesCol' | 'stockCol' | 'regionCol', string[]> = {
-  styleCol: ['款色', '款号', '款', 'color', 'style', 'SKU', '款色编码', '颜色款号'],
-  storeCol: ['店仓', '店铺', '门店', '店', '仓', '专卖店', '商店'],
-  salesCol: ['销量', '销售数量', '销售件数', '销量(件)', '销售', 'qty', '数量', '件数'],
-  stockCol: ['库存', '库存数量', '现存', '结存', 'stock', '库存数'],
-  regionCol: ['区域', '省内区域', '省', '省份', '地区', '销售区域', '大区'],
-};
 
-const LinkAnalysisNode = memo(({ id, data }: NodeProps) => {
-  const fnode = { id, kind: 'linkanalysis' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as LinkAnalysisNodeData;
-  const update = useNodeUpdater(id);
-  const tables = useRuleTables();
-  const table = tables.find((t) => t.id === d.tableId) ?? tables[0];
-  const fields = (table?.fields ?? []).map((f) => ({ key: f.key, alias: f.alias || f.key }));
-
-  // 未选表时兜底同步第一张，保证预览/执行可拿到 tableId
-  useEffect(() => {
-    if (!d.tableId && tables[0]) update({ tableId: tables[0].id, tableName: tables[0].name } as Partial<LinkAnalysisNodeData>);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d.tableId, tables]);
-
-  // 换表时按别名自动推荐各列
-  useEffect(() => {
-    if (!table || !fields.length) return;
-    const patch: Partial<LinkAnalysisNodeData> = {};
-    (Object.keys(LINK_COL_ALIASES) as (keyof typeof LINK_COL_ALIASES)[]).forEach((k) => {
-      const cur = d[k];
-      if (cur && fields.some((f) => f.key === cur)) return;
-      const alias = LINK_COL_ALIASES[k].find((al) => fields.some((f) => f.key === al || f.alias === al));
-      if (alias) patch[k] = alias;
-    });
-    if (Object.keys(patch).length) update(patch as Partial<LinkAnalysisNodeData>);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [table?.id]);
-
-  const pick = (k: keyof typeof LINK_COL_ALIASES, v: string) =>
-    update({ [k]: v || undefined } as Partial<LinkAnalysisNodeData>);
-
-  return (
-    <NodeShell fnode={fnode}>
-      <div className="space-y-1.5">
-        <div className={ROW_LBL}>关联数据表（预警命中后按此表做关联分析）</div>
-        <select
-          value={table?.id ?? ''}
-          onChange={(e) => {
-            const t = tables.find((x) => x.id === e.target.value);
-            if (t) update({ tableId: t.id, tableName: t.name } as Partial<LinkAnalysisNodeData>);
-          }}
-          className={SRC_INPUT_CLS}
-        >
-          {tables.map((t) => (
-            <option key={t.id} value={t.id}>{t.name}</option>
-          ))}
-        </select>
-        <div className="text-[10px] text-gray-400">选择一张含「店仓×款色×销量/库存」的业务表；列名可按下表手动微调。</div>
-        {([['styleCol', '款色列'], ['storeCol', '店仓列'], ['salesCol', '销量列'], ['stockCol', '库存列'], ['regionCol', '区域列']] as const).map(([k, kb]) => (
-          <div key={k}>
-            <div className={ROW_LBL}>{kb}</div>
-            <select
-              value={d[k] ?? ''}
-              onChange={(e) => pick(k, e.target.value)}
-              className={SRC_INPUT_CLS}
-            >
-              <option value="">（不指定）</option>
-              {fields.map((f) => (
-                <option key={f.key} value={f.key}>{f.alias}</option>
-              ))}
-            </select>
-          </div>
-        ))}
-      </div>
-    </NodeShell>
-  );
-});
-
-LinkAnalysisNode.displayName = 'LinkAnalysisNode';
 
 // ---------- 查找节点（跨表匹配） ----------
 const LookupNode = memo(({ id, data }: NodeProps) => {
@@ -5106,7 +5025,6 @@ export const nodeTypes = {
   logic: LogicNode,
   rank: RankNode,
   calc: CalcNode,
-  linkanalysis: LinkAnalysisNode,
 };
 
 TopNNode.displayName = 'TopNNode';
@@ -5310,21 +5228,6 @@ export function createNodeData(
         sourceNode: '',
         sourceNodeLabel: '',
         columns: [],
-      };
-    case 'linkanalysis':
-      return {
-        tableId: '',
-        tableName: '',
-        styleCol: '',
-        styleColLabel: '',
-        storeCol: '',
-        storeColLabel: '',
-        salesCol: '',
-        salesColLabel: '',
-        stockCol: '',
-        stockColLabel: '',
-        regionCol: '',
-        regionColLabel: '',
       };
     default:
       return {};

@@ -27,7 +27,7 @@ import { uid, OPERATOR_OPTIONS, DEFAULT_HOME_CONFIG, normalizeHomeConfig } from 
 import { buildSampleTable, ensureFieldsComplete } from './parser';
 import { evaluateFlow } from './evaluate';
 import type { NodePreview } from './evaluate';
-import type { ActionNodeData, ConditionItem, ConditionNodeData, FlowNode, LinkAnalysisNodeData } from './types';
+import type { ActionNodeData, ConditionItem, ConditionNodeData, FlowNode } from './types';
 
 /** 判断预警是否为残缺脏数据（标题与规则名均为空且无预览，仅基础字段的残留记录） */
 export function isBlankAlert(a: Partial<AlertTask> | null | undefined): boolean {
@@ -190,21 +190,6 @@ export function buildAlertsForRule(
   }
   if (base.length === 0) base.push({ id: '', data: { level: 'warn' as const, title: rule.name } });
   const targets = rule.targets;
-  // 关联分析配置：取自规则中任一 linkanalysis 节点，随预警写入，供详情弹窗做关联洞察
-  const linkNode = rule.flow.nodes.find((n) => n.kind === 'linkanalysis' && !!n.data) as
-    | { data: LinkAnalysisNodeData }
-    | undefined;
-  const linkedAnalysis = linkNode && linkNode.data.tableId
-    ? {
-        tableId: linkNode.data.tableId,
-        tableName: linkNode.data.tableName,
-        styleCol: linkNode.data.styleCol,
-        storeCol: linkNode.data.storeCol,
-        salesCol: linkNode.data.salesCol,
-        stockCol: linkNode.data.stockCol,
-        regionCol: linkNode.data.regionCol,
-      }
-    : undefined;
   // 触发时对规则求值，取每个预警动作的命中明细作为“预览数据”
   let evalMap: Record<string, NodePreview> | undefined;
   if (tables && tables.length) {
@@ -314,7 +299,6 @@ export function buildAlertsForRule(
             : (preview?.rows ?? []),
           ...(curStores.length ? { storeMessages: curStores } : {}),
           ...(recipients ? { recipients: [{ mode: m, names: curNames }] } : {}),
-          ...(linkedAnalysis ? { linkedAnalysis } : {}),
         },
         createdBy: '系统',
         dept: notify?.departments?.[0] ?? targets?.departments?.[0] ?? '',

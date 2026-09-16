@@ -12,175 +12,8 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-/** 关联分析：预警详情弹窗内，按规则 linkanalysis 节点配置的业务表，做「款色×店仓×销量/库存」洞察 */
-function LinkedAnalysis({
-  cfg,
-  hitRows,
-  initStore,
-}: {
-  cfg: NonNullable<AlertTask['preview']>['linkedAnalysis'];
-  hitRows: Record<string, unknown>[];
-  initStore: string;
-}) {
-  const { state } = useStore();
-  const [region, setRegion] = useState('__all__');
-  const [style, setStyle] = useState('');
-  const [store, setStore] = useState(initStore);
-  if (!cfg?.tableId) return null;
 
-  const table = state.tables.find((t) => t.id === cfg.tableId);
-  const rows = (table?.rows && table.rows.length ? table.rows : (table?.previewRows ?? [])) as Record<string, string | number | boolean>[];
-  const group = (rowsArr: typeof rows, by: string, sumKey: string, sumKey2?: string) => {
-    const map = new Map<string, { sales: number; stock: number }>();
-    for (const r of rowsArr) {
-      const k = String(r[by] ?? '').trim();
-      if (!k) continue;
-      const e = map.get(k) ?? { sales: 0, stock: 0 };
-      e.sales += num(r[sumKey]);
-      if (sumKey2) e.stock += num(r[sumKey2]);
-      map.set(k, e);
-    }
-    return map;
-  };
 
-  const regionVals = region === '__all__' ? null : region;
-  const inRegion = (r: Record<string, string | number | boolean>) =>
-    !cfg.regionCol || regionVals === null || String(r[cfg.regionCol] ?? '').trim() === regionVals;
-
-  // 范围选项：关联表区域列去重（若配置）
-  const regionOptions = useMemo(() => {
-    if (!cfg.regionCol) return [];
-    return Array.from(new Set(rows.map((r) => String(r[cfg.regionCol!] ?? '').trim()).filter(Boolean)));
-  }, [cfg.regionCol, rows]);
-
-  // 款色选项：优先命中明细里的款色，回退关联表款色（限量）
-  const styleOptions = useMemo(() => {
-    const fromHit = Array.from(new Set(hitRows.map((r) => String(r[cfg.styleCol ?? ''] ?? '').trim()).filter(Boolean)));
-    if (fromHit.length) return fromHit;
-    if (cfg.styleCol) return Array.from(new Set(rows.map((r) => String(r[cfg.styleCol!] ?? '').trim()).filter(Boolean))).slice(0, 200);
-    return [];
-  }, [hitRows, cfg.styleCol, rows]);
-  const curStyle = styleOptions.includes(style) ? style : (styleOptions[0] ?? '');
-
-  // 店仓选项：关联表店仓列去重（按范围过滤，限量）
-  const storeOptions = useMemo(() => {
-    if (!cfg.storeCol) return [];
-    return Array.from(new Set(rows.filter(inRegion).map((r) => String(r[cfg.storeCol!] ?? '').trim()).filter(Boolean))).slice(0, 500);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfg.storeCol, rows, region, regionVals]);
-  const curStore = storeOptions.includes(store) ? store : (storeOptions.includes(initStore) ? initStore : (storeOptions[0] ?? ''));
-
-  // 场景A：某款色 → 各店仓销量排名
-  const perStore = useMemo(() => {
-    if (!curStyle || !cfg.salesCol || !cfg.storeCol) return null;
-    const agg = group(rows.filter((r) => String(r[cfg.styleCol ?? ''] ?? '').trim() === curStyle && inRegion(r)), cfg.storeCol, cfg.salesCol, cfg.stockCol);
-    const list = Array.from(agg.entries()).map(([storeName, v]) => ({ storeName, ...v })).sort((a, b) => b.sales - a.sales);
-    const total = list.reduce((s, x) => s + x.sales, 0);
-    let myRank = 0, myRow = undefined as { storeName: string; sales: number; stock: number } | undefined;
-    list.forEach((x, i) => { if (x.storeName === curStore || x.storeName === initStore) { myRank = i + 1; myRow = x; } });
-    return { list, total, myRank, myRow };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [curStyle, curStore, initStore, cfg, region, regionVals]);
-
-  // 场景B：某店仓 → 店内款色销量排名
-  const perStyle = useMemo(() => {
-    if (!curStore || !cfg.salesCol || !cfg.styleCol) return null;
-    const agg = group(rows.filter((r) => String(r[cfg.storeCol ?? ''] ?? '').trim() === curStore && inRegion(r)), cfg.styleCol, cfg.salesCol, cfg.stockCol);
-    return Array.from(agg.entries()).map(([s, v]) => ({ styleName: s, ...v })).sort((a, b) => b.sales - a.sales);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [curStore, cfg, region, regionVals]);
-
-  const colCls = 'whitespace-nowrap px-2.5 py-1.5 text-left font-medium text-gray-400';
-  const cellCls = 'whitespace-nowrap px-2.5 py-1.5 text-gray-600';
-
-  return (
-    <div className="mt-4 rounded-xl border border-teal-100 bg-teal-50/30 p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <h4 className="text-sm font-semibold text-teal-700">关联分析</h4>
-        <span className="text-[11px] text-teal-500">数据表：{table?.name ?? cfg.tableName ?? '未配置'}</span>
-      </div>
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
-        <span className="text-gray-400">分析范围</span>
-        {cfg.regionCol ? (
-          <select value={region} onChange={(e) => setRegion(e.target.value)} className="rounded-md border border-teal-200 bg-white px-1.5 py-1">
-            <option value="__all__">全部</option>
-            {regionOptions.map((r) => <option key={r} value={r}>{r}</option>)}
-          </select>
-        ) : null}
-        <span className="text-gray-400">款色</span>
-        <select value={curStyle} onChange={(e) => setStyle(e.target.value)} className="rounded-md border border-teal-200 bg-white px-1.5 py-1">
-          {styleOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <span className="text-gray-400">店仓</span>
-        <select value={curStore} onChange={(e) => setStore(e.target.value)} className="rounded-md border border-teal-200 bg-white px-1.5 py-1">
-          {storeOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-      </div>
-
-      {perStore && (
-        <div className="mb-3">
-          <div className="mb-1 flex items-center gap-2 text-[12px] text-gray-700">
-            <span className="font-medium">款色「{curStyle}」各店仓销量排行</span>
-            <span className="text-gray-400">全省共售 {perStore.total} 件</span>
-            {perStore.myRank > 0 ? (
-              <span className="text-teal-600">本店「{perStore.myRow?.storeName}」售 {perStore.myRow?.sales} 件 · 第 {perStore.myRank}/{perStore.list.length} 名</span>
-            ) : null}
-          </div>
-          <div className="max-h-44 overflow-auto rounded-lg border border-teal-100 bg-white">
-            <table className="w-full border-collapse text-[11px]">
-              <thead className="sticky top-0 bg-teal-50"><tr>
-                <th className={colCls}>#</th><th className={colCls}>店仓</th><th className={colCls}>销量</th>
-                {cfg.stockCol ? <th className={colCls}>库存</th> : null}
-              </tr></thead>
-              <tbody>
-                {perStore.list.slice(0, 200).map((x, i) => {
-                  const isMy = (x.storeName === curStore || x.storeName === initStore);
-                  return (
-                    <tr key={x.storeName} className={`border-t border-gray-50 ${isMy ? 'bg-teal-50/60' : ''}`}>
-                      <td className="px-2.5 py-1.5 text-gray-400">{i + 1}</td>
-                      <td className={cellCls}>
-                        {x.storeName}{isMy ? <span className="ml-1 text-[10px] text-teal-500">(本店)</span> : null}
-                      </td>
-                      <td className="px-2.5 py-1.5 font-medium text-gray-700">{x.sales}</td>
-                      {cfg.stockCol ? <td className={cellCls}>{x.stock}</td> : null}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {perStyle && (
-        <div>
-          <div className="mb-1 flex items-center gap-2 text-[12px] text-gray-700">
-            <span className="font-medium">店仓「{curStore}」店内款色销量排行</span>
-            <span className="text-gray-400">共 {perStyle.length} 款</span>
-          </div>
-          <div className="max-h-44 overflow-auto rounded-lg border border-teal-100 bg-white">
-            <table className="w-full border-collapse text-[11px]">
-              <thead className="sticky top-0 bg-teal-50"><tr>
-                <th className={colCls}>#</th><th className={colCls}>款色</th><th className={colCls}>销量</th>
-                {cfg.stockCol ? <th className={colCls}>库存</th> : null}
-              </tr></thead>
-              <tbody>
-                {perStyle.slice(0, 200).map((x, i) => (
-                  <tr key={x.styleName} className="border-t border-gray-50">
-                    <td className="px-2.5 py-1.5 text-gray-400">{i + 1}</td>
-                    <td className={cellCls}>{x.styleName}</td>
-                    <td className="px-2.5 py-1.5 font-medium text-gray-700">{x.sales}</td>
-                    {cfg.stockCol ? <td className={cellCls}>{x.stock}</td> : null}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 const LEVEL_META: Record<string, { label: string; text: string; dot: string; bg: string }> = {
   info: { label: '提醒', text: 'text-blue-600', dot: 'bg-blue-500', bg: 'bg-blue-50 text-blue-600' },
@@ -265,14 +98,8 @@ const STORE_DIMS: { key: keyof typeof emptyFilter; label: string; get: (a: Alert
   { key: 'sDistrict', label: '区部', get: (a) => a.dims?.store?.district },
 ];
 
-/** 文本型关键词检索辅助（分别聚合商品/店仓/用户/人员相关字段，统一小写便于子串匹配） */
+/** 文本型关键词检索辅助（聚合商品相关字段，统一小写便于子串匹配） */
 const prodTextOf = (a: AlertTask): string => [...new Set(PRODUCT_DIMS.flatMap((d) => d.get(a) ?? []).filter(Boolean))].join(' ').toLowerCase();
-const storeTextOf = (a: AlertTask): string =>
-  [...new Set([...STORE_DIMS.flatMap((d) => d.get(a) ?? []), ...(a.preview?.storeMessages ?? []).map((s) => s.store)].filter(Boolean))].join(' ').toLowerCase();
-const userTextOf = (a: AlertTask): string =>
-  [...new Set([a.assignee, a.handoffTo, ...(a.notified ?? [])].filter(Boolean))].join(' ').toLowerCase();
-const personTextOf = (a: AlertTask): string =>
-  [...new Set([a.createdBy, a.dept, ...(a.notified ?? []), ...(a.comments ?? []).map((c) => c.by)].filter(Boolean))].join(' ').toLowerCase();
 
 /** 快捷日期标签定义 */
 const QUICK_TAGS: { key: string; label: string }[] = [
@@ -401,16 +228,13 @@ export function AlertList() {
       if (filter.kw && !`${a.title}`.toLowerCase().includes(filter.kw.toLowerCase())) return false;
       if (filter.ruleKw && !`${a.ruleName}`.toLowerCase().includes(filter.ruleKw.toLowerCase())) return false;
       if (filter.productKw && !prodTextOf(a).includes(filter.productKw.toLowerCase())) return false;
-      if (filter.storeKw && !storeTextOf(a).includes(filter.storeKw.toLowerCase())) return false;
-      if (filter.userKw && !userTextOf(a).includes(filter.userKw.toLowerCase())) return false;
-      if (filter.personKw && !personTextOf(a).includes(filter.personKw.toLowerCase())) return false;
       if (filter.level !== 'all' && (a.level ?? 'warn') !== filter.level) return false;
       if (filter.status !== 'all' && a.status !== filter.status) return false;
-      if (filter.person !== 'all' && a.assignee !== filter.person && a.handoffTo !== filter.person) return false;
+      if (filter.person && filter.person !== 'all' && a.assignee !== filter.person && a.handoffTo !== filter.person) return false;
       if (start && a.createdAt < start) return false;
       if (end && a.createdAt > end) return false;
-      for (const d of PRODUCT_DIMS) if (filter[d.key] !== 'all' && !(d.get(a) ?? []).includes(filter[d.key])) return false;
-      for (const d of STORE_DIMS) if (filter[d.key] !== 'all' && !(d.get(a) ?? []).includes(filter[d.key])) return false;
+      for (const d of PRODUCT_DIMS) if (filter[d.key] && filter[d.key] !== 'all' && !(d.get(a) ?? []).includes(filter[d.key])) return false;
+      for (const d of STORE_DIMS) if (filter[d.key] && filter[d.key] !== 'all' && !(d.get(a) ?? []).includes(filter[d.key])) return false;
       return true;
     });
   }, [enriched, filter]);
@@ -915,13 +739,6 @@ export function AlertList() {
                       </div>
                     ) : null}
                   </div>
-                ) : null}
-                {open.preview?.linkedAnalysis ? (
-                  <LinkedAnalysis
-                    cfg={open.preview.linkedAnalysis}
-                    hitRows={open.preview?.rows ?? []}
-                    initStore={scopeNames[0] ?? (stores[0]?.store ?? '')}
-                  />
                 ) : null}
                 {(open.resolution || open.failedReason) ? (
                   <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50/40 px-3 py-2">
