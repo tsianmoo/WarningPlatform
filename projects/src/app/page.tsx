@@ -53,6 +53,27 @@ function Shell() {
   const { state, updatePerson, ready } = useStore();
   const navMenus: NavMenuEntry[] = state.config.navMenus?.length ? state.config.navMenus : DEFAULT_NAV_MENUS;
   const VIEWS = ['home', 'tables', 'apitable', 'formtable', 'rules', 'new', 'edit', 'alerts', 'people', 'attrs', 'dealer', 'store', 'dattrs', 'sattrs', 'emp', 'eattrs', 'homecfg', 'perms', 'navcfg'] as const;
+  const CRUMBS: Record<string, string[]> = {
+    home: ['工作台'],
+    tables: ['工作台', '数据表管理', '上传数据表'],
+    apitable: ['工作台', '数据表管理', 'API数据表'],
+    formtable: ['工作台', '数据表管理', '在线填报表'],
+    rules: ['工作台', '预警规则'],
+    new: ['工作台', '预警规则', '新建预警'],
+    edit: ['工作台', '预警规则', '编辑预警'],
+    alerts: ['工作台', '预警列表'],
+    dealer: ['工作台', '组织架构', '经销商管理'],
+    dattrs: ['工作台', '组织架构', '经销商属性'],
+    store: ['工作台', '组织架构', '店仓管理'],
+    sattrs: ['工作台', '组织架构', '店仓属性'],
+    emp: ['工作台', '组织架构', '员工管理'],
+    eattrs: ['工作台', '组织架构', '员工属性'],
+    people: ['工作台', '人事管理', '用户管理'],
+    attrs: ['工作台', '人事管理', '属性管理'],
+    homecfg: ['工作台', '系统管理', '首页管理'],
+    navcfg: ['工作台', '系统管理', '导航栏管理'],
+    perms: ['工作台', '系统管理', '权限管理'],
+  };
   const [view, setView] = useState<View>(() => {
     if (typeof window === 'undefined') return 'home';
     const h = window.location.hash.replace(/^#/, '');
@@ -347,6 +368,16 @@ function Shell() {
 
       {/* 主内容 */}
       <main className={`min-w-0 flex-1 ${withSidebar ? 'overflow-auto' : ''}`}>
+        {readyUI && withSidebar && (
+          <div className="sticky top-0 z-10 flex items-center gap-1.5 border-b border-gray-200 bg-white px-5 py-2.5 text-[13px]">
+            {(CRUMBS[view] ?? [view]).map((c, i, arr) => (
+              <Fragment key={i}>
+                {i > 0 && <span className="text-gray-300">/</span>}
+                <span className={i === arr.length - 1 ? 'font-medium text-gray-700' : 'text-gray-400'}>{c}</span>
+              </Fragment>
+            ))}
+          </div>
+        )}
         {readyUI ? content : loadingUI}
       </main>
 
