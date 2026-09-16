@@ -163,3 +163,6 @@ Desktop.ini
 # Misc
 .coze-logs
 .codegraph/
+
+# 部署时由 scripts/vendor-oracle.sh 生成，避免提交 Oracle Instant Client（~232MB）
+/.oracle_ic/

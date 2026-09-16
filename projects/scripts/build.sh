@@ -7,6 +7,9 @@ COZE_WORKSPACE_PATH="$PROJECT_DIR"
 
 cd "${COZE_WORKSPACE_PATH}"
 
+# Oracle 11g 需 Thick 模式：把 Instant Client（含 libaio）打进产物，供 start.sh 使用
+bash scripts/vendor-oracle.sh || echo "WARN: vendor-oracle.sh failed (non-fatal), Thick mode may be unavailable"
+
 echo "Installing dependencies..."
 pnpm install --prefer-frozen-lockfile --prefer-offline --loglevel debug --reporter=append-only
 
