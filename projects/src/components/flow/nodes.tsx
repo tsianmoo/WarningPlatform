@@ -250,7 +250,7 @@ function nodeTitle(fnode: FlowNode) {
   return base;
 }
 
-function NodeShell({ fnode, children }: { fnode: FlowNode; children: React.ReactNode }) {
+function NodeShell({ fnode, children, width = 300 }: { fnode: FlowNode; children: React.ReactNode; width?: number }) {
   const color = KIND_COLOR[fnode.kind];
   const hasSource = true; // 所有节点（含开始）都开放右侧出口，用于连向后继
   const { deleteElements, getNodes, getEdges } = useReactFlow();
@@ -261,7 +261,7 @@ function NodeShell({ fnode, children }: { fnode: FlowNode; children: React.React
     preview.open(fnode, getNodes() as unknown as FlowNode[], getEdges() as unknown as FlowEdge[], tables);
   };
   return (
-    <div className="w-[300px] max-w-[300px] rounded-xl border bg-white shadow-sm" style={{ borderColor: color.border }}>
+    <div className="w-[300px] max-w-[300px] rounded-xl border bg-white shadow-sm" style={{ borderColor: color.border, width, maxWidth: width }}>
       <div
         className="group/head flex items-center gap-1.5 rounded-t-[11px] px-3 py-1.5"
         style={{ backgroundColor: color.bg }}
@@ -468,7 +468,7 @@ const TriggerNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'trigger' as const, data, position: { x: 0, y: 0 } } as FlowNode;
   const meta = useRuleMeta();
   return (
-    <NodeShell fnode={fnode}>
+    <NodeShell fnode={fnode} width={380}>
       <div className="text-sm font-medium text-gray-700">开始监测</div>
       <div className="mt-1 text-xs text-gray-400">规则触发入口 · 在此配置调度</div>
       {meta && <SchedulePanel schedule={meta.schedule} />}
@@ -3202,11 +3202,11 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
           } as Partial<GroupByNodeData>)
         }
         onNodeChange={(ref) => update({ sourceNode: ref?.nodeId, sourceNodeLabel: ref?.label, dims: [], metricField: '', metricFieldLabel: '', metrics: [] } as Partial<GroupByNodeData>)}
-        nodeLabel="① 数据来源节点（对其输出结果分组聚合）"
-        nodePlaceholder="选择上一步节点结果，如：过滤后的明细…"
+        nodeLabel="① 数据来源节点"
+        nodePlaceholder="选择上一步节点结果"
         tableBlock={
           <>
-            <div className={rowLabel}>① 数据表（明细，如：零售工作薄5）</div>
+            <div className={rowLabel}>① 数据表</div>
             <select
               value={d.tableId}
               onChange={(e) => {
@@ -3226,7 +3226,7 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
               }}
               className={inputCls}
             >
-              <option value="">选择事实表，如：零售工作薄5…</option>
+              <option value="">选择事实表…</option>
               {tables.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
@@ -3234,10 +3234,7 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
               ))}
             </select>
 
-            <div className={rowLabel}>
-              ② 日期字段
-              <span className="ml-1 font-normal text-gray-400">（按这列圈定时间窗）</span>
-            </div>
+            <div className={rowLabel}>② 日期字段</div>
             <select
               value={d.dateField}
               onChange={(e) => {
@@ -3246,7 +3243,7 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
               }}
               className={inputCls}
             >
-              <option value="">选择日期列，如：日期/销售日期…</option>
+              <option value="">选择日期列…</option>
               {dateFields.map((f) => (
                 <option key={f.key} value={f.key}>
                   {f.alias || f.key}
@@ -3267,11 +3264,11 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
 
       {source === 'node' && (
         <div className="mt-1 rounded-md bg-indigo-50/70 px-2 py-1 text-[10px] leading-relaxed text-indigo-700">
-          节点结果模式：直接对上一步「{d.sourceNodeLabel || '节点'}」的输出分组聚合，时间范围以上游节点为准。
+          按上游「{d.sourceNodeLabel || '节点'}」的输出分组聚合，时间范围以上游为准。
         </div>
       )}
 
-      <div className={rowLabel}>④ 分组维度（可多个，可上下拖动调整分组层级）</div>
+      <div className={rowLabel}>④ 分组维度</div>
       <div className="space-y-1">
         {(d.dims && d.dims.length ? d.dims : [{ fieldKey: '', fieldLabel: '' }]).map((dim, idx) => (
           <div key={idx} className="flex items-center gap-1">
@@ -3362,11 +3359,10 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
 
       {(d.dims || []).length === 0 && (
         <div className="mb-2 rounded-md border border-dashed border-amber-300 bg-amber-50 px-2 py-1.5 text-[10px] leading-relaxed text-amber-700">
-          未填写分组维度：将对整张表做<span className="font-semibold">全局聚合</span>，自动对所有数值字段计算聚合结果（如各数值字段求和）。
-          <span className="block text-amber-600/80">如需按字段分组后再聚合，请在上方添加分组维度。</span>
+          未填写分组维度：将对整张表做全局聚合（自动计算所有数值字段）。
         </div>
       )}
-      <div className={rowLabel}>⑤ 聚合指标（可添加多个，支持对文本字段做 计数 / 去重计数）</div>
+      <div className={rowLabel}>⑤ 聚合指标</div>
       {(() => {
         // 多指标：优先 d.metrics；否则回退到单指标 metricField/metricFn（兼容旧规则）
         const metrics: GroupMetric[] =
@@ -3380,7 +3376,7 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
         return (
           <div className="space-y-1">
             {shown.map((mt, idx) => (
-              <div key={mt.id || idx} className="flex flex-wrap items-center gap-1">
+              <div key={mt.id || idx} className="flex items-center gap-1">
                 <select
                   value={mt.fieldKey}
                   onChange={(e) => {
@@ -3389,7 +3385,7 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
                     next[idx] = { ...mt, fieldKey: e.target.value, fieldLabel: f?.alias || f?.key || '', id: mt.id || `gm_${Date.now()}_${idx}` };
                     setMetrics(next);
                   }}
-                  className="min-w-[5.5rem] flex-1 rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className="min-w-0 flex-1 rounded-md border bg-white px-1.5 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                   title={mt.fieldLabel || mt.fieldKey || '选择指标字段'}
                 >
                   <option value="">选择指标字段…</option>
@@ -3407,7 +3403,7 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
                     next[idx] = { ...mt, fn: e.target.value as GroupMetric['fn'], id: mt.id || `gm_${Date.now()}_${idx}` };
                     setMetrics(next);
                   }}
-                  className="shrink min-w-[4.5rem] max-w-[8.5rem] truncate rounded-md border bg-white px-1.5 py-1 text-[10px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className="shrink-0 w-[5.5rem] truncate rounded-md border bg-white px-1.5 py-1 text-[10px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                   title={AGG_FN_OPTIONS.find((a) => a.value === mt.fn)?.label || mt.fn}
                 >
                   {AGG_FN_OPTIONS.map((a) => (
@@ -3432,12 +3428,8 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
                     next[idx] = { ...mt, resultLabel: e.target.value, id: mt.id || `gm_${Date.now()}_${idx}` };
                     setMetrics(next);
                   }}
-                  placeholder={
-                    mt.fieldKey
-                      ? `结果字段名（默认：${AGG_FN_OPTIONS.find((a) => a.value === mt.fn)?.label.split(' ')[0] || ''}(${mt.fieldLabel || mt.fieldKey})）`
-                      : '结果字段名…'
-                  }
-                  className="w-full rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 placeholder:text-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  placeholder="结果字段名"
+                  className="min-w-0 w-[6.5rem] shrink-0 rounded-md border bg-white px-1.5 py-1 text-[10px] text-gray-700 placeholder:text-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                 />
               </div>
             ))}
@@ -3448,9 +3440,6 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
             >
               + 添加聚合指标
             </button>
-            <div className="text-[10px] leading-relaxed text-gray-400">
-              提示：求和/平均/最大/最小需选数值字段；计数、去重计数可用于任何字段（如 单据编号 / 店仓名称）。
-            </div>
           </div>
         );
       })()}
