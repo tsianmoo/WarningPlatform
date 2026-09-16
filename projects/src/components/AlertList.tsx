@@ -284,27 +284,6 @@ export function AlertList() {
           placeholder="商品"
           className="h-7 w-28 rounded border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none transition-colors focus:border-gray-400"
         />
-        <input
-          value={filter.storeKw}
-          onChange={(e) => setFilter({ ...filter, storeKw: e.target.value })}
-          placeholder="店仓"
-          className="h-7 w-28 rounded border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none transition-colors focus:border-gray-400"
-        />
-        <input
-          value={filter.userKw}
-          onChange={(e) => setFilter({ ...filter, userKw: e.target.value })}
-          placeholder="用户"
-          className="h-7 w-28 rounded border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none transition-colors focus:border-gray-400"
-        />
-        <input
-          value={filter.personKw}
-          onChange={(e) => setFilter({ ...filter, personKw: e.target.value })}
-          placeholder="人员"
-          className="h-7 w-28 rounded border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none transition-colors focus:border-gray-400"
-        />
-        <input type="date" value={filter.start} onChange={(e) => setFilter({ ...filter, start: e.target.value })} className={SelectCls} />
-        <span className="text-xs text-gray-300">至</span>
-        <input type="date" value={filter.end} onChange={(e) => setFilter({ ...filter, end: e.target.value })} className={SelectCls} />
         <select value={filter.level} onChange={(e) => setFilter({ ...filter, level: e.target.value })} className={SelectCls}>
           <option value="all">重要程度</option>
           {Object.keys(LEVEL_META).map((k) => (
@@ -317,12 +296,15 @@ export function AlertList() {
             <option key={k} value={k}>{STATUS_META[k].label}</option>
           ))}
         </select>
-        <select value={filter.person} onChange={(e) => setFilter({ ...filter, person: e.target.value })} className={SelectCls}>
-          <option value="all">接收人</option>
-          {personOptions.map((p) => (
-            <option key={p} value={p}>{p}</option>
-          ))}
-        </select>
+        <input
+          list="alert-person-opts"
+          value={filter.person === 'all' ? '' : filter.person}
+          onChange={(e) => setFilter({ ...filter, person: e.target.value })}
+          placeholder="接收人"
+          title="输入关键字搜索接收人"
+          className="h-7 w-28 rounded border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none transition-colors focus:border-gray-400"
+        />
+        <datalist id="alert-person-opts">{personOptions.map((p) => <option key={p} value={p} />)}</datalist>
         <button
           onClick={() => setFilter(emptyFilter)}
           className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600"
@@ -330,7 +312,14 @@ export function AlertList() {
         >
           <RotateCcw size={12} /> 重置
         </button>
-        <div className="mx-2 h-4 w-px bg-gray-100" />
+      </div>
+
+      {/* 第二行：日期 · 快捷 · 商品/店仓维度 */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-white px-6 py-2">
+        <input type="date" value={filter.start} onChange={(e) => setFilter({ ...filter, start: e.target.value })} className={SelectCls} />
+        <span className="text-xs text-gray-300">至</span>
+        <input type="date" value={filter.end} onChange={(e) => setFilter({ ...filter, end: e.target.value })} className={SelectCls} />
+        <div className="mx-1 h-4 w-px bg-gray-100" />
         {QUICK_TAGS.map((t) => (
           <button
             key={t.key}
@@ -353,35 +342,48 @@ export function AlertList() {
         >
           全部
         </button>
+        {(PRODUCT_DIMS.some((d) => (dimOptions[d.key] ?? []).length) || STORE_DIMS.some((d) => (dimOptions[d.key] ?? []).length)) && (
+          <>
+            <div className="mx-1.5 h-4 w-px bg-gray-100" />
+            <span className="text-xs font-medium text-gray-500">按商品</span>
+            {PRODUCT_DIMS.map((d) => {
+              const opts = dimOptions[d.key] ?? [];
+              return opts.length ? (
+                <span key={d.key} className="inline-flex items-center">
+                  <input
+                    list={`dim-opts-${d.key}`}
+                    value={filter[d.key] === 'all' ? '' : filter[d.key]}
+                    onChange={(e) => setFilter({ ...filter, [d.key]: e.target.value })}
+                    placeholder={d.label}
+                    title={`输入关键字搜索${d.label}`}
+                    className="h-7 w-28 rounded border border-gray-200 bg-white px-2 text-xs text-gray-600 outline-none transition-colors hover:border-gray-300 focus:border-gray-400"
+                  />
+                  <datalist id={`dim-opts-${d.key}`}>{opts.map((v) => <option key={v} value={v} />)}</datalist>
+                </span>
+              ) : null;
+            })}
+            <span className="mx-1 h-4 w-px bg-gray-100" />
+            <span className="text-xs font-medium text-gray-500">按店仓</span>
+            {STORE_DIMS.map((d) => {
+              const opts = dimOptions[d.key] ?? [];
+              return opts.length ? (
+                <span key={d.key} className="inline-flex items-center">
+                  <input
+                    list={`dim-opts-${d.key}`}
+                    value={filter[d.key] === 'all' ? '' : filter[d.key]}
+                    onChange={(e) => setFilter({ ...filter, [d.key]: e.target.value })}
+                    placeholder={d.label}
+                    title={`输入关键字搜索${d.label}`}
+                    className="h-7 w-28 rounded border border-gray-200 bg-white px-2 text-xs text-gray-600 outline-none transition-colors hover:border-gray-300 focus:border-gray-400"
+                  />
+                  <datalist id={`dim-opts-${d.key}`}>{opts.map((v) => <option key={v} value={v} />)}</datalist>
+                </span>
+              ) : null;
+            })}
+          </>
+        )}
         <span className="ml-auto text-xs tabular-nums text-gray-400">{filtered.length} 条</span>
       </div>
-
-      {/* 商品 / 店仓 维度筛选 */}
-      {(PRODUCT_DIMS.some((d) => (dimOptions[d.key] ?? []).length) || STORE_DIMS.some((d) => (dimOptions[d.key] ?? []).length)) && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-white px-6 py-2">
-          <span className="text-xs font-medium text-gray-500">按商品</span>
-          {PRODUCT_DIMS.map((d) => {
-            const opts = dimOptions[d.key] ?? [];
-            return opts.length ? (
-              <select key={d.key} value={filter[d.key]} onChange={(e) => setFilter({ ...filter, [d.key]: e.target.value })} className={SelectCls}>
-                <option value="all">{d.label}：全部</option>
-                {opts.map((v) => <option key={v} value={v}>{v}</option>)}
-              </select>
-            ) : null;
-          })}
-          <span className="mx-1 h-4 w-px bg-gray-100" />
-          <span className="text-xs font-medium text-gray-500">按店仓</span>
-          {STORE_DIMS.map((d) => {
-            const opts = dimOptions[d.key] ?? [];
-            return opts.length ? (
-              <select key={d.key} value={filter[d.key]} onChange={(e) => setFilter({ ...filter, [d.key]: e.target.value })} className={SelectCls}>
-                <option value="all">{d.label}：全部</option>
-                {opts.map((v) => <option key={v} value={v}>{v}</option>)}
-              </select>
-            ) : null;
-          })}
-        </div>
-      )}
 
       {/* 统计 */}
       <div className="border-b border-gray-100 bg-white px-6 py-2.5">
