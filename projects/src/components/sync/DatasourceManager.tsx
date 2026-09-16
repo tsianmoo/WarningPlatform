@@ -220,7 +220,7 @@ export default function DatasourceManager() {
             {testResult && (
               <span className={`ml-2 text-xs ${testResult.success ? 'text-green-600' : 'text-red-600'}`}>
                 {testResult.success
-                  ? `✓ 连通，耗时 ${testResult.elapsedMs}ms · ${testResult.version || ''} · 用户 ${testResult.user} · Schema ${testResult.schema || '-'}`
+                  ? `✓ 连通，耗时 ${testResult.elapsedMs}ms · ${testResult.version || ''} · 用户 ${testResult.user} · Schema ${testResult.schema || '-'}${testResult.mode ? ` · 模式 ${testResult.mode.toUpperCase()}` : ''}`
                   : `✗ ${testResult.error || '连接失败'}`}
               </span>
             )}

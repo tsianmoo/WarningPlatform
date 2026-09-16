@@ -613,7 +613,6 @@ export function DataTableManager() {
                     )}
                   </tbody>
                 </table>
-              </div>
 
               <div className="border-t border-gray-100 bg-gray-50/60 px-6 py-4">
                 <div className="mb-2 text-xs font-medium text-gray-500">数据预览 · 前 {active.previewRows.length} 行</div>
@@ -641,6 +640,7 @@ export function DataTableManager() {
                     </tbody>
                   </table>
                 </div>
+              </div>
               </div>
             </>
           )}

@@ -350,6 +350,7 @@ export interface DriverHealth {
   version?: string;
   user?: string;
   schema?: string;
+  mode?: 'thin' | 'thick';
   error?: string;
 }
 

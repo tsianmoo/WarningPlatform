@@ -8,8 +8,33 @@ import type {
 import type { ConnCfg, Driver, QueryOptions, QueryResult } from '@/lib/server/sync/driver';
 import { sanitizeError } from '@/lib/server/sync/tool';
 
-// thin 模式：纯 JS，无需安装 Oracle Instant Client
 oracledb.autoCommit = false;
+
+// ---- 连接模式 ----
+// 默认 Thin（纯 JS，需 Oracle Server 12.1+）。Oracle 11g 不被 Thin 支持（NJS-138），
+// 必须用 Thick 模式（依赖 Oracle Instant Client 客户端库）。启用方式：设置 `ORACLE_LIB_DIR`
+// 指向 Instant Client 目录（Linux 上还需 libaio）。未设置或加载失败则维持 Thin。
+let connMode: 'thin' | 'thick' = 'thin';
+try {
+  const libDir = (process.env.ORACLE_LIB_DIR || '').trim();
+  if (libDir) {
+    const dirs = libDir.split(':').filter(Boolean);
+    // glibc 的 dlopen 只在进程启动时读 LD_LIBRARY_PATH，运行期 setenv 不生效；
+    // 因此运行入口（dev.sh/start.sh）需在 shell 里先 export LD_LIBRARY_PATH 再启动 node。
+    if (process.env.LD_LIBRARY_PATH && !new RegExp(`(^|:)${dirs[0]}(:|$)`).test(process.env.LD_LIBRARY_PATH)) {
+      process.env.LD_LIBRARY_PATH = `${libDir}:${process.env.LD_LIBRARY_PATH}`;
+    }
+    // 单目录时传 libDir，双保险（libDir 会让 node-oracledb 在 dlopen 时把它加入搜索路径）
+    if (dirs.length === 1) {
+      oracledb.initOracleClient({ libDir: dirs[0] });
+    } else {
+      oracledb.initOracleClient();
+    }
+    if (oracledb.thin === false) connMode = 'thick';
+  }
+} catch {
+  /* 无 Instant Client 时维持 thin */
+}
 
 interface PoolKey {
   cfgId: string;
@@ -153,9 +178,10 @@ export const oracleDriver: Driver = {
         version: info.version,
         user: info.user,
         schema: info.schema,
+        mode: connMode,
       };
     } catch (e) {
-      return { success: false, elapsedMs: Date.now() - started, error: sanitizeError(e) };
+      return { success: false, elapsedMs: Date.now() - started, mode: connMode, error: sanitizeError(e) };
     }
   },
 

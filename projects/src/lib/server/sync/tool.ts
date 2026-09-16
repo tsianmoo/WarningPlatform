@@ -55,9 +55,14 @@ export function mask(str: string, show = 2): string {
 /** 错误信息脱敏：去掉密码，保留 IP */
 export function sanitizeError(e: unknown): string {
   const raw = e instanceof Error ? e.message : String(e);
-  return raw
+  const cleaned = raw
     .replace(/(password\s*[:=]\s*)\S+/gi, '$1***')
     .replace(/([Pp]ass(word)?\s*=\s*)[^&;\s]+/g, '$1***');
+  // Oracle 11g 不被 Thin 模式支持（NJS-138），提示改用 Thick（Instant Client）
+  if (/NJS-138|this database server version are not supported/i.test(cleaned)) {
+    return `${cleaned} —— Oracle 11g 及以下版本不支持 node-oracledb 的 Thin 模式，请在部署服务器设置 ORACLE_LIB_DIR 指向 Oracle Instant Client 目录（并安装 libaio）以启用 Thick 模式后重试。`;
+  }
+  return cleaned;
 }
 
 export function fmtMs(ms: number): string {
