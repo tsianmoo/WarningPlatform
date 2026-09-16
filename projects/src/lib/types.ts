@@ -1425,6 +1425,15 @@ export interface HomeImageElement {
 }
 export type HomeElement = HomeTextElement | HomeImageElement;
 
+/** 顶级导航菜单 key（侧边栏可命名 / 排序的菜单项） */
+export type NavMenuKey = 'home' | 'datatables' | 'rules' | 'alerts' | 'org' | 'hr' | 'sys';
+
+/** 导航菜单配置条目（名称 + 顺序由 store.list 顺序决定） */
+export interface NavMenuEntry {
+  key: NavMenuKey;
+  label: string;
+}
+
 export interface HomeConfig {
   bgMode: 'color' | 'image';
   bgColor: string;
@@ -1434,10 +1443,23 @@ export interface HomeConfig {
   subtitle: HomeTitleStyle;
   loginBox: LoginBoxStyle;
   elements: HomeElement[]; // 通过「组件」添加的画布元素（文本 / 图片）
+  /** 侧边栏导航菜单（命名 + 排序），顺序即显示顺序 */
+  navMenus: NavMenuEntry[];
   /** 权限配置载体（岗位权限表 + 单用户覆盖），随 config 一并持久化 */
   permissions?: RolePerm[];
   permOverrides?: PersonPermOverride[];
 }
+
+/** 导航菜单默认顺序与名称 */
+export const DEFAULT_NAV_MENUS: NavMenuEntry[] = [
+  { key: 'home', label: '首页' },
+  { key: 'datatables', label: '数据表管理' },
+  { key: 'rules', label: '预警规则' },
+  { key: 'alerts', label: '预警列表' },
+  { key: 'org', label: '组织架构' },
+  { key: 'hr', label: '人事管理' },
+  { key: 'sys', label: '系统管理' },
+];
 
 export const DEFAULT_HOME_CONFIG: HomeConfig = {
   bgMode: 'color',
@@ -1458,6 +1480,7 @@ export const DEFAULT_HOME_CONFIG: HomeConfig = {
     shadowColor: '#000000', shadowOpacity: 0.25, shadowX: 0, shadowY: 12, shadowBlur: 24,
   },
   elements: [],
+  navMenus: DEFAULT_NAV_MENUS,
 };
 
 export function normalizeHomeConfig(c?: Partial<HomeConfig> | null): HomeConfig {
@@ -1468,6 +1491,15 @@ export function normalizeHomeConfig(c?: Partial<HomeConfig> | null): HomeConfig 
     subtitle: { ...DEFAULT_HOME_CONFIG.subtitle, ...(c?.subtitle || {}) },
     loginBox: { ...DEFAULT_HOME_CONFIG.loginBox, ...(c?.loginBox || {}) },
     elements: Array.isArray(c?.elements) ? c.elements : [],
+    navMenus:
+      Array.isArray(c?.navMenus) && c!.navMenus.length > 0
+        ? c!.navMenus
+            .map((m) => {
+              const def = DEFAULT_NAV_MENUS.find((d) => d.key === m.key);
+              return def ? { key: def.key, label: m.label || def.label } : null;
+            })
+            .filter((x): x is NavMenuEntry => !!x)
+        : DEFAULT_NAV_MENUS,
   };
 }
 

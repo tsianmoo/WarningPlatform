@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import type { Person } from '@/lib/types';
 import { useRouter } from 'next/navigation';
-import { Table2, BellRing, ShieldAlert, Shield, LayoutDashboard, Activity, Briefcase, Users, Settings, Maximize, Minimize, LogOut, UploadCloud, Server, ClipboardList, ChevronRight } from 'lucide-react';
+import { Table2, BellRing, ShieldAlert, Shield, LayoutDashboard, Activity, Briefcase, Users, Settings, Maximize, Minimize, LogOut, UploadCloud, Server, ClipboardList, ChevronRight, ListOrdered } from 'lucide-react';
 import { StoreProvider, useStore } from '@/lib/store';
+import { DEFAULT_NAV_MENUS, NavMenuEntry, NavMenuKey } from '@/lib/types';
+import NavConfig from '@/components/NavConfig';
 import { DataTableManager } from '@/components/DataTableManager';
 import { RuleList } from '@/components/RuleList';
 import { NewRule, RuleConfigurator } from '@/components/RuleConfigurator';
@@ -19,7 +21,7 @@ import { HomeConfig } from '@/components/HomeConfig';
 import PermissionManage from '@/components/PermissionManage';
 import { resolvePerm, canView, resolveAuthAccount } from '@/lib/perm';
 
-type View = 'home' | 'tables' | 'apitable' | 'formtable' | 'rules' | 'new' | 'edit' | 'alerts' | 'people' | 'attrs' | 'dealer' | 'store' | 'dattrs' | 'sattrs' | 'emp' | 'eattrs' | 'homecfg' | 'perms';
+type View = 'home' | 'tables' | 'apitable' | 'formtable' | 'rules' | 'new' | 'edit' | 'alerts' | 'people' | 'attrs' | 'dealer' | 'store' | 'dattrs' | 'sattrs' | 'emp' | 'eattrs' | 'homecfg' | 'perms' | 'navcfg';
 
 function ApiDataPlaceholder({ onHome }: { onHome: () => void }) {
   return (
@@ -49,7 +51,8 @@ function FormFillPlaceholder({ onHome }: { onHome: () => void }) {
 
 function Shell() {
   const { state, updatePerson, ready } = useStore();
-  const VIEWS = ['home', 'tables', 'apitable', 'formtable', 'rules', 'new', 'edit', 'alerts', 'people', 'attrs', 'dealer', 'store', 'dattrs', 'sattrs', 'emp', 'eattrs', 'homecfg', 'perms'] as const;
+  const navMenus: NavMenuEntry[] = state.config.navMenus?.length ? state.config.navMenus : DEFAULT_NAV_MENUS;
+  const VIEWS = ['home', 'tables', 'apitable', 'formtable', 'rules', 'new', 'edit', 'alerts', 'people', 'attrs', 'dealer', 'store', 'dattrs', 'sattrs', 'emp', 'eattrs', 'homecfg', 'perms', 'navcfg'] as const;
   const [view, setView] = useState<View>(() => {
     if (typeof window === 'undefined') return 'home';
     const h = window.location.hash.replace(/^#/, '');
@@ -163,6 +166,8 @@ function Shell() {
     content = <HomeConfig onBack={() => navigate('home')} />;
   } else if (view === 'perms') {
     content = <PermissionManage />;
+  } else if (view === 'navcfg') {
+    content = <NavConfig onHome={() => navigate('home')} />;
   } else {
     content = <RuleList onNew={startNew} onEdit={startEdit} onHome={goHome} />;
   }
@@ -176,8 +181,95 @@ function Shell() {
   );
 
   // 预警配置页（new / edit）隐藏左侧导航栏，聚焦画布编辑
-  const withSidebar = view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts' || view === 'people' || view === 'attrs' || view === 'dealer' || view === 'store' || view === 'dattrs' || view === 'sattrs' || view === 'emp' || view === 'eattrs' || view === 'homecfg' || view === 'perms';
+  const withSidebar = view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts' || view === 'people' || view === 'attrs' || view === 'dealer' || view === 'store' || view === 'dattrs' || view === 'sattrs' || view === 'emp' || view === 'eattrs' || view === 'homecfg' || view === 'perms' || view === 'navcfg';
   const currentView = view;
+
+  const renderMenu = (key: NavMenuKey, label: string): React.ReactNode => {
+    switch (key) {
+      case 'home':
+        return <NavItem active={view === 'home'} icon={<LayoutDashboard size={17} />} label={label} onClick={goHome} />;
+      case 'rules':
+        return can('rules') ? (
+          <NavItem active={currentView === 'rules' || currentView === 'new' || currentView === 'edit'} icon={<BellRing size={17} />} label={label} onClick={() => goRules()} />
+        ) : null;
+      case 'alerts':
+        return can('alerts') ? (
+          <NavItem active={currentView === 'alerts'} icon={<Activity size={17} />} label={label} onClick={() => navigate('alerts')} />
+        ) : null;
+      case 'datatables':
+        return can('datatables') ? (
+          <div className="pt-1">
+            <button onClick={() => toggleGroup('datatables')} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-800 hover:bg-gray-50">
+              <Table2 size={17} className="text-gray-400" />
+              <span className="flex-1">{label}</span>
+              <ChevronRight size={16} className={`text-gray-400 transition-transform ${openGroup === 'datatables' ? 'rotate-90' : ''}`} />
+            </button>
+            {openGroup === 'datatables' && (
+              <>
+                <NavItem nested active={currentView === 'tables'} icon={<span className="text-gray-400">·</span>} label="上传数据表" onClick={() => navigate('tables')} />
+                <NavItem nested active={currentView === 'apitable'} icon={<span className="text-gray-400">·</span>} label="API数据表" onClick={() => navigate('apitable')} />
+                <NavItem nested active={currentView === 'formtable'} icon={<span className="text-gray-400">·</span>} label="在线填报表" onClick={() => navigate('formtable')} />
+              </>
+            )}
+          </div>
+        ) : null;
+      case 'org':
+        return can('dealer') || can('store') || can('dattrs') || can('sattrs') ? (
+          <div className="pt-1">
+            <button onClick={() => toggleGroup('org')} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-800 hover:bg-gray-50">
+              <Briefcase size={17} className="text-gray-400" />
+              <span className="flex-1">{label}</span>
+              <ChevronRight size={16} className={`text-gray-400 transition-transform ${openGroup === 'org' ? 'rotate-90' : ''}`} />
+            </button>
+            {openGroup === 'org' && (
+              <>
+                {can('dealer') && <NavItem nested active={currentView === 'dealer'} icon={<span className="text-gray-400">·</span>} label="经销商管理" onClick={() => navigate('dealer')} />}
+                {can('dattrs') && <NavItem nested active={currentView === 'dattrs'} icon={<span className="text-gray-400">·</span>} label="经销商属性" onClick={() => navigate('dattrs')} />}
+                {can('store') && <NavItem nested active={currentView === 'store'} icon={<span className="text-gray-400">·</span>} label="店仓管理" onClick={() => navigate('store')} />}
+                {can('sattrs') && <NavItem nested active={currentView === 'sattrs'} icon={<span className="text-gray-400">·</span>} label="店仓属性" onClick={() => navigate('sattrs')} />}
+                {can('dealer') && <NavItem nested active={currentView === 'emp'} icon={<span className="text-gray-400">·</span>} label="员工管理" onClick={() => navigate('emp')} />}
+                {can('dealer') && <NavItem nested active={currentView === 'eattrs'} icon={<span className="text-gray-400">·</span>} label="员工属性" onClick={() => navigate('eattrs')} />}
+              </>
+            )}
+          </div>
+        ) : null;
+      case 'hr':
+        return can('people') || can('attrs') ? (
+          <div className="pt-1">
+            <button onClick={() => toggleGroup('hr')} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-800 hover:bg-gray-50">
+              <Users size={17} className="text-gray-400" />
+              <span className="flex-1">{label}</span>
+              <ChevronRight size={16} className={`text-gray-400 transition-transform ${openGroup === 'hr' ? 'rotate-90' : ''}`} />
+            </button>
+            {openGroup === 'hr' && (
+              <>
+                {can('people') && <NavItem nested active={currentView === 'people'} icon={<span className="text-gray-400">·</span>} label="用户管理" onClick={() => navigate('people')} />}
+                {can('attrs') && <NavItem nested active={currentView === 'attrs'} icon={<span className="text-gray-400">·</span>} label="属性管理" onClick={() => navigate('attrs')} />}
+              </>
+            )}
+          </div>
+        ) : null;
+      case 'sys':
+        return (
+          <div className="pt-1">
+            <button onClick={() => toggleGroup('sys')} className="mb-1 flex w-full items-center gap-1.5 rounded-lg px-3 py-1 text-left">
+              <Settings size={14} className="text-gray-500" />
+              <span className="flex-1 text-xs font-medium text-gray-500">{label}</span>
+              <ChevronRight size={14} className={`text-gray-400 transition-transform ${openGroup === 'sys' ? 'rotate-90' : ''}`} />
+            </button>
+            {openGroup === 'sys' && (
+              <>
+                <NavItem active={currentView === 'navcfg'} icon={<ListOrdered size={15} />} label="导航栏管理" nested onClick={() => navigate('navcfg')} />
+                {can('homecfg') && <NavItem active={currentView === 'homecfg'} icon={<LayoutDashboard size={15} />} label="首页管理" nested onClick={() => navigate('homecfg')} />}
+                {can('perms') && <NavItem active={currentView === 'perms'} icon={<Shield size={15} />} label="权限管理" nested onClick={() => navigate('perms')} />}
+              </>
+            )}
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#F7F8FA] text-gray-900">
@@ -198,198 +290,7 @@ function Shell() {
               <div className="px-3 py-3 text-xs text-gray-400">正在加载菜单…</div>
             ) : (
             <>
-            <NavItem active={view === 'home'} icon={<LayoutDashboard size={17} />} label="首页" onClick={goHome} />
-            {can('datatables') && (
-            <div className="pt-1">
-              <button
-                onClick={() => toggleGroup('datatables')}
-                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-800 hover:bg-gray-50"
-              >
-                <Table2 size={17} className="text-gray-400" />
-                <span className="flex-1">数据表管理</span>
-                <ChevronRight size={16} className={`text-gray-400 transition-transform ${openGroup === 'datatables' ? 'rotate-90' : ''}`} />
-              </button>
-              {openGroup === 'datatables' && (
-              <>
-              <NavItem
-                nested
-                active={currentView === 'tables'}
-                icon={<span className="text-gray-400">·</span>}
-                label="上传数据表"
-                onClick={() => navigate('tables')}
-              />
-              <NavItem
-                nested
-                active={currentView === 'apitable'}
-                icon={<span className="text-gray-400">·</span>}
-                label="API数据表"
-                onClick={() => navigate('apitable')}
-              />
-              <NavItem
-                nested
-                active={currentView === 'formtable'}
-                icon={<span className="text-gray-400">·</span>}
-                label="在线填报表"
-                onClick={() => navigate('formtable')}
-              />
-              </>
-              )}
-            </div>
-            )}
-            {can('rules') && (
-            <NavItem
-              active={currentView === 'rules' || currentView === 'new' || currentView === 'edit'}
-              icon={<BellRing size={17} />}
-              label="预警规则"
-              onClick={() => goRules()}
-            />
-            )}
-            {can('alerts') && (
-            <NavItem
-              active={currentView === 'alerts'}
-              icon={<Activity size={17} />}
-              label="预警列表"
-              onClick={() => navigate('alerts')}
-            />
-            )}
-            {(can('dealer') || can('store') || can('dattrs') || can('sattrs')) && (
-            <div className="pt-1">
-              <button
-                onClick={() => toggleGroup('org')}
-                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-800 hover:bg-gray-50"
-              >
-                <Briefcase size={17} className="text-gray-400" />
-                <span className="flex-1">组织架构</span>
-                <ChevronRight size={16} className={`text-gray-400 transition-transform ${openGroup === 'org' ? 'rotate-90' : ''}`} />
-              </button>
-              {openGroup === 'org' && (
-              <>
-              {can('dealer') && (
-              <NavItem
-                nested
-                active={currentView === 'dealer'}
-                icon={<span className="text-gray-400">·</span>}
-                label="经销商管理"
-                onClick={() => navigate('dealer')}
-              />
-              )}
-              {can('dattrs') && (
-              <NavItem
-                nested
-                active={currentView === 'dattrs'}
-                icon={<span className="text-gray-400">·</span>}
-                label="经销商属性"
-                onClick={() => navigate('dattrs')}
-              />
-              )}
-              {can('store') && (
-              <NavItem
-                nested
-                active={currentView === 'store'}
-                icon={<span className="text-gray-400">·</span>}
-                label="店仓管理"
-                onClick={() => navigate('store')}
-              />
-              )}
-              {can('sattrs') && (
-              <NavItem
-                nested
-                active={currentView === 'sattrs'}
-                icon={<span className="text-gray-400">·</span>}
-                label="店仓属性"
-                onClick={() => navigate('sattrs')}
-              />
-              )}
-              {can('dealer') && (
-              <NavItem
-                nested
-                active={currentView === 'emp'}
-                icon={<span className="text-gray-400">·</span>}
-                label="员工管理"
-                onClick={() => navigate('emp')}
-              />
-              )}
-              {can('dealer') && (
-              <NavItem
-                nested
-                active={currentView === 'eattrs'}
-                icon={<span className="text-gray-400">·</span>}
-                label="员工属性"
-                onClick={() => navigate('eattrs')}
-              />
-              )}
-              </>
-              )}
-            </div>
-            )}
-            {(can('people') || can('attrs')) && (
-            <div className="pt-1">
-              <button
-                onClick={() => toggleGroup('hr')}
-                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-800 hover:bg-gray-50"
-              >
-                <Users size={17} className="text-gray-400" />
-                <span className="flex-1">人事管理</span>
-                <ChevronRight size={16} className={`text-gray-400 transition-transform ${openGroup === 'hr' ? 'rotate-90' : ''}`} />
-              </button>
-              {openGroup === 'hr' && (
-              <>
-              {can('people') && (
-              <NavItem
-                nested
-                active={currentView === 'people'}
-                icon={<span className="text-gray-400">·</span>}
-                label="用户管理"
-                onClick={() => navigate('people')}
-              />
-              )}
-              {can('attrs') && (
-              <NavItem
-                nested
-                active={currentView === 'attrs'}
-                icon={<span className="text-gray-400">·</span>}
-                label="属性管理"
-                onClick={() => navigate('attrs')}
-              />
-              )}
-              </>
-              )}
-            </div>
-            )}
-
-            {/* 系统管理 */}
-            <div className="pt-1">
-              <button
-                onClick={() => toggleGroup('sys')}
-                className="mb-1 flex w-full items-center gap-1.5 rounded-lg px-3 py-1 text-left"
-              >
-                <Settings size={14} className="text-gray-500" />
-                <span className="flex-1 text-xs font-medium text-gray-500">系统管理</span>
-                <ChevronRight size={14} className={`text-gray-400 transition-transform ${openGroup === 'sys' ? 'rotate-90' : ''}`} />
-              </button>
-              {openGroup === 'sys' && (
-              <>
-              {can('homecfg') && (
-              <NavItem
-                active={currentView === 'homecfg'}
-                icon={<LayoutDashboard size={15} />}
-                label="首页管理"
-                nested
-                onClick={() => navigate('homecfg')}
-              />
-              )}
-              {can('perms') && (
-              <NavItem
-                active={currentView === 'perms'}
-                icon={<Shield size={15} />}
-                label="权限管理"
-                nested
-                onClick={() => navigate('perms')}
-              />
-              )}
-              </>
-              )}
-            </div>
+            {navMenus.map((m) => <Fragment key={m.key}>{renderMenu(m.key, m.label)}</Fragment>)}
             </>
             )}
           </nav>
