@@ -45,20 +45,22 @@ import { toast } from 'sonner';
 
 function collectTargets(
   nodes: FlowNode[]
-): { departments: string[]; personnel: string[] } {
+): { departments: string[]; personnel: string[]; storeMode: boolean } {
   const departments: string[] = [];
   const personnel: string[] = [];
+  let storeMode = false;
   for (const n of nodes) {
     if (n.kind === 'action') {
-      const notify = (n.data as { notify?: { departments?: string[]; personnel?: string[] } } | undefined)
+      const notify = (n.data as { notify?: { mode?: string; departments?: string[]; personnel?: string[] } } | undefined)
         ?.notify;
       if (notify) {
+        if (notify.mode === 'store') storeMode = true;
         departments.push(...(notify.departments ?? []));
         personnel.push(...(notify.personnel ?? []));
       }
     }
   }
-  return { departments: Array.from(new Set(departments)), personnel: Array.from(new Set(personnel)) };
+  return { departments: Array.from(new Set(departments)), personnel: Array.from(new Set(personnel)), storeMode };
 }
 
 export function RuleConfigurator({
@@ -73,7 +75,7 @@ export function RuleConfigurator({
   const [, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const finalTargets = useMemo(() => collectTargets(rule.flow.nodes), [rule.flow.nodes]);
-  const hasTargets = finalTargets.departments.length > 0 || finalTargets.personnel.length > 0;
+  const hasTargets = finalTargets.storeMode || finalTargets.departments.length > 0 || finalTargets.personnel.length > 0;
   const hasFlow = rule.flow.nodes.length > 0;
   const hasAction = rule.flow.nodes.some((n) => n.kind === 'action');
   // 分步向导：0 流程搭建 / 1 调度与通知 / 2 确认激活
