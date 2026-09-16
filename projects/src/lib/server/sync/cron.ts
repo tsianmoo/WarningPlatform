@@ -1,9 +1,16 @@
 import cronParser from 'cron-parser';
 
 type CronIter = { next(): { toDate(): Date }; prev(): { getTime(): number } };
-// cron-parser 命名导出类型声明不完整，这里读取真实的 parseExpression 工厂函数
+// cron-parser 真实入口是其静态 parse 方法（类型声明不完整，这里显式取出，兼容 default 与命名两种导出形态）
 const parseExpression: (expr: string, opts?: { tz?: string; currentDate?: Date }) => CronIter =
-  (cronParser as any).parseExpression || (cronParser as any);
+  (cronParser as any)?.CronExpressionParser?.parse || (cronParser as any)?.CronExpressionParser || (cronParser as any)?.parse;
+
+/** 归一化 Quartz 风格表达式：7 位时去掉最后的“年”字段；`?` 保留（cron-parser 在日/周域原生支持） */
+function normalizeCron(expr: string): string {
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length === 7) parts.pop();
+  return parts.join(' ');
+}
 
 export interface CronMatch {
   isValid: boolean;
@@ -13,26 +20,23 @@ export interface CronMatch {
 
 /** 解析 cron 表达式并计算未来 n 次执行时间（5/6/7 位均尝试） */
 export function parseCron(expr: string, timezone?: string): CronMatch {
-  const attempts = expr.trim().split(/\s+/).length >= 5 ? [expr] : [expr];
-  for (const e of attempts) {
-    try {
-      const iter = parseExpression(e, { tz: timezone || undefined, currentDate: new Date() });
-      const nextRuns: number[] = [];
-      for (let i = 0; i < 5; i++) {
-        nextRuns.push(iter.next().toDate().getTime());
-      }
-      return { isValid: true, nextRuns };
-    } catch {
-      /* try next format */
+  const e = normalizeCron(expr);
+  try {
+    const iter = parseExpression(e, { tz: timezone || undefined, currentDate: new Date() });
+    const nextRuns: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      nextRuns.push(iter.next().toDate().getTime());
     }
+    return { isValid: true, nextRuns };
+  } catch {
+    return { isValid: false, error: '无效的 Cron 表达式（支持 5/6/7 位）' };
   }
-  return { isValid: false, error: '无效的 Cron 表达式（支持 5/6/7 位）' };
 }
 
 /** 判断某个时刻是否命中 cron（用于调度 tick）。退化为分钟级匹配。 */
 export function cronMatches(expr: string, date: Date, timezone?: string): boolean {
   try {
-    const iter = parseExpression(expr, { tz: timezone || undefined, currentDate: date });
+    const iter = parseExpression(normalizeCron(expr), { tz: timezone || undefined, currentDate: date });
     // 检查当前分钟是否在表达式域内：对比前一个与自身
     const prev = iter.prev().getTime();
     const nowMs = date.getTime();
@@ -46,7 +50,7 @@ export function cronMatches(expr: string, date: Date, timezone?: string): boolea
 /** 给定起始时间，计算未来 count 次执行时间戳（毫秒） */
 export function cronNextTimes(expr: string, timezone: string | undefined, from: Date, count: number): Date[] {
   try {
-    const iter = parseExpression(expr, { tz: timezone || undefined, currentDate: from });
+    const iter = parseExpression(normalizeCron(expr), { tz: timezone || undefined, currentDate: from });
     const out: Date[] = [];
     for (let i = 0; i < count; i++) out.push(iter.next().toDate());
     return out;

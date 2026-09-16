@@ -193,4 +193,37 @@
 - **filljoin 缺配事实时，时间窗列仍填当前周期值（勿被 fillValue 覆盖为 0）**：left filljoin 对无单据店仓（事实侧无记录）补缺时，若把「开始日期/结束日期/已过天数/本周天数/本月天数/本年天数」等时间窗列也用 `fillValue` 填成 0/空，会得到"有店仓却无本月起止/已过天数"的错误。这些列是**全局周期常量**（与是否匹配事实无关）。修复：filljoin 补缺分支内，若某行未命中且列名 ∈ `WINDOW_COLS = {开始日期,结束日期,已过天数,本周天数,本季天数,本月天数,本年天数,本日天数,当前日期,周几,第几周,剩余天数}`，改用事实节点 rows[0] 的对应周期值填充（groupby 各组同窗口，取首行安全），其余事实列仍按 `fillValue` 填 0。⚠️ 配套的 inferNodeCols(filljoin) 需保证这些列仍在候选字段里。
 - **预警详情弹窗双 Tab 侧栏（AlertList.tsx）**：弹窗左侧改为常驻（`showHist` 默认 `true`）双标签页列表面板，`histTab:'all'|'style'`：①「全部预警」（默认）= 与当前预警 `open` 相关的所有预警，口径为「其 `preview.storeMessages` 店仓与 `open` 的 `scopeNames` 有交集，或 `assignee` 等于 `open.assignee`」，跨规则、跨店；②「关联预警」= 关于当前查看款色 `curStyle`（`open.dims.product.style[0]`，旧预警用 `computeAlertDims(a,state.stores)` 补算 dims）的所有预警。点击面板任意一条 `setOpenId` 切到该条处理。原 `historyKeyOf` 同 key 归并列表逻辑已删除。
 - **导航栏管理（NavConfig.tsx + view='navcfg'）**：左侧导航的**顶级菜单**（首页/数据表管理/预警规则/预警列表/组织架构/人事管理/系统管理）可**命名 + 排序**。配置存于 `HomeConfig.navMenus: NavMenuEntry[]`（`key:NavMenuKey` + `label`，顺序即显示顺序），随 config 走 `/api/state` 持久化，`normalizeHomeConfig` 自动兜底 `DEFAULT_NAV_MENUS`（含去重/剔除未知 key）。`page.tsx` 的 `Shell` 里 `renderMenu(key,label)` 把菜单 key 渲染为单个 NavItem 或手风琴分组块（`can()` 可见性、`openGroup` 互斥折叠、`navigate` 目标都保持原语义），`<nav>` 用 `navMenus.map(renderMenu)` 动态渲染。子菜单项（分组内）不支持改名/排序，仅顶级菜单项可管理。注意：改 `View` 类型 / `VIEWS` / `renderMenu` / 面包屑 `CRUMBS` 时四处要同步。
-- **侧边栏品牌与导航观感**：左上角品牌为纯文本黑字 `DIANNIU.YJ`（`text-[15px] font-bold tracking-[0.08em] text-black`，无图标）；导航字体统一 `text-[13px]`（NavItem 与各分组头一致，sys 组不得再用 `text-xs`/小图标），图标统一 lucide `strokeWidth={1.75}`、顶级 18px/分组头 17px/子项 16px；子项用 `·` 点作缩进。
+- **侧边栏品牌与导航观感**：左上角品牌由 `config.brand` 驱动（`HomeTitleStyle & { logo }`，默认 `DIANNIU.YJ`/黑/700/15px），支持 LOGO 与名称样式（字号/字重/颜色+透明度/字间距，见「基础信息管理」`BrandConfig.tsx`）；导航字体统一 `text-[13px]`（NavItem 与各分组头一致，sys 组不得再用 `text-xs`/小图标），图标统一 lucide `strokeWidth={1.75}`、顶级 18px/分组头 17px/子项 16px；新增视图需同步 `View`/`VIEWS`/`CRUMBS`/`withSidebar`/`renderMenu`。
+
+---
+
+# 数据同步平台（Data Sync / ETL）
+
+## 项目概述
+位于「数据表管理 → API数据表」（`view='apitable'`），实现一个**自包含的数据同步（ETL）平台**：外部数据源连接管理 → SQL 数据集 + 预览 → 同步任务（读源→转换→写目标）→ 定时调度 → 运行监控 → 告警 → 质量校验 → 审计。**首批落地 Oracle 源/目标驱动**，PG/MySQL/SQLServer/StarRocks 在驱动抽象上预留（`DRIVER_SUPPORTED` 标记）。
+
+## 技术栈与代码位置
+- 领域类型：`src/lib/sync/types.ts`
+- 服务端核心：`src/lib/server/sync/` 下 `driver.ts`(抽象) `oracle.ts`(Oracle驱动, thin模式) `engine.ts`(执行引擎) `scheduler.ts`(cron调度) `writer.ts`(建表/写批/转换) `dialects.ts`(方言/类型映射) `ql-validate.ts`(SQL白名单校验) `quality.ts`(质量校验) `alert.ts`(告警投递) `cron.ts`(cron解析) `tool.ts`(工具) `sync-store.ts`(持久化)
+- API 入口：**单一路由** `src/app/api/sync/[[...slug]]/route.ts`（按 path 段分发：datasource/dataset/task/instance/channel/audit + 子动作 test/meta/preview/validate/run/cron/watermark/stop）
+- 前端：`src/components/sync/`（`DataSyncPlatform.tsx` 容器 + `DatasourceManager.tsx`/`DatasetManager.tsx`/`TaskManager.tsx`/`MonitorTab.tsx`/`ChannelManager.tsx`/`SqlEditor.tsx`/`ui.tsx`/`api.ts`）；挂载于 `src/app/page.tsx` 的 `apitable` 分支
+
+## 关键设计
+- **自包含模块，不侵入 `/api/state` 与规则引擎**；域名数据独立存在 Supabase PG 的 `sync_*` 表（见下）。
+- **持久化**：用原生 `pg`（`sync-store.ts`）读项目 PG 环境变量（`PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE`，经 `coze_workload_identity` 运行时装进 `process.env`，见 `loadDbEnv`）自动 `CREATE TABLE IF NOT EXISTS`。表：`sync_data_sources / sync_datasets / sync_tasks / sync_instances / sync_channels / sync_audit / sync_lock / sync_watermark / sync_meta_cache`，每行 `id + data(jsonb) + updated_at`。
+- **调度器**：`src/server.ts` 启动时 `startSchedulerOnce()`，也在首次 store 操作时惰性启动；进程内 cron tick（30s）按 `cron/intervalSec/expireAt` 触发 `engine.runTask(taskId, trigger, user, opts)`。
+- **Oracle 驱动**：`oracledb`（thin 模式，纯 JS 无需 Instant Client）；连接串 `//host:port/dbName` 或 SID（`connParams` 含 `sid=1`）；`exec` 用真实连接直接执行（有 conn.commit）。
+- **密码**：前端明文 `password` → 服务端 `encSecret` 加密存 `passwordEnc`；读取接口返回 `sanitizeDs`（不泄露密码，`hasPassword` 标记）。删除数据源时若被数据集/任务引用则拒绝（`hasRefs`）。
+- **SQL 安全**：`ql-validate.ts` 用**词法白名单**（仅 SELECT/WITH，词法扫描剔除注释与多语句），非正则硬匹配；`dangerHints` 给出「全表扫描 SELECT *、无日期条件」黄色警告不阻断。
+- **告警**：`alert.ts` 支持 webhook/wecom/dingtalk/feishu/smtp；`dispatchAlerts` 带收敛（suppressed Map，`10min` 默认静默窗）；字段沿用 `AlertChannel` 的 `host/port/user/passwordEnc/to/webhookUrl/tls`，勿用 endpoint/pass。
+- **审计**：写操作经 `audit(req, action, type, id, name, diff)` 落 `sync_audit`（diff 为 JSON 字符串截断 4000）。
+
+## 运行与验证
+- 预览 / 部署复用既有 `scripts/dev.sh` 与 `scripts/build.sh`（`tsx src/server.ts`；build 用 tsup 打 `dist/server.js`）。**注**：`sync-store.ts` 里对 `@/lib/...` 的动态 `require` 在 tsup 打包时不重写别名，prod 下可能不生效，但 `server.ts` 已用静态 import 启动 scheduler，功能不受影响。
+- 交付验收：`test_run` 只服务探活 + 接口冒烟（本工程无静态检查配置），类型正确性需自行 `pnpm exec tsc --noEmit` 复核。
+
+## 常见问题与预防
+- **cron-parser 入口**：真实 API 是 `CronExpressionParser.parse(expr, opts)`（非 named `parseExpression` 也不是直接调用类）；`cron.ts` 用 `(cronParser as any)?.CronExpressionParser?.parse || ...?.parse` 兜底。7 位 Quartz 自动丢年字段；`?` 在日/周域默认支持。
+- **test_run 的 curl 并行执行**：读/写断言不要在一次 batch 里依赖顺序（POST 建数据可能晚于同批 GET）；需要时先单独跑一次写、再跑一次读。
+- **oracledb 类型过严**：`oracle.ts` 用自定义 `OraConn` 桩接口（execute/cancel/close/commit）规避 @types 泛型报错；`streamQuery`/`exec` 内 conn 取 `any` 处理。
+- **驱动扩展**：新增厂商 → 在 `driver.ts` 加 `getXxx()` + 注册 + 置 `DRIVER_SUPPORTED`，并实现 `Driver` 接口全部方法（Oracle 有 `getPrimaryKeys` 可选方法）。

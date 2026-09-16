@@ -3,10 +3,11 @@
 import { useEffect, useState, Fragment } from 'react';
 import type { Person } from '@/lib/types';
 import { useRouter } from 'next/navigation';
-import { Table2, BellRing, Shield, LayoutDashboard, Activity, Briefcase, Users, Settings, Maximize, Minimize, LogOut, UploadCloud, ClipboardList, ChevronRight, ListOrdered } from 'lucide-react';
+import { Table2, BellRing, Shield, LayoutDashboard, Activity, Briefcase, Users, Settings, Maximize, Minimize, LogOut, UploadCloud, ClipboardList, ChevronRight, ListOrdered, Settings2 } from 'lucide-react';
 import { StoreProvider, useStore } from '@/lib/store';
-import { DEFAULT_NAV_MENUS, NavMenuEntry, NavMenuKey } from '@/lib/types';
+import { DEFAULT_HOME_CONFIG, DEFAULT_NAV_MENUS, NavMenuEntry, NavMenuKey } from '@/lib/types';
 import NavConfig from '@/components/NavConfig';
+import BrandConfig from '@/components/BrandConfig';
 import { DataTableManager } from '@/components/DataTableManager';
 import { RuleList } from '@/components/RuleList';
 import { NewRule, RuleConfigurator } from '@/components/RuleConfigurator';
@@ -22,7 +23,15 @@ import PermissionManage from '@/components/PermissionManage';
 import DataSyncPlatform from '@/components/sync/DataSyncPlatform';
 import { resolvePerm, canView, resolveAuthAccount } from '@/lib/perm';
 
-type View = 'home' | 'tables' | 'apitable' | 'formtable' | 'rules' | 'new' | 'edit' | 'alerts' | 'people' | 'attrs' | 'dealer' | 'store' | 'dattrs' | 'sattrs' | 'emp' | 'eattrs' | 'homecfg' | 'perms' | 'navcfg';
+type View = 'home' | 'tables' | 'apitable' | 'formtable' | 'rules' | 'new' | 'edit' | 'alerts' | 'people' | 'attrs' | 'dealer' | 'store' | 'dattrs' | 'sattrs' | 'emp' | 'eattrs' | 'homecfg' | 'perms' | 'navcfg' | 'brandcfg';
+
+function hexToRgba(hex: string, alpha: number): string {
+  const h = (hex || '#000000').replace('#', '');
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const n = parseInt(full, 16);
+  if (Number.isNaN(n)) return `rgba(0,0,0,${alpha})`;
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
 
 function FormFillPlaceholder({ onHome }: { onHome: () => void }) {
   return (
@@ -40,7 +49,8 @@ function FormFillPlaceholder({ onHome }: { onHome: () => void }) {
 function Shell() {
   const { state, updatePerson, ready } = useStore();
   const navMenus: NavMenuEntry[] = state.config.navMenus?.length ? state.config.navMenus : DEFAULT_NAV_MENUS;
-  const VIEWS = ['home', 'tables', 'apitable', 'formtable', 'rules', 'new', 'edit', 'alerts', 'people', 'attrs', 'dealer', 'store', 'dattrs', 'sattrs', 'emp', 'eattrs', 'homecfg', 'perms', 'navcfg'] as const;
+  const brand = state.config.brand || DEFAULT_HOME_CONFIG.brand;
+  const VIEWS = ['home', 'tables', 'apitable', 'formtable', 'rules', 'new', 'edit', 'alerts', 'people', 'attrs', 'dealer', 'store', 'dattrs', 'sattrs', 'emp', 'eattrs', 'homecfg', 'perms', 'navcfg', 'brandcfg'] as const;
   const CRUMBS: Record<string, string[]> = {
     home: ['工作台'],
     tables: ['工作台', '数据表管理', '上传数据表'],
@@ -60,6 +70,7 @@ function Shell() {
     attrs: ['工作台', '人事管理', '属性管理'],
     homecfg: ['工作台', '系统管理', '首页管理'],
     navcfg: ['工作台', '系统管理', '导航栏管理'],
+    brandcfg: ['工作台', '系统管理', '基础信息管理'],
     perms: ['工作台', '系统管理', '权限管理'],
   };
   const [view, setView] = useState<View>(() => {
@@ -177,6 +188,8 @@ function Shell() {
     content = <PermissionManage />;
   } else if (view === 'navcfg') {
     content = <NavConfig onHome={() => navigate('home')} />;
+  } else if (view === 'brandcfg') {
+    content = <BrandConfig onHome={() => navigate('home')} />;
   } else {
     content = <RuleList onNew={startNew} onEdit={startEdit} />;
   }
@@ -190,7 +203,7 @@ function Shell() {
   );
 
   // 预警配置页（new / edit）隐藏左侧导航栏，聚焦画布编辑
-  const withSidebar = view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts' || view === 'people' || view === 'attrs' || view === 'dealer' || view === 'store' || view === 'dattrs' || view === 'sattrs' || view === 'emp' || view === 'eattrs' || view === 'homecfg' || view === 'perms' || view === 'navcfg';
+  const withSidebar = view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts' || view === 'people' || view === 'attrs' || view === 'dealer' || view === 'store' || view === 'dattrs' || view === 'sattrs' || view === 'emp' || view === 'eattrs' || view === 'homecfg' || view === 'perms' || view === 'navcfg' || view === 'brandcfg';
   const currentView = view;
 
   const renderMenu = (key: NavMenuKey, label: string): React.ReactNode => {
@@ -270,6 +283,7 @@ function Shell() {
               <>
                 <NavItem active={currentView === 'navcfg'} icon={<ListOrdered size={16} strokeWidth={1.75} />} label="导航栏管理" nested onClick={() => navigate('navcfg')} />
                 {can('homecfg') && <NavItem active={currentView === 'homecfg'} icon={<LayoutDashboard size={16} strokeWidth={1.75} />} label="首页管理" nested onClick={() => navigate('homecfg')} />}
+                <NavItem active={currentView === 'brandcfg'} icon={<Settings2 size={16} strokeWidth={1.75} />} label="基础信息管理" nested onClick={() => navigate('brandcfg')} />
                 {can('perms') && <NavItem active={currentView === 'perms'} icon={<Shield size={16} strokeWidth={1.75} />} label="权限管理" nested onClick={() => navigate('perms')} />}
               </>
             )}
@@ -286,7 +300,19 @@ function Shell() {
       {withSidebar && (
         <aside className="flex w-56 shrink-0 flex-col border-r bg-white">
           <div className="flex items-center px-4 py-5">
-            <div className="text-[15px] font-bold tracking-[0.08em] text-black">DIANNIU.YJ</div>
+            {brand.logo && <img src={brand.logo} alt="logo" className="mr-2 h-7 w-7 object-contain" />}
+            <div
+              className="truncate"
+              style={{
+                fontFamily: brand.font || 'system-ui',
+                fontSize: brand.size || 15,
+                fontWeight: brand.weight || 700,
+                letterSpacing: (brand.letterSpacing || 0) + 'px',
+                color: hexToRgba(brand.color || '#000000', brand.opacity ?? 1),
+              }}
+            >
+              {brand.text || 'DIANNIU.YJ'}
+            </div>
           </div>
           <nav className="flex-1 space-y-1 px-2 py-2">
             {!ready ? (
