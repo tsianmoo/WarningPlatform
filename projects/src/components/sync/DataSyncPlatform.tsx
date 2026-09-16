@@ -55,10 +55,8 @@ export default function DataSyncPlatform() {
     loadDs(); loadDataset(); loadTask(); loadChannel(); if (tab === 'audit') loadAudit();
   }, [loadDs, loadDataset, loadTask, loadChannel, tab]);
 
-  if (!can('view')) {
-    return <div className="p-10 text-center text-sm text-gray-400">您没有「数据同步平台」的访问权限</div>;
-  }
-
+  // 视图权限：view 由 resolvePerm 的 page.view 决定，不通过 canOper(op) 判断（无 'view' 操作）。
+  // 写操作(create/edit/delete/run)仍由子组件按 can(op) 门禁控制。
   return (
     <PermCtx.Provider value={can}>
       <div className="flex h-full flex-col">

@@ -203,7 +203,7 @@ function Shell() {
   );
 
   // 预警配置页（new / edit）隐藏左侧导航栏，聚焦画布编辑
-  const withSidebar = view === 'home' || view === 'tables' || view === 'rules' || view === 'alerts' || view === 'people' || view === 'attrs' || view === 'dealer' || view === 'store' || view === 'dattrs' || view === 'sattrs' || view === 'emp' || view === 'eattrs' || view === 'homecfg' || view === 'perms' || view === 'navcfg' || view === 'brandcfg';
+  const withSidebar = view === 'home' || view === 'tables' || view === 'apitable' || view === 'formtable' || view === 'rules' || view === 'alerts' || view === 'people' || view === 'attrs' || view === 'dealer' || view === 'store' || view === 'dattrs' || view === 'sattrs' || view === 'emp' || view === 'eattrs' || view === 'homecfg' || view === 'perms' || view === 'navcfg' || view === 'brandcfg';
   const currentView = view;
 
   const renderMenu = (key: NavMenuKey, label: string): React.ReactNode => {

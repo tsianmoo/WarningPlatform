@@ -136,7 +136,7 @@ export default function DatasourceManager() {
 
       <div className="flex-1 overflow-auto rounded-lg border border-gray-200 bg-white">
         {loading && <div className="p-6 text-sm text-gray-400">加载中…</div>}
-        {!loading && items.length === 0 && <Empty text="暂无数据源，点击右上角新建" />}
+        {!loading && items.length === 0 && <Empty text="暂无数据源。添加表的流程：① 右上角「新建数据源」接入源库 → ② 切到「数据集」Tab 用 SQL 定义要同步的表 → ③ 在「同步任务」Tab 建任务并指定目标数据源+表名，调度后即在目标库生成/填充该表" />}
         {!loading && items.length > 0 && (
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-gray-50 text-left text-xs text-gray-500">
