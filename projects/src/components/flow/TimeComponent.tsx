@@ -9,6 +9,7 @@ interface Props {
   value?: TimeWindow;
   onChange: (tw: TimeWindow) => void;
   compact?: boolean;
+  hideAllToggle?: boolean;
 }
 
 const GROUP_LABEL: Record<string, string> = {
@@ -26,7 +27,7 @@ const COMPARE_OPTIONS: { value: 'yoY' | 'ring'; label: string; hint: string }[] 
   { value: 'ring', label: '环期', hint: '上一时段' },
 ];
 
-export default function TimeComponent({ value, onChange }: Props) {
+export default function TimeComponent({ value, onChange, hideAllToggle }: Props) {
   const [open, setOpen] = useState(false);
   const tw: TimeWindow = useMemo(() => value ?? { preset: 'thisWeek' }, [value]);
   const resolved = useMemo(() => resolveTimeWindow(tw), [tw]);
@@ -48,8 +49,8 @@ export default function TimeComponent({ value, onChange }: Props) {
         className="flex w-full items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50/50 px-2 py-1 text-left text-xs text-emerald-700 transition hover:bg-emerald-50"
       >
         <Clock size={12} strokeWidth={2.2} className="shrink-0 text-emerald-600" />
-        <span className="min-w-0 flex-1 truncate font-medium">{presetLabel(tw.preset)}</span>
-        <span className="ml-auto max-w-[45%] shrink truncate text-[10px] text-emerald-500/80">{resolved.hint}</span>
+        <span className="shrink-0 truncate font-medium">{presetLabel(tw.preset)}</span>
+        <span className="ml-auto max-w-[55%] shrink truncate text-[9px] text-emerald-500/80">{resolved.hint}</span>
       </button>
 
       {open && (
@@ -215,15 +216,17 @@ export default function TimeComponent({ value, onChange }: Props) {
         </>
       )}
       </div>
-      <label className="flex shrink-0 cursor-pointer select-none items-center gap-1 pl-0.5 text-[11px] font-medium text-emerald-700">
-        <input
-          type="checkbox"
-          className="h-3.5 w-3.5 accent-emerald-600"
-          checked={tw.preset === 'all'}
-          onChange={(e) => onChange({ ...tw, preset: e.target.checked ? 'all' : tw.preset === 'all' ? 'thisMonth' : tw.preset })}
-        />
-        不限日期
-      </label>
+      {!hideAllToggle && (
+        <label className="flex shrink-0 cursor-pointer select-none items-center gap-1 pl-0.5 text-[11px] font-medium text-emerald-700">
+          <input
+            type="checkbox"
+            className="h-3.5 w-3.5 accent-emerald-600"
+            checked={tw.preset === 'all'}
+            onChange={(e) => onChange({ ...tw, preset: e.target.checked ? 'all' : tw.preset === 'all' ? 'thisMonth' : tw.preset })}
+          />
+          不限日期
+        </label>
+      )}
     </div>
   );
 }

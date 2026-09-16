@@ -3251,11 +3251,30 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
               ))}
             </select>
 
-            <div className={rowLabel}>③ 统计时间窗</div>
+            <div className="mb-1 flex items-center justify-between">
+              <div className={rowLabel}>③ 统计时间窗</div>
+              <label className="flex shrink-0 cursor-pointer select-none items-center gap-1 text-[10px] font-medium text-gray-600">
+                <input
+                  type="checkbox"
+                  className="h-3 w-3 accent-indigo-600"
+                  checked={d.timeWindow?.preset === 'all'}
+                  onChange={(e) =>
+                    update({
+                      timeWindow: {
+                        ...(d.timeWindow ?? { preset: 'specificMonth' }),
+                        preset: e.target.checked ? 'all' : d.timeWindow?.preset === 'all' ? 'thisMonth' : (d.timeWindow?.preset ?? 'specificMonth'),
+                      },
+                    } as Partial<GroupByNodeData>)
+                  }
+                />
+                不限日期
+              </label>
+            </div>
             <div className="w-full min-w-0">
               <TimeComponent
                 value={d.timeWindow ?? { preset: 'specificMonth' }}
                 onChange={(tw) => update({ timeWindow: tw } as Partial<GroupByNodeData>)}
+                hideAllToggle
               />
             </div>
           </>
@@ -3403,7 +3422,7 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
                     next[idx] = { ...mt, fn: e.target.value as GroupMetric['fn'], id: mt.id || `gm_${Date.now()}_${idx}` };
                     setMetrics(next);
                   }}
-                  className="shrink-0 w-[5.5rem] truncate rounded-md border bg-white px-1.5 py-1 text-[10px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className="shrink-0 w-[5rem] truncate rounded-md border bg-white px-1.5 py-1 text-[9px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                   title={AGG_FN_OPTIONS.find((a) => a.value === mt.fn)?.label || mt.fn}
                 >
                   {AGG_FN_OPTIONS.map((a) => (
@@ -3429,7 +3448,7 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
                     setMetrics(next);
                   }}
                   placeholder="结果字段名"
-                  className="min-w-0 w-[6.5rem] shrink-0 rounded-md border bg-white px-1.5 py-1 text-[10px] text-gray-700 placeholder:text-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className="min-w-0 w-[5rem] shrink-0 rounded-md border bg-white px-1.5 py-1 text-[9px] text-gray-700 placeholder:text-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                 />
               </div>
             ))}
