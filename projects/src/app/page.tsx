@@ -342,57 +342,61 @@ function Shell() {
             </>
             )}
           </nav>
-          <div className="border-t p-3 text-[10px] leading-relaxed text-gray-400">
-            将数据表标签化字段，拖拽构建可视化规则，自定义触发调度与通知对象，并跟踪每次执行。
+          <div className="border-t p-2">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleFs}
+                title={fsOn ? '退出全屏' : '全屏'}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
+              >
+                {fsOn ? <Minimize size={17} /> : <Maximize size={17} />}
+              </button>
+              <div className="relative flex-1">
+                <button
+                  onClick={() => setMenuOpen((o) => !o)}
+                  title="账号"
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-50"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
+                    {(me?.name || meName || '用').slice(0, 1)}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-left text-sm text-gray-700">
+                    {me?.name || meName || '未登录'}
+                  </span>
+                  <LogOut size={14} className="shrink-0 text-gray-400" />
+                </button>
+                {menuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
+                    <div className="absolute bottom-full left-2 z-40 mb-1 w-44 rounded-lg border bg-white p-1 shadow-lg">
+                      <div className="border-b px-3 py-1.5 text-xs text-gray-400">
+                        {`${me?.name || meName}${me?.username ? ` · ${me.username}` : ''}`}
+                      </div>
+                      <button
+                        onClick={() => { setMenuOpen(false); openProfile(); }}
+                        className="block w-full rounded-md px-3 py-1.5 text-left text-sm hover:bg-gray-50"
+                      >
+                        修改资料
+                      </button>
+                      <button
+                        onClick={logout}
+                        className="flex w-full items-center gap-1.5 rounded-md px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
+                      >
+                        <LogOut size={14} /> 退出系统
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </aside>
       )}
 
       {/* 主内容 */}
-      {withSidebar ? (
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex h-12 shrink-0 items-center justify-end gap-2 border-b bg-white px-4">
-            <button
-              onClick={toggleFs}
-              title={fsOn ? '退出全屏' : '全屏'}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
-            >
-              {fsOn ? <Minimize size={17} /> : <Maximize size={17} />}
-            </button>
-            <div className="relative">
-              <button
-                onClick={() => setMenuOpen((o) => !o)}
-                title="账号"
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white hover:ring-2 hover:ring-blue-200"
-              >
-                {(me?.name || meName || '用').slice(0, 1)}
-              </button>
-              {menuOpen && (
-                <div className="absolute right-0 top-10 z-30 w-44 rounded-lg border bg-white p-1 shadow-lg">
-                  <div className="border-b px-3 py-1.5 text-xs text-gray-400">
-                    {`${me?.name || meName}${me?.username ? ` · ${me.username}` : ''}`}
-                  </div>
-                  <button
-                    onClick={() => { setMenuOpen(false); openProfile(); }}
-                    className="block w-full rounded-md px-3 py-1.5 text-left text-sm hover:bg-gray-50"
-                  >
-                    修改资料
-                  </button>
-                  <button
-                    onClick={logout}
-                    className="flex w-full items-center gap-1.5 rounded-md px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
-                  >
-                    <LogOut size={14} /> 退出系统
-                  </button>
-                </div>
-              )}
-            </div>
-          </header>
-          <main className="min-w-0 flex-1 overflow-auto">{readyUI ? content : loadingUI}</main>
-        </div>
-      ) : (
-        <main className="min-w-0 flex-1">{readyUI ? content : loadingUI}</main>
-      )}
+      <main className={`min-w-0 flex-1 ${withSidebar ? 'overflow-auto' : ''}`}>
+        {readyUI ? content : loadingUI}
+      </main>
 
       {showProfile && draft && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">

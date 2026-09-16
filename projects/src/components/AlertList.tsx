@@ -437,6 +437,9 @@ export function AlertList() {
 
   return (
     <div className="flex h-screen flex-col bg-[#F7F8FA]">
+      <div className="flex items-center border-b border-gray-100 bg-white px-6 py-3">
+        <h1 className="text-base font-semibold text-gray-800">预警列表</h1>
+      </div>
       {/* 搜索与筛选栏 */}
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-white px-6 py-2.5">
         <input
