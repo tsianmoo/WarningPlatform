@@ -1405,8 +1405,8 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
   const d = data as unknown as ComputeNodeData;
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
-  const hasCompare = d.compare != null;
   const expr = d.expr ?? null;
+  const [rlVal, setRlVal] = useState<string>(typeof d.resultLabel === 'string' ? d.resultLabel : '');
   // 可引用的节点输出（含标量单值与列结果，如已过天数/开单天数等）
   const allNodes = useNodes();
   const rawRefs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'scalar' || o.ref.outputKind === 'column');
@@ -1449,7 +1449,7 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
     }
   };
   return (
-    <NodeShell fnode={fnode}>
+    <NodeShell fnode={fnode} width={400}>
       <div className="space-y-1.5">
         {/* 计算方式切换 */}
         <div className="flex items-center gap-1 rounded-md border border-cyan-100 bg-cyan-50/50 p-0.5">
@@ -1472,14 +1472,10 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
         {mode === 'node' ? (
           <>
             <div className="rounded-md border border-cyan-100 bg-cyan-50/40 p-1.5">
-              <div className="mb-1 flex items-center gap-1">
-                <span className="text-[11px] text-gray-500">两个节点结果直接运算</span>
-              </div>
               <div className="space-y-1.5">
                 {/* 点选式组合表达式：先在下方「左侧」选节点，再点字段/运算符/括号拼公式 */}
                 <div className="rounded-md border border-cyan-200 bg-white p-1.5">
                   <div className="mb-1 flex items-center justify-between">
-                    <span className="text-[11px] font-medium text-cyan-700">组合表达式（点选拼装，单节点即可）</span>
                     <div className="flex items-center gap-1">
                       <button type="button" onClick={popToken} className="rounded border border-gray-200 px-1.5 py-0.5 text-[10px] text-gray-500 hover:bg-gray-50">退格</button>
                       <button type="button" onClick={() => setTokens([])} className="rounded border border-gray-200 px-1.5 py-0.5 text-[10px] text-gray-500 hover:bg-gray-50">清空</button>
@@ -1496,7 +1492,7 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
                       }}
                       className="min-w-0 flex-1 rounded-md border border-cyan-200 bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-cyan-400"
                     >
-                      <option value="">选择节点（如：店仓销售与库存）…</option>
+                      <option value="">选择数据节点…</option>
                       {refOutputs.map((o) => (
                         <option key={o.ref.nodeId} value={o.ref.nodeId}>{o.ref.label}</option>
                       ))}
@@ -1505,7 +1501,7 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
                   {/* 当前表达式 */}
                   <div className="flex min-h-[26px] flex-wrap items-center gap-1 rounded bg-cyan-50/60 px-1.5 py-1">
                     {exprTokens.length === 0 ? (
-                      <span className="text-[10px] text-gray-400">先在下方「左侧」选节点，然后点字段与运算符拼公式，如 数量 ÷ ( 数量 ＋ 库存汇总 )</span>
+                      <span className="text-[10px] text-gray-400">公式为空</span>
                     ) : (
                       exprTokens.map((t, i) => (
                         <button
@@ -1531,7 +1527,7 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
                   {/* 字段 chips */}
                   {exprSrcCols.length > 0 ? (
                     <div className="mt-1.5">
-                      <div className="text-[10px] text-gray-400">点字段加入：</div>
+                      <div className="mb-1 text-[10px] text-gray-400">字段</div>
                       <div className="mt-0.5 flex flex-wrap gap-1">
                         {exprSrcCols.map((c) => (
                           <button
@@ -1546,7 +1542,7 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
                       </div>
                     </div>
                   ) : (
-                    <div className="mt-1 text-[10px] text-gray-400">← 请先在下方「左侧」选择一个节点结果（如：店仓销售与库存），这里会出现可点选的字段</div>
+                    <div className="mt-1 text-[10px] text-gray-400">← 先在下方选节点</div>
                   )}
                   {/* 运算符 / 括号 / 常量 */}
                   <div className="mt-1.5 flex flex-wrap items-center gap-1">
@@ -1580,17 +1576,11 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
                       加常量
                     </button>
                   </div>
-                  <div className="mt-1 text-[10px] text-gray-400">点击上方公式中的片段可删除；结果列名在最下方「结果名」设置（如：售罄率）。</div>
                 </div>
                 {/* 两节点/常量 简单运算（高级，可选）：当已使用上方点选公式时隐藏，公式优先 */}
-                {exprTokens.some((t) => t.kind === 'field') ? (
-                  <div className="rounded-md border border-emerald-100 bg-emerald-50/50 px-2 py-1.5 text-[10px] text-emerald-700">
-                    已使用上方组合公式（单个数据节点逐行运算）。若要改用「两个节点结果 / 与常量」的简单 A 运算 B，请先「清空」上方公式。
-                  </div>
-                ) : (
+                {exprTokens.some((t) => t.kind === 'field') ? null : (
                 <>
                 <div className="rounded-md border border-dashed border-cyan-200 px-1.5 py-1.5">
-                  <div className="mb-1 text-[10px] text-gray-400">高级（可选）：不用公式时，可做两个节点结果 / 与常量的简单 A 运算 B</div>
                 {expr?.left?.nodeId ? (
                   <div className="flex items-center gap-1">
                     <span className="shrink-0 text-[11px] text-gray-400">左列</span>
@@ -1602,7 +1592,7 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
                       }}
                       className="min-w-0 flex-1 rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-cyan-400"
                     >
-                      <option value="">（整表）选择列以做同节点两列运算…</option>
+                      <option value="">选择列…</option>
                       {colsOfNode(expr?.left?.nodeId).map((c) => (
                         <option key={c.key} value={c.key}>
                           {c.label}
@@ -1643,7 +1633,7 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
                       }}
                       className="min-w-0 flex-1 rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-cyan-400"
                     >
-                      <option value="">选择节点（如：本月开单天数）…</option>
+                      <option value="">选择节点…</option>
                       {refOutputs.map((o) => (
                         <option key={o.ref.nodeId} value={o.ref.nodeId}>
                           {o.ref.label}
@@ -1663,7 +1653,7 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
                       }}
                       className="min-w-0 flex-1 rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-cyan-400"
                     >
-                      <option value="">（整表）选择列以做同节点两列运算…</option>
+                      <option value="">选择列…</option>
                       {colsOfNode(expr?.ref?.nodeId || '').map((c) => (
                         <option key={c.key} value={c.key}>
                           {c.label}
@@ -1692,8 +1682,12 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-gray-400">结果名</span>
               <input
-                value={d.resultLabel}
-                onChange={(e) => update({ resultLabel: e.target.value })}
+                value={rlVal}
+                onChange={(e) => setRlVal(e.target.value)}
+                onBlur={() => {
+                  const v = rlVal.trim();
+                  if (v !== (typeof d.resultLabel === 'string' ? d.resultLabel : '')) update({ resultLabel: v });
+                }}
                 placeholder="如：未开单天数"
                 className="min-w-0 flex-1 rounded-md border px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-cyan-400"
               />
@@ -1726,8 +1720,12 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-gray-400">结果名</span>
           <input
-            value={d.resultLabel}
-            onChange={(e) => update({ resultLabel: e.target.value })}
+            value={rlVal}
+            onChange={(e) => setRlVal(e.target.value)}
+            onBlur={() => {
+              const v = rlVal.trim();
+              if (v !== (typeof d.resultLabel === 'string' ? d.resultLabel : '')) update({ resultLabel: v });
+            }}
             placeholder="如：近7日总金额"
             className="min-w-0 flex-1 rounded-md border px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-cyan-400"
           />
@@ -1813,39 +1811,6 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
         </div>
           </>
         )}
-        {/* 聚合结果对比 */}
-        <div className="rounded-md border border-cyan-100 bg-cyan-50/40 p-1.5">
-          <div className="mb-1 flex items-center justify-between">
-            <span className="text-[11px] text-gray-500">结果对比条件</span>
-            <button
-              onClick={() => update({ compare: hasCompare ? null : { op: 'gt', value: '' } })}
-              className="text-[11px] text-cyan-600 hover:underline"
-            >
-              {hasCompare ? '移除' : '添加'}
-            </button>
-          </div>
-          {hasCompare && (
-            <div className="flex items-center gap-1">
-              <select
-                value={d.compare?.op}
-                onChange={(e) => update({ compare: { op: e.target.value as Operator, value: d.compare?.value ?? '' } })}
-                className="rounded-md border bg-white px-1.5 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-cyan-400"
-              >
-                {['gt', 'gte', 'lt', 'lte', 'eq', 'neq'].map((o) => (
-                  <option key={o} value={o}>
-                    {OPERATOR_OPTIONS.find((x) => x.value === o)?.label}
-                  </option>
-                ))}
-              </select>
-              <input
-                value={d.compare?.value ?? ''}
-                onChange={(e) => update({ compare: { op: d.compare?.op ?? 'gt', value: e.target.value } })}
-                placeholder="阈值"
-                className="min-w-0 flex-1 rounded-md border px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-cyan-400"
-              />
-            </div>
-          )}
-        </div>
       </div>
     </NodeShell>
   );
