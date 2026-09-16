@@ -1862,7 +1862,7 @@ const BaseNode = memo(({ id, data }: NodeProps) => {
   }, [d.tableId, tables, source]);
 
   return (
-    <NodeShell fnode={fnode}>
+    <NodeShell fnode={fnode} width={780}>
       <div className="space-y-1.5">
         <DataSourcePicker
           source={source}
@@ -4888,7 +4888,9 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
           }
         />
 
-        <div className="mt-2 flex flex-wrap gap-1 rounded-md bg-fuchsia-50/70 p-1.5">
+        <div className="grid grid-cols-[1fr_1.15fr] gap-3">
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap gap-1 rounded-md bg-fuchsia-50/70 p-1.5">
           {availFields.filter(Boolean).map((f) => (
             <button
               key={f}
@@ -4926,9 +4928,41 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
             </button>
           ))}
           <span className="text-[10px] text-gray-400">（点击插入到当前公式光标处）</span>
-        </div>
-
-        <div className={rowLabel}>② 计算列</div>
+            </div>
+            <div className="mt-2 rounded-md border border-fuchsia-100 bg-fuchsia-50/30">
+              <button
+                type="button"
+                onClick={() => setFnOpen(!fnOpen)}
+                className="flex w-full items-center justify-between px-2 py-1.5 text-left text-[11px] font-medium text-fuchsia-700 hover:bg-fuchsia-50"
+              >
+                <span>⌘ 添加函数（点击插入完整公式到当前计算列）</span>
+                <ChevronDown size={12} className={`transition ${fnOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {fnOpen && (
+                <div className="max-h-56 space-y-1 overflow-y-auto px-1.5 pb-1.5">
+                  {CALC_FNS.map((f) => (
+                    <button
+                      key={f.name}
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); insFn(f.tag); }}
+                      onMouseDown={(e) => e.preventDefault()}
+                      className="block w-full rounded-md border border-gray-100 bg-white px-2 py-1 text-left transition hover:border-fuchsia-200 hover:bg-fuchsia-50/60"
+                    >
+                      <span className="font-mono text-[11px] font-semibold text-fuchsia-600">{f.name}</span>
+                      <span className="ml-1.5 text-[10px] text-gray-400">插入</span>
+                      <div className="text-[10px] leading-tight text-gray-600">{f.desc}</div>
+                      <div className="font-mono text-[10px] leading-tight text-gray-400">用法：{f.usage}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="text-[10px] leading-relaxed text-gray-400">
+              <span className="text-gray-500">提示</span>：字段用 <code className="text-fuchsia-600">[字段名]</code> 引用（点击上方字段按钮插入）；文本拼接也可用 <code className="text-fuchsia-600">&amp;</code>，比较用 <code className="text-fuchsia-600">= &gt; &lt; &gt;= &lt;= &lt;&gt;</code>，多个条件用 <code className="text-fuchsia-600">AND / OR</code>。插入的公式模板里的 <code className="text-fuchsia-600">[参数]</code> 请替换成实际字段或值。
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <div className={rowLabel}>② 计算列</div>
         <div ref={colListRef} className="max-h-[300px] space-y-1 overflow-y-scroll pr-0.5 [scrollbar-width:thin] [scrollbar-color:#d8b4fe_transparent]">
         {cols.map((c, i) => (
           <div key={i} className="space-y-1 rounded-md border border-gray-100 bg-gray-50/60 p-1.5">
@@ -4973,38 +5007,8 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
         >
           <Plus size={12} /> 添加计算列
         </button>
-
-        <div className="mt-2 rounded-md border border-fuchsia-100 bg-fuchsia-50/30">
-          <button
-            type="button"
-            onClick={() => setFnOpen(!fnOpen)}
-            className="flex w-full items-center justify-between px-2 py-1.5 text-left text-[11px] font-medium text-fuchsia-700 hover:bg-fuchsia-50"
-          >
-            <span>⌘ 添加函数（点击插入完整公式到当前计算列）</span>
-            <ChevronDown size={12} className={`transition ${fnOpen ? 'rotate-180' : ''}`} />
-          </button>
-          {fnOpen && (
-            <div className="max-h-56 space-y-1 overflow-y-auto px-1.5 pb-1.5">
-              {CALC_FNS.map((f) => (
-                <button
-                  key={f.name}
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); insFn(f.tag); }}
-                  onMouseDown={(e) => e.preventDefault()}
-                  className="block w-full rounded-md border border-gray-100 bg-white px-2 py-1 text-left transition hover:border-fuchsia-200 hover:bg-fuchsia-50/60"
-                >
-                  <span className="font-mono text-[11px] font-semibold text-fuchsia-600">{f.name}</span>
-                  <span className="ml-1.5 text-[10px] text-gray-400">插入</span>
-                  <div className="text-[10px] leading-tight text-gray-600">{f.desc}</div>
-                  <div className="font-mono text-[10px] leading-tight text-gray-400">用法：{f.usage}</div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="text-[10px] leading-relaxed text-gray-400">
-          <span className="text-gray-500">提示</span>：字段用 <code className="text-fuchsia-600">[字段名]</code> 引用（点击上方字段按钮插入）；文本拼接也可用 <code className="text-fuchsia-600">&amp;</code>，比较用 <code className="text-fuchsia-600">= &gt; &lt; &gt;= &lt;= &lt;&gt;</code>，多个条件用 <code className="text-fuchsia-600">AND / OR</code>。插入的公式模板里的 <code className="text-fuchsia-600">[参数]</code> 请替换成实际字段或值。
-        </div>
+          </div>
+      </div>
       </div>
     </NodeShell>
   );
