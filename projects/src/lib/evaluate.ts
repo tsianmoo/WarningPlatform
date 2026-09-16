@@ -537,6 +537,27 @@ function matchCond(r: Record<string, unknown>, c: FilterCondition): boolean {
     case 'in': return arr.length ? arr.some((x) => String(x) === s) : true;
     case 'nin': return arr.length ? !arr.some((x) => String(x) === s) : true;
     case 'contains': return s.includes(arr[0] ?? '') || String(arr[0] ?? '').includes(s);
+    case 'empty': return v === null || v === undefined || s === '';
+    case 'notEmpty': return !(v === null || v === undefined || s === '');
+    case 'between': {
+      const valNum = toNum(v);
+      const lo = c.rangeMin;
+      const hi = c.rangeMax;
+      if (lo != null && lo !== '') {
+        const ln = toNum(lo);
+        const numeric = Number.isFinite(ln) && Number.isFinite(valNum);
+        const minHit = numeric ? (c.rangeMinOp === 'gt' ? valNum > ln : valNum >= ln) : c.rangeMinOp === 'gt' ? s > String(lo) : s >= String(lo);
+        if (!minHit) return false;
+      }
+      if (hi != null && hi !== '') {
+        const hn = toNum(hi);
+        const numeric = Number.isFinite(hn) && Number.isFinite(valNum);
+        const maxHit = numeric ? (c.rangeMaxOp === 'lt' ? valNum < hn : valNum <= hn) : c.rangeMaxOp === 'lt' ? s < String(hi) : s <= String(hi);
+        if (!maxHit) return false;
+      }
+      return true;
+    }
+    case 'notBetween': return !matchCond(r, { ...c, op: 'between' });
     default: return true;
   }
 }

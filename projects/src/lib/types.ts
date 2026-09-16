@@ -467,7 +467,7 @@ export interface GroupMetric {
 }
 
 /** 过滤条件运算符 */
-export type FilterOp = 'eq' | 'neq' | 'in' | 'nin' | 'contains';
+export type FilterOp = 'eq' | 'neq' | 'in' | 'nin' | 'contains' | 'empty' | 'notEmpty' | 'between' | 'notBetween';
 
 /** 单条过滤条件 */
 export interface FilterCondition {
@@ -553,11 +553,17 @@ export interface FilterCondition {
   id: string;
   fieldKey: string;
   fieldLabel: string;
-  op: 'eq' | 'neq' | 'in' | 'nin' | 'contains';
+  op: 'eq' | 'neq' | 'in' | 'nin' | 'contains' | 'empty' | 'notEmpty' | 'between' | 'notBetween';
   /** 单选/单值算子（eq/neq/contains）使用的值 */
   value: string;
   /** 多选算子（in/nin）使用的值集合 */
   values: string[];
+  /** 区间算子（between/notBetween）的下限/上限值 */
+  rangeMin?: string;
+  rangeMax?: string;
+  /** 下限比较符：gt=>、gte=>=（默认）；上限比较符：lt=<、lte=<=（默认） */
+  rangeMinOp?: 'gt' | 'gte';
+  rangeMaxOp?: 'lt' | 'lte';
   /** 右值来源：const=常量/下拉取值（默认）；node=引用上游节点结果值（如排名取数第一名） */
   valueSource?: 'const' | 'node';
   /** valueSource=node 时，引用的节点 id */

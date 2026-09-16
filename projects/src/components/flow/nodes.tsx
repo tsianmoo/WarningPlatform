@@ -34,7 +34,6 @@ import {
   type LogicNodeData,
   type FilterNodeData,
   type FilterCondition,
-  type FilterOp,
   type ElapsedNodeData,
   type TimeUnit,
   type DataTable,
@@ -3676,7 +3675,16 @@ const FilterNode = memo(({ id, data }: NodeProps) => {
               {!nodeValue && (
               <select
                 value={c.op}
-                onChange={(e) => setCond(i, { op: e.target.value as FilterOp, value: '', values: [] })}
+                onChange={(e) => {
+                  const op = e.target.value as FilterCondition['op'];
+                  const noNode = op === 'empty' || op === 'notEmpty' || op === 'between' || op === 'notBetween';
+                  setCond(i, {
+                    op,
+                    value: '',
+                    values: [],
+                    valueSource: noNode ? 'const' : c.valueSource ?? 'const',
+                  } as Partial<FilterCondition>);
+                }}
                 className={inputCls}
               >
                 <option value="eq">等于（单选）</option>
@@ -3684,10 +3692,14 @@ const FilterNode = memo(({ id, data }: NodeProps) => {
                 <option value="contains">包含文字（单选）</option>
                 <option value="in">属于（多选｜可搜索）</option>
                 <option value="nin">不属于（多选｜可搜索）</option>
+                <option value="empty">为空（空值）</option>
+                <option value="notEmpty">非空</option>
+                <option value="between">在区间内（范围）</option>
+                <option value="notBetween">不在区间内（范围）</option>
               </select>
               )}
 
-              {!multi && (
+              {!multi && c.op !== 'empty' && c.op !== 'notEmpty' && c.op !== 'between' && c.op !== 'notBetween' && (
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
@@ -3718,7 +3730,45 @@ const FilterNode = memo(({ id, data }: NodeProps) => {
                 </div>
               )}
 
-              {multi ? (
+              {c.op === 'between' || c.op === 'notBetween' ? (
+                <div className="flex items-center gap-1">
+                  <select
+                    value={c.rangeMinOp || 'gte'}
+                    onChange={(e) => setCond(i, { rangeMinOp: e.target.value as 'gt' | 'gte' })}
+                    className="w-[74px] shrink-0 rounded-md border bg-white px-1 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                  >
+                    <option value="gte">≥ 大于等于</option>
+                    <option value="gt">&gt; 大于</option>
+                  </select>
+                  <input
+                    type="number"
+                    value={c.rangeMin ?? ''}
+                    onChange={(e) => setCond(i, { rangeMin: e.target.value })}
+                    placeholder="下限"
+                    className="min-w-0 flex-1 rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                  />
+                  <span className="shrink-0 text-[11px] text-gray-400">且</span>
+                  <select
+                    value={c.rangeMaxOp || 'lte'}
+                    onChange={(e) => setCond(i, { rangeMaxOp: e.target.value as 'lt' | 'lte' })}
+                    className="w-[74px] shrink-0 rounded-md border bg-white px-1 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                  >
+                    <option value="lte">≤ 小于等于</option>
+                    <option value="lt">&lt; 小于</option>
+                  </select>
+                  <input
+                    type="number"
+                    value={c.rangeMax ?? ''}
+                    onChange={(e) => setCond(i, { rangeMax: e.target.value })}
+                    placeholder="上限"
+                    className="min-w-0 flex-1 rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                  />
+                </div>
+              ) : c.op === 'empty' || c.op === 'notEmpty' ? (
+                <div className="rounded-md bg-amber-50 px-2 py-1 text-[10px] leading-relaxed text-amber-700">
+                  {c.op === 'empty' ? '仅保留该字段为空（空值/未填）的行。' : '仅保留该字段非空的行。'}
+                </div>
+              ) : multi ? (
                 <FilterMultiSelect
                   values={values}
                   selected={c.values || []}
