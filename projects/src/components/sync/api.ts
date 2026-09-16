@@ -27,6 +27,8 @@ export const api = {
   deleteDatasource: (id: string) => req('DELETE', `datasource/${id}`),
   testDatasource: (b: any, timeoutMs = 10000) => req('POST', 'datasource/test', { ...b, timeoutMs }),
   browseMeta: (id: string, force = false) => req('POST', 'datasource/meta', { id, force }),
+  previewTable: (id: string, schema: string, table: string, limit = 1000) =>
+    req('POST', 'datasource/table', { id, schema, table, limit }),
 
   // 数据集
   listDatasets: () => req('GET', 'dataset'),

@@ -207,6 +207,7 @@
 - 服务端核心：`src/lib/server/sync/` 下 `driver.ts`(抽象) `oracle.ts`(Oracle驱动, thin模式) `engine.ts`(执行引擎) `scheduler.ts`(cron调度) `writer.ts`(建表/写批/转换) `dialects.ts`(方言/类型映射) `ql-validate.ts`(SQL白名单校验) `quality.ts`(质量校验) `alert.ts`(告警投递) `cron.ts`(cron解析) `tool.ts`(工具) `sync-store.ts`(持久化)
 - API 入口：**单一路由** `src/app/api/sync/[[...slug]]/route.ts`（按 path 段分发：datasource/dataset/task/instance/channel/audit + 子动作 test/meta/preview/validate/run/cron/watermark/stop）
 - 前端：`src/components/sync/`（`DataSyncPlatform.tsx` 容器 + `DatasourceManager.tsx`/`DatasetManager.tsx`/`TaskManager.tsx`/`MonitorTab.tsx`/`ChannelManager.tsx`/`SqlEditor.tsx`/`ui.tsx`/`api.ts`）；挂载于 `src/app/page.tsx` 的 `apitable` 分支
+- **API数据表页形态**：`view='apitable'` 渲染 `ApiDataTablePage.tsx` = 顶部「数据表浏览 / 数据同步平台」模式切换（默认**浏览**）。浏览模式 = `DataTableBrowser.tsx` 双列布局（左=数据源→schema→表树，右=`api.previewTable` 拉表内容「仅前1000行」），挂载只拉一次数据源列表、按需 `browseMeta` 加载 schema（有缓存），不轮询不闪屏；数据同步平台改为按钮进入（`MonitorTab` 内部 5s 轮询仅在该模式下）。后端表预览为 `POST /api/sync/datasource/table`（`handleDsTable`，入参 {id,schema,table,limit}，`SELECT * … FETCH FIRST n ROWS ONLY` + `noCount`）。
 
 ## 关键设计
 - **自包含模块，不侵入 `/api/state` 与规则引擎**；域名数据独立存在 Supabase PG 的 `sync_*` 表（见下）。

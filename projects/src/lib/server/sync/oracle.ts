@@ -245,7 +245,7 @@ export const oracleDriver: Driver = {
       const meta = toColumns(result.metaData || []);
       const rows = (result.rows || []).slice(0, maxRows) as Record<string, unknown>[];
       let estimatedCount: number | undefined;
-      if (!isEmptyQueryWrapped(sql)) {
+      if (!opts.noCount && !isEmptyQueryWrapped(sql)) {
         try {
           const cntSql = `SELECT COUNT(1) AS C FROM (${sql.replace(/;\s*$/, '')}) src`;
           const r = await conn.execute<{ C: number | string }>(cntSql, opts.binds || {}, {

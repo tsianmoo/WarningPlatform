@@ -47,6 +47,8 @@ export interface QueryOptions {
   maxRows?: number;
   /** 查询超时秒 */
   timeoutSec?: number;
+  /** 跳过 COUNT 统计（表/明细预览用，避免大表计数） */
+  noCount?: boolean;
 }
 
 export interface QueryResult {

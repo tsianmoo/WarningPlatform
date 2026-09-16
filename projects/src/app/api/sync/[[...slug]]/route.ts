@@ -5,6 +5,7 @@ import { encSecret, sanitizeError, genId, mask } from '@/lib/server/sync/tool';
 import { validateReadOnly, dangerHints, extractParams } from '@/lib/server/sync/sql-validate';
 import { parseCron } from '@/lib/server/sync/cron';
 import { renderSql } from '@/lib/server/sync/cron';
+import { qualIdent } from '@/lib/server/sync/dialects';
 import { scheduler } from '@/lib/server/sync/scheduler';
 import { requestStop } from '@/lib/server/sync/engine';
 import type { DataSource, SyncDataset, SyncTask, AlertChannel, AuditEntry } from '@/lib/sync/types';
@@ -65,6 +66,7 @@ async function dispatch(req: NextRequest, path: string[], method: 'GET' | 'POST'
     case 'datasource':
       return id === 'test' && method === 'POST' ? handleDsTest(req)
         : id === 'meta' && method === 'POST' ? handleDsMeta(req)
+        : id === 'table' && method === 'POST' ? handleDsTable(req)
         : id ? handleDsById(req, id, method as 'GET' | 'PUT' | 'DELETE')
         : method === 'GET' ? handleDsList(req)
         : method === 'POST' ? handleDsCreate(req)
@@ -306,6 +308,25 @@ async function handleDsMeta(req: NextRequest) {
     })
   );
   return ok({ schemas: result, cached: false, cachePayload: { cachedAt: Date.now(), schemas: result } });
+}
+
+// 表内容预览：SELECT * FROM "SCHEMA"."TABLE" FETCH FIRST n ROWS ONLY
+async function handleDsTable(req: NextRequest) {
+  const body = await req.json();
+  const ds = (body.id ? (await store.get(TABLES.ds, body.id)) : null) as DataSource | null;
+  if (!ds) return fail('数据源不存在', 400);
+  const schema = String(body.schema ?? '');
+  const table = String(body.table ?? '');
+  if (!table) return fail('缺少表名', 400);
+  const limit = Math.min(Number(body.limit) || 1000, 100000);
+  const sql = `SELECT * FROM ${qualIdent(schema, table, ds.type)} FETCH FIRST ${limit} ROWS ONLY`;
+  try {
+    const drv = await getDriver(ds.type);
+    const r = await drv.query(toConnCfg(ds), sql, { fetchSize: 1000, maxRows: limit, timeoutSec: Number(body.timeoutSec) || 30, noCount: true });
+    return ok({ columns: r.metaData, rows: r.rows, truncated: r.truncated, sql });
+  } catch (e) {
+    return fail('预览失败：' + sanitizeError(e), 400);
+  }
 }
 
 // =============================================================

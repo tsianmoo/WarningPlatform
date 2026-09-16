@@ -20,7 +20,7 @@ import { DealerStoreManage } from '@/components/DealerStoreManage';
 import EmployeeManage from '@/components/EmployeeManage';
 import { HomeConfig } from '@/components/HomeConfig';
 import PermissionManage from '@/components/PermissionManage';
-import DataSyncPlatform from '@/components/sync/DataSyncPlatform';
+import ApiDataTablePage from '@/components/sync/ApiDataTablePage';
 import { resolvePerm, canView, resolveAuthAccount } from '@/lib/perm';
 
 type View = 'home' | 'tables' | 'apitable' | 'formtable' | 'rules' | 'new' | 'edit' | 'alerts' | 'people' | 'attrs' | 'dealer' | 'store' | 'dattrs' | 'sattrs' | 'emp' | 'eattrs' | 'homecfg' | 'perms' | 'navcfg' | 'brandcfg';
@@ -152,7 +152,7 @@ function Shell() {
   } else if (view === 'tables') {
     content = <DataTableManager />;
   } else if (view === 'apitable') {
-    content = <DataSyncPlatform />;
+    content = <ApiDataTablePage />;
   } else if (view === 'formtable') {
     content = <FormFillPlaceholder onHome={goHome} />;
   } else if (view === 'new') {
