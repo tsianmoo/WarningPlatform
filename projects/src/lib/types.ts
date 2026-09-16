@@ -71,7 +71,8 @@ export type NodeKind =
   | 'filter' // 过滤（对某表按多条件筛选行，支持搜索多选/单选）
   | 'elapsed' // 已过天数（本周/月/季/年或自定义区间，已过去的天数，标量）
   | 'logic' // 逻辑关联（如果/且/或），串联多个判断
-  | 'calc'; // 添加列（选择数据表/节点，逐行用函数公式计算追加新列：IF/CONCAT/文本/当前日期/日期函数/时间差）
+  | 'calc' // 添加列（选择数据表/节点，逐行用函数公式计算追加新列：IF/CONCAT/文本/当前日期/日期函数/时间差）
+  | 'linkanalysis'; // 关联分析（选择一张业务表+列映射：款色/店仓/销量/库存/区域，供预警详情做关联洞察）
 
 /** 比较运算符 */
 export type Operator =
@@ -715,6 +716,27 @@ export interface CalcNodeData {
   columns: CalcColumn[];
 }
 
+/** 关联分析节点：选择一张业务数据表并映射关键列，供预警详情做关联洞察（全省店仓销量/店内款色排名） */
+export interface LinkAnalysisNodeData {
+  tableId?: string;
+  tableName?: string;
+  /** 款色列 */
+  styleCol?: string;
+  styleColLabel?: string;
+  /** 店仓列 */
+  storeCol?: string;
+  storeColLabel?: string;
+  /** 销量列 */
+  salesCol?: string;
+  salesColLabel?: string;
+  /** 库存列 */
+  stockCol?: string;
+  stockColLabel?: string;
+  /** 区域/省列（用于范围过滤，可选） */
+  regionCol?: string;
+  regionColLabel?: string;
+}
+
 /** 流程节点 */
 export interface FlowNode {
   id: string;
@@ -738,6 +760,7 @@ export interface FlowNode {
     | FilterNodeData
     | ElapsedNodeData
     | CalcNodeData
+    | LinkAnalysisNodeData
     | Record<string, unknown>;
   position: { x: number; y: number };
 }
@@ -902,6 +925,7 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   elapsed: '已过天数',
   rank: '排名',
   calc: '添加列',
+  linkanalysis: '关联分析',
 };
 
 /** 节点分类色 */
@@ -928,6 +952,7 @@ export const KIND_COLOR: Record<
   elapsed: { bg: '#ECFEFF', border: '#0891B2', text: '#155E75', dot: '#0891B2' },
   rank: { bg: '#EFF6FF', border: '#2563EB', text: '#1D4ED8', dot: '#2563EB' },
   calc: { bg: '#FDF4FF', border: '#D946EF', text: '#A21CAF', dot: '#D946EF' },
+  linkanalysis: { bg: '#F0FDFA', border: '#0D9488', text: '#115E59', dot: '#0D9488' },
 };
 
 /** 预警类型（级别→类型：提醒/预警） */
@@ -1006,6 +1031,16 @@ export interface AlertTask {
     storeMessages?: { store: string; message: string }[];
     /** 解析出的通知对象（按 store/employee/person 模式展开的门店/员工/人员），供列表与详情展示 */
     recipients?: { mode: NotifyMode; names: string[] }[];
+    /** 关联分析配置（来自规则中 linkanalysis 节点），供预警详情做关联洞察 */
+    linkedAnalysis?: {
+      tableId: string;
+      tableName?: string;
+      styleCol?: string;
+      storeCol?: string;
+      salesCol?: string;
+      stockCol?: string;
+      regionCol?: string;
+    };
   };
   /** 创建人（展示用，持久化于 preview.createdBy） */
   createdBy?: string;

@@ -410,6 +410,7 @@ export function PalettePanel({
     { kind: 'elapsed', label: '已过天数', desc: '本周/月/季/年/区间已过天数', payload: { kind: 'elapsed' }, color: KIND_COLOR.elapsed.border, dot: KIND_COLOR.elapsed.dot },
     { kind: 'calc', label: '添加列', desc: '公式计算追加新列·IF/拼接/日期差', payload: { kind: 'calc' }, color: KIND_COLOR.calc.border, dot: KIND_COLOR.calc.dot },
     { kind: 'action', label: '预警动作', desc: '终点·通知', payload: { kind: 'action' }, color: KIND_COLOR.action.border, dot: KIND_COLOR.action.dot },
+    { kind: 'linkanalysis', label: '关联分析', desc: '选表·配置款色/店仓/销量列，预警详情做关联洞察', payload: { kind: 'linkanalysis' }, color: KIND_COLOR.linkanalysis.border, dot: KIND_COLOR.linkanalysis.dot },
   ];
 
   // 按功能分组（kinds 引用 flowItems），便于直观选择
@@ -417,7 +418,7 @@ export function PalettePanel({
     { title: '数据与窗口', kinds: ['trigger', 'base', 'relation', 'lookup', 'time', 'elapsed'] },
     { title: '筛选与排名', kinds: ['topn', 'rank', 'filter', 'diff', 'filljoin'] },
     { title: '计算与统计', kinds: ['compute', 'groupby', 'baseline', 'calc'] },
-    { title: '条件与输出', kinds: ['condition', 'logic', 'action'] },
+    { title: '条件与输出', kinds: ['condition', 'logic', 'action', 'linkanalysis'] },
   ];
 
   const NODE_ICON: Record<string, ComponentType<{ size?: number; className?: string; style?: CSSProperties }>> = {
@@ -438,6 +439,7 @@ export function PalettePanel({
     condition: GitBranch,
     logic: Waypoints,
     action: Bell,
+    linkanalysis: BarChart3,
   };
   const flowByKind = new Map(flowItems.map((it) => [it.kind, it]));
 
