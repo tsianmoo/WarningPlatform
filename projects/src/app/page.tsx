@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { Person } from '@/lib/types';
 import { useRouter } from 'next/navigation';
-import { Table2, BellRing, ShieldAlert, Shield, LayoutDashboard, Activity, Briefcase, Users, Settings, Maximize, Minimize, LogOut, UploadCloud, Server, ClipboardList } from 'lucide-react';
+import { Table2, BellRing, ShieldAlert, Shield, LayoutDashboard, Activity, Briefcase, Users, Settings, Maximize, Minimize, LogOut, UploadCloud, Server, ClipboardList, ChevronRight } from 'lucide-react';
 import { StoreProvider, useStore } from '@/lib/store';
 import { DataTableManager } from '@/components/DataTableManager';
 import { RuleList } from '@/components/RuleList';
@@ -71,6 +71,8 @@ function Shell() {
   const router = useRouter();
   const [fsOn, setFsOn] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const toggleGroup = (g: string) => setOpenGroup((cur) => (cur === g ? null : g));
   const [showProfile, setShowProfile] = useState(false);
   const [draft, setDraft] = useState<Person | null>(null);
   const openProfile = () => { setDraft(me ? { ...me } : null); setShowProfile(true); };
@@ -199,10 +201,16 @@ function Shell() {
             <NavItem active={view === 'home'} icon={<LayoutDashboard size={17} />} label="首页" onClick={goHome} />
             {can('datatables') && (
             <div className="pt-1">
-              <div className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-800">
+              <button
+                onClick={() => toggleGroup('datatables')}
+                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-800 hover:bg-gray-50"
+              >
                 <Table2 size={17} className="text-gray-400" />
                 <span className="flex-1">数据表管理</span>
-              </div>
+                <ChevronRight size={16} className={`text-gray-400 transition-transform ${openGroup === 'datatables' ? 'rotate-90' : ''}`} />
+              </button>
+              {openGroup === 'datatables' && (
+              <>
               <NavItem
                 nested
                 active={currentView === 'tables'}
@@ -224,6 +232,8 @@ function Shell() {
                 label="在线填报表"
                 onClick={() => navigate('formtable')}
               />
+              </>
+              )}
             </div>
             )}
             {can('rules') && (
@@ -244,10 +254,16 @@ function Shell() {
             )}
             {(can('dealer') || can('store') || can('dattrs') || can('sattrs')) && (
             <div className="pt-1">
-              <div className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-800">
+              <button
+                onClick={() => toggleGroup('org')}
+                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-800 hover:bg-gray-50"
+              >
                 <Briefcase size={17} className="text-gray-400" />
                 <span className="flex-1">组织架构</span>
-              </div>
+                <ChevronRight size={16} className={`text-gray-400 transition-transform ${openGroup === 'org' ? 'rotate-90' : ''}`} />
+              </button>
+              {openGroup === 'org' && (
+              <>
               {can('dealer') && (
               <NavItem
                 nested
@@ -302,14 +318,22 @@ function Shell() {
                 onClick={() => navigate('eattrs')}
               />
               )}
+              </>
+              )}
             </div>
             )}
             {(can('people') || can('attrs')) && (
             <div className="pt-1">
-              <div className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-800">
+              <button
+                onClick={() => toggleGroup('hr')}
+                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-800 hover:bg-gray-50"
+              >
                 <Users size={17} className="text-gray-400" />
                 <span className="flex-1">人事管理</span>
-              </div>
+                <ChevronRight size={16} className={`text-gray-400 transition-transform ${openGroup === 'hr' ? 'rotate-90' : ''}`} />
+              </button>
+              {openGroup === 'hr' && (
+              <>
               {can('people') && (
               <NavItem
                 nested
@@ -328,15 +352,23 @@ function Shell() {
                 onClick={() => navigate('attrs')}
               />
               )}
+              </>
+              )}
             </div>
             )}
 
             {/* 系统管理 */}
             <div className="pt-1">
-              <div className="mb-1 flex items-center gap-1.5 px-3 py-1">
+              <button
+                onClick={() => toggleGroup('sys')}
+                className="mb-1 flex w-full items-center gap-1.5 rounded-lg px-3 py-1 text-left"
+              >
                 <Settings size={14} className="text-gray-500" />
                 <span className="flex-1 text-xs font-medium text-gray-500">系统管理</span>
-              </div>
+                <ChevronRight size={14} className={`text-gray-400 transition-transform ${openGroup === 'sys' ? 'rotate-90' : ''}`} />
+              </button>
+              {openGroup === 'sys' && (
+              <>
               {can('homecfg') && (
               <NavItem
                 active={currentView === 'homecfg'}
@@ -354,6 +386,8 @@ function Shell() {
                 nested
                 onClick={() => navigate('perms')}
               />
+              )}
+              </>
               )}
             </div>
             </>
