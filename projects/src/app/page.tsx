@@ -315,33 +315,46 @@ function Shell() {
             </>
             )}
           </nav>
-          <div className="border-t p-2">
-            <div className="flex items-center gap-2">
+        </aside>
+      )}
+
+      {/* 主内容 */}
+      <main className={`min-w-0 flex-1 ${withSidebar ? 'overflow-auto' : ''}`}>
+        {readyUI && withSidebar && (
+          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white pl-5 pr-3 py-2">
+            <div className="flex items-center gap-1.5 text-[13px]">
+              {(CRUMBS[view] ?? [view]).map((c, i, arr) => (
+                <Fragment key={i}>
+                  {i > 0 && <span className="text-gray-300">/</span>}
+                  <span className={i === arr.length - 1 ? 'font-medium text-gray-700' : 'text-gray-400'}>{c}</span>
+                </Fragment>
+              ))}
+            </div>
+            <div className="flex items-center gap-1">
               <button
                 onClick={toggleFs}
                 title={fsOn ? '退出全屏' : '全屏'}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
               >
-                {fsOn ? <Minimize size={17} /> : <Maximize size={17} />}
+                {fsOn ? <Minimize size={16} /> : <Maximize size={16} />}
               </button>
-              <div className="relative flex-1">
+              <div className="relative">
                 <button
                   onClick={() => setMenuOpen((o) => !o)}
                   title="账号"
-                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-50"
+                  className="flex items-center gap-1.5 rounded-lg px-2 py-1 hover:bg-gray-100"
                 >
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white">
                     {(me?.name || meName || '用').slice(0, 1)}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-left text-sm text-gray-700">
+                  <span className="max-w-[120px] truncate text-left text-sm text-gray-700">
                     {me?.name || meName || '未登录'}
                   </span>
-                  <LogOut size={14} className="shrink-0 text-gray-400" />
                 </button>
                 {menuOpen && (
                   <>
                     <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
-                    <div className="absolute bottom-full left-2 z-40 mb-1 w-44 rounded-lg border bg-white p-1 shadow-lg">
+                    <div className="absolute right-0 top-full z-40 mt-1 w-44 rounded-lg border bg-white p-1 shadow-lg">
                       <div className="border-b px-3 py-1.5 text-xs text-gray-400">
                         {`${me?.name || meName}${me?.username ? ` · ${me.username}` : ''}`}
                       </div>
@@ -362,20 +375,6 @@ function Shell() {
                 )}
               </div>
             </div>
-          </div>
-        </aside>
-      )}
-
-      {/* 主内容 */}
-      <main className={`min-w-0 flex-1 ${withSidebar ? 'overflow-auto' : ''}`}>
-        {readyUI && withSidebar && (
-          <div className="sticky top-0 z-10 flex items-center gap-1.5 border-b border-gray-200 bg-white px-5 py-2.5 text-[13px]">
-            {(CRUMBS[view] ?? [view]).map((c, i, arr) => (
-              <Fragment key={i}>
-                {i > 0 && <span className="text-gray-300">/</span>}
-                <span className={i === arr.length - 1 ? 'font-medium text-gray-700' : 'text-gray-400'}>{c}</span>
-              </Fragment>
-            ))}
           </div>
         )}
         {readyUI ? content : loadingUI}
