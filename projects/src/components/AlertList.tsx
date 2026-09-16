@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, ClipboardList, Eye, History, MessageSquare, RotateCcw, Send, Tag, X } from 'lucide-react';
+import { Bell, ClipboardList, Eye, MessageSquare, RotateCcw, Send, X } from 'lucide-react';
 import { useStore, computeAlertDims } from '@/lib/store';
 import { resolvePerm, canView, filterAlertsByScope, resolveAuthAccount } from '@/lib/perm';
 import type { AlertStatus, AlertTask, NotifyMode } from '@/lib/types';
@@ -67,10 +67,6 @@ function ElapsedCell({ createdAt }: { createdAt: number }) {
 const emptyFilter = {
   kw: '',
   ruleKw: '',
-  productKw: '',
-  storeKw: '',
-  userKw: '',
-  personKw: '',
   level: 'all' as string,
   status: 'all' as string,
   person: 'all' as string,
@@ -98,8 +94,7 @@ const STORE_DIMS: { key: keyof typeof emptyFilter; label: string; get: (a: Alert
   { key: 'sDistrict', label: '区部', get: (a) => a.dims?.store?.district },
 ];
 
-/** 文本型关键词检索辅助（聚合商品相关字段，统一小写便于子串匹配） */
-const prodTextOf = (a: AlertTask): string => [...new Set(PRODUCT_DIMS.flatMap((d) => d.get(a) ?? []).filter(Boolean))].join(' ').toLowerCase();
+
 
 /** 快捷日期标签定义 */
 const QUICK_TAGS: { key: string; label: string }[] = [
@@ -188,6 +183,7 @@ export function AlertList() {
     setConfirm(c);
   };
   const [filter, setFilter] = useState(emptyFilter);
+  const [searchMode, setSearchMode] = useState<'title' | 'rule'>('title');
   const [quickKey, setQuickKey] = useState('');
   const rules = state.rules;
   const groupNameById = useMemo(() => {
@@ -231,7 +227,6 @@ export function AlertList() {
     return enriched.filter((a) => {
       if (filter.kw && !`${a.title}`.toLowerCase().includes(filter.kw.toLowerCase())) return false;
       if (filter.ruleKw && !`${a.ruleName}`.toLowerCase().includes(filter.ruleKw.toLowerCase())) return false;
-      if (filter.productKw && !prodTextOf(a).includes(filter.productKw.toLowerCase())) return false;
       if (filter.level !== 'all' && (a.level ?? 'warn') !== filter.level) return false;
       if (filter.status !== 'all' && a.status !== filter.status) return false;
       if (filter.person && filter.person !== 'all' && a.assignee !== filter.person && a.handoffTo !== filter.person) return false;
@@ -270,24 +265,46 @@ export function AlertList() {
       </div>
       {/* 搜索与筛选栏 */}
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-white px-6 py-2.5">
-        <input
-          value={filter.kw}
-          onChange={(e) => setFilter({ ...filter, kw: e.target.value })}
-          placeholder="标题"
-          className="h-7 w-36 rounded border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none transition-colors focus:border-gray-400"
-        />
-        <input
-          value={filter.ruleKw}
-          onChange={(e) => setFilter({ ...filter, ruleKw: e.target.value })}
-          placeholder="规则"
-          className="h-7 w-36 rounded border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none transition-colors focus:border-gray-400"
-        />
-        <input
-          value={filter.productKw}
-          onChange={(e) => setFilter({ ...filter, productKw: e.target.value })}
-          placeholder="商品"
-          className="h-7 w-28 rounded border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none transition-colors focus:border-gray-400"
-        />
+        <div className="inline-flex h-7 items-center overflow-hidden rounded border border-gray-200 bg-white">
+          <button
+            onClick={() => setSearchMode((m) => (m === 'title' ? 'rule' : 'title'))}
+            className="border-r border-gray-200 px-2 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-50"
+            title={searchMode === 'title' ? '切换到按规则搜索' : '切换到按标题搜索'}
+          >
+            {searchMode === 'title' ? '标题' : '规则'}
+          </button>
+          <input
+            value={searchMode === 'title' ? filter.kw : filter.ruleKw}
+            onChange={(e) =>
+              setFilter(
+                searchMode === 'title' ? { ...filter, kw: e.target.value } : { ...filter, ruleKw: e.target.value }
+              )
+            }
+            placeholder={searchMode === 'title' ? '输入标题关键字' : '输入规则关键字'}
+            className="w-36 px-2 text-xs text-gray-700 outline-none focus:bg-gray-50"
+          />
+        </div>
+        {PRODUCT_DIMS.some((d) => (dimOptions[d.key] ?? []).length) && (
+          <>
+            <span className="text-xs font-medium text-gray-500">按商品</span>
+            {PRODUCT_DIMS.map((d) => {
+              const opts = dimOptions[d.key] ?? [];
+              return opts.length ? (
+                <span key={d.key} className="inline-flex items-center">
+                  <input
+                    list={`prod-opts-${d.key}`}
+                    value={filter[d.key] === 'all' ? '' : filter[d.key]}
+                    onChange={(e) => setFilter({ ...filter, [d.key]: e.target.value })}
+                    placeholder={d.label}
+                    title={`输入关键字搜索${d.label}`}
+                    className="h-7 w-28 rounded border border-gray-200 bg-white px-2 text-xs text-gray-600 outline-none transition-colors hover:border-gray-300 focus:border-gray-400"
+                  />
+                  <datalist id={`prod-opts-${d.key}`}>{opts.map((v) => <option key={v} value={v} />)}</datalist>
+                </span>
+              ) : null;
+            })}
+          </>
+        )}
         <select value={filter.level} onChange={(e) => setFilter({ ...filter, level: e.target.value })} className={SelectCls}>
           <option value="all">重要程度</option>
           {Object.keys(LEVEL_META).map((k) => (
@@ -346,27 +363,9 @@ export function AlertList() {
         >
           全部
         </button>
-        {(PRODUCT_DIMS.some((d) => (dimOptions[d.key] ?? []).length) || STORE_DIMS.some((d) => (dimOptions[d.key] ?? []).length)) && (
+        {STORE_DIMS.some((d) => (dimOptions[d.key] ?? []).length) && (
           <>
             <div className="mx-1.5 h-4 w-px bg-gray-100" />
-            <span className="text-xs font-medium text-gray-500">按商品</span>
-            {PRODUCT_DIMS.map((d) => {
-              const opts = dimOptions[d.key] ?? [];
-              return opts.length ? (
-                <span key={d.key} className="inline-flex items-center">
-                  <input
-                    list={`dim-opts-${d.key}`}
-                    value={filter[d.key] === 'all' ? '' : filter[d.key]}
-                    onChange={(e) => setFilter({ ...filter, [d.key]: e.target.value })}
-                    placeholder={d.label}
-                    title={`输入关键字搜索${d.label}`}
-                    className="h-7 w-28 rounded border border-gray-200 bg-white px-2 text-xs text-gray-600 outline-none transition-colors hover:border-gray-300 focus:border-gray-400"
-                  />
-                  <datalist id={`dim-opts-${d.key}`}>{opts.map((v) => <option key={v} value={v} />)}</datalist>
-                </span>
-              ) : null;
-            })}
-            <span className="mx-1 h-4 w-px bg-gray-100" />
             <span className="text-xs font-medium text-gray-500">按店仓</span>
             {STORE_DIMS.map((d) => {
               const opts = dimOptions[d.key] ?? [];
@@ -673,14 +672,6 @@ export function AlertList() {
                       {x.label}
                     </button>
                   ))}
-                  <button
-                    onClick={() => setShowHist((v) => !v)}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50"
-                  >
-                    {histTab === 'all' ? <History size={13} /> : <Tag size={13} />}
-                    {histTab === 'all' ? '全部预警' : '关联预警'}
-                    {sideList.length ? <span className="rounded-full bg-gray-800 px-1.5 text-[10px] font-semibold text-white">{sideList.length}</span> : null}
-                  </button>
                   <button
                     onClick={() => setOpenId(null)}
                     className="rounded p-1 text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600"
