@@ -90,7 +90,11 @@ function Shell() {
     setView(v);
     if (typeof window !== 'undefined' && window.location.hash !== '#' + v) window.location.hash = v;
   };
-  const [editingId, setEditingId] = useState<string | null>(null);
+  // editingId 持久化到 sessionStorage：刷新/edit 时恢复编辑上下文，避免掉进无侧边栏/页头的裸列表
+  const [editingId, setEditingId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return sessionStorage.getItem('dn_editing_rule');
+  });
   const router = useRouter();
   const [fsOn, setFsOn] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -107,6 +111,17 @@ function Shell() {
   useEffect(() => {
     if (typeof window !== 'undefined') setMeName(localStorage.getItem('dn_auth') || '');
   }, []);
+  // 刷新落在 #edit 时的兜底：恢复正在编辑的规则；若无任何可编辑规则，回退到带导航/页头的规则列表页
+  useEffect(() => {
+    if (view !== 'edit' || !ready) return;
+    const restorable = sessionStorage.getItem('dn_editing_rule');
+    if (restorable && state.rules.some((r) => r.id === restorable)) {
+      setEditingId(restorable);
+      return;
+    }
+    setEditingId(null);
+    navigate('rules');
+  }, [view, ready]);
   const me = state.persons.find((p) => p.name === meName) ?? null;
   const { subject: meSubject } = resolveAuthAccount(state.stores ?? [], state.dealers ?? [], state.employees ?? [], meName, me);
   const perm = resolvePerm(me, state.config, meSubject);
@@ -143,6 +158,7 @@ function Shell() {
 
   const startEdit = (id: string) => {
     setEditingId(id);
+    if (typeof window !== 'undefined') sessionStorage.setItem('dn_editing_rule', id);
     navigate('edit');
   };
 

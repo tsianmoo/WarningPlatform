@@ -225,6 +225,7 @@
 - 交付验收：`test_run` 只服务探活 + 接口冒烟（本工程无静态检查配置），类型正确性需自行 `pnpm exec tsc --noEmit` 复核。
 
 ## 常见问题与预防
+- **预警编辑页刷新后丢失导航/页头**：预警规则为 hash 路由 SPA（`view` ∈ `new`/`edit` 按设计隐藏侧边栏/页头，全屏编辑）。`editingId` 曾在组件内存中，刷新即丢 → `#edit` 却无可编辑规则 → 回退渲染 `<RuleList/>` 成**无导航栏/页头的裸卡片页**。修复：`editingId` 用 `sessionStorage('dn_editing_rule')` 持久化，`startEdit` 写入；`page.tsx` 加兜底 effect 在 `view==='edit' && ready` 时恢复编辑，无可编辑规则则 `navigate('rules')` 回退到带导航的列表。注意该 effect deps 需含 `ready`，否则规则未异步加载完就误回退。
 - **cron-parser 入口**：真实 API 是 `CronExpressionParser.parse(expr, opts)`（非 named `parseExpression` 也不是直接调用类）；`cron.ts` 用 `(cronParser as any)?.CronExpressionParser?.parse || ...?.parse` 兜底。7 位 Quartz 自动丢年字段；`?` 在日/周域默认支持。
 - **test_run 的 curl 并行执行**：读/写断言不要在一次 batch 里依赖顺序（POST 建数据可能晚于同批 GET）；需要时先单独跑一次写、再跑一次读。
 - **oracledb 类型过严**：`oracle.ts` 用自定义 `OraConn` 桩接口（execute/cancel/close/commit）规避 @types 泛型报错；`streamQuery`/`exec` 内 conn 取 `any` 处理。
