@@ -881,6 +881,11 @@ function calcCall(name: string, args: CalcVal[]): CalcVal {
     case 'NOW':
       return new Date().toISOString().slice(0, 19).replace('T', ' ');
     case 'DATEDIFF': {
+      if (args.length < 2) {
+        const one = args[0];
+        if (typeof one === 'number' && Number.isFinite(one)) return Math.round(one);
+        return null;
+      }
       const a = calcDateVal(args[0]);
       const b = calcDateVal(args[1]);
       if (!a || !b) return null;
