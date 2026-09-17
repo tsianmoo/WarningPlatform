@@ -827,9 +827,16 @@ function calcYMD(d: Date): string {
 }
 function calcDateVal(v: CalcVal): Date | null {
   if (v === null || v === '') return null;
-  if (typeof v === 'number') return new Date(v);
-  const d = new Date(String(v).replace(/\//g, '-'));
-  return Number.isNaN(d.getTime()) ? null : d;
+  if (typeof v === 'number') {
+    // 小数值可能是 Excel 序列号或 YYYYMMDD，交给 toDate 解析；否则按毫秒时间戳
+    if (v < 80000) {
+      const d = toDate(v);
+      if (d) return d;
+    }
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return toDate(v);
 }
 function calcCall(name: string, args: CalcVal[]): CalcVal {
   const str0 = (i: number) => (args[i] === null || args[i] === undefined ? '' : String(args[i]));
