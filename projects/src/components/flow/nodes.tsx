@@ -5347,7 +5347,7 @@ const LinkViewNode = memo(function LinkViewNode({ id, data }: NodeProps) {
   const rowLabel = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
   const tabs = Array.isArray(d.tabs) ? d.tabs : [];
 
-  // 来源候选：识别规则内所有产出数据集的节点（含判断、预警动作等），不只限上游
+  // 基础上表：预警动作节点结果（其字段作为基础表字段，可改选其它节点结果）
   const allFlow = allNodes as unknown as FlowNode[];
   const allNodeOpts = allFlow
     .filter((n) => n.id !== id && !['trigger', 'time', 'elapsed', 'baseline', 'linkview'].includes(n.kind))
@@ -5356,26 +5356,19 @@ const LinkViewNode = memo(function LinkViewNode({ id, data }: NodeProps) {
       const rl = typeof rd?.resultLabel === 'string' && rd.resultLabel ? rd.resultLabel : '';
       return { nodeId: n.id, kind: n.kind, label: rl ? `${KIND_LABEL[n.kind] ?? n.kind}·${rl}` : (KIND_LABEL[n.kind] ?? n.kind) };
     });
-  // 预警通知结果字段：取「预警动作」节点输出的结果字段（命中明细列），作为默认关联候选
-  const actionVars: string[] = (() => {
-    const a = allFlow.find((n) => n.kind === 'action');
-    if (!a) return [];
-    return Array.from(
-      new Set<string>(
-        inferNodeCols(allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>, tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, a.id).map((c) => c.label || c.key).filter((x) => x)
+  const actionNode = allFlow.find((n) => n.kind === 'action');
+  const baseNodeId = d.baseNode || (actionNode ? actionNode.id : '') || allNodeOpts[0]?.nodeId || '';
+  const baseCols: string[] = baseNodeId
+    ? Array.from(
+        new Set<string>(
+          inferNodeCols(allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>, tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, baseNodeId)
+            .map((c) => c.label || c.key)
+            .filter((x) => x)
+        )
       )
-    );
-  })();
+    : [];
   const uniqStr = (arr: string[]) => Array.from(new Set(arr.filter((x) => x)));
-
-  const setTab = (i: number, patch: Partial<LinkViewTab>) => {
-    const arr = tabs.slice();
-    arr[i] = { ...arr[i], ...patch };
-    update({ tabs: arr });
-  };
-  const addTab = () => update({ tabs: [...tabs, { name: '', source: 'table', matchKeys: [] }] });
-  const removeTab = (i: number) => update({ tabs: tabs.filter((_, k) => k !== i) });
-  const tabCand = (tab: LinkViewTab): string[] => {
+  const relCand = (tab: LinkViewTab): string[] => {
     const srcFields =
       tab.source === 'node'
         ? tab.srcNode
@@ -5385,38 +5378,57 @@ const LinkViewNode = memo(function LinkViewNode({ id, data }: NodeProps) {
             const t = tables.find((x) => x.id === tab.tableId);
             return t ? t.fields.map((f) => f.alias || f.key) : [];
           })();
-    // 始终并入预警通知变量字段，保证默认可匹配
-    return uniqStr([...actionVars, ...srcFields]);
+    return uniqStr(srcFields);
   };
-  const showVars = actionVars.length > 0;
+
+  const setTab = (i: number, patch: Partial<LinkViewTab>) => {
+    const arr = tabs.slice();
+    arr[i] = { ...arr[i], ...patch };
+    update({ tabs: arr });
+  };
+  const addTab = () => update({ tabs: [...tabs, { name: '', source: 'table', matchKeys: [] }] });
+  const removeTab = (i: number) => update({ tabs: tabs.filter((_, k) => k !== i) });
 
   return (
     <NodeShell fnode={fnode}>
       <div className="space-y-1.5">
         <div className="mb-1 rounded-md bg-pink-50 px-2 py-1 text-[10px] leading-relaxed text-pink-700">
-          为命中数据配置关联标签（如 商品档案/库存/零售单）。「查看预警」弹窗内会以标签页展示各关联数据，来源可选规则内任意节点结果或数据表。
+          以预警动作结果为基础上表，选择关联数据表/节点并配置「基础表字段 ↔ 关联表字段」匹配键，弹窗内只展示与本预警对应结果匹配的关联数据（如手机号 115 → 返回 115 的资料）。
         </div>
-        {showVars && (
-          <div className="rounded-md border border-purple-100 bg-purple-50/60 p-1.5">
-            <div className="mb-1 text-[10px] font-medium text-purple-700">预警通知变量字段（默认可作为匹配键）</div>
-            <div className="flex flex-wrap gap-1">
-              {actionVars.map((v) => (
-                <span key={v} className="rounded bg-white px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 ring-1 ring-purple-200">{v}</span>
+        {/* 基础上表 */}
+        <div className="rounded-md border border-gray-100 bg-gray-50/60 p-1.5">
+          <div className="mb-1 text-[11px] font-medium text-gray-600">基础表（预警动作结果，展示其字段）</div>
+          <select
+            value={baseNodeId}
+            onChange={(e) => { const o = allNodeOpts.find((x) => x.nodeId === e.target.value); update({ baseNode: e.target.value, baseNodeLabel: o?.label }); }}
+            className={inputCls}
+          >
+            {allNodeOpts.filter((o) => o.nodeId === baseNodeId || o.kind === 'action').map((o) => (
+              <option key={o.nodeId} value={o.nodeId}>{o.label}</option>
+            ))}
+            {allNodeOpts.filter((o) => o.nodeId !== baseNodeId && o.kind !== 'action').map((o) => (
+              <option key={o.nodeId} value={o.nodeId}>{o.label}</option>
+            ))}
+          </select>
+          {baseCols.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {baseCols.map((b) => (
+                <span key={b} className="rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700">{b}</span>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
         {tabs.length === 0 && (
           <button type="button" onClick={addTab} className="w-full rounded-md border border-dashed border-pink-300 py-1.5 text-xs text-pink-600 hover:bg-pink-50">+ 添加关联标签</button>
         )}
         {tabs.map((tab, i) => {
           const keys = Array.isArray(tab.matchKeys) ? tab.matchKeys : [];
-          const cand = tabCand(tab);
+          const rc = relCand(tab);
           return (
             <div key={i} className="rounded-md border border-gray-100 bg-gray-50/60 p-1.5">
               <div className="flex items-center gap-1">
                 <span className="whitespace-nowrap px-1 text-[10px] font-medium text-gray-500">标签名</span>
-                <input value={tab.name ?? ''} onChange={(e) => setTab(i, { name: e.target.value })} placeholder="如：商品档案" className={`${inputCls} flex-1`} />
+                <input value={tab.name ?? ''} onChange={(e) => setTab(i, { name: e.target.value })} placeholder="如：会员资料" className={`${inputCls} flex-1`} />
                 <button type="button" onClick={() => removeTab(i)} className="shrink-0 text-[10px] text-red-400 hover:text-red-600">删</button>
               </div>
               <div className={rowLabel}>关联来源</div>
@@ -5443,18 +5455,23 @@ const LinkViewNode = memo(function LinkViewNode({ id, data }: NodeProps) {
                   {allNodeOpts.map((o) => (<option key={o.nodeId} value={o.nodeId}>{o.label}</option>))}
                 </select>
               )}
-              <div className={rowLabel}>匹配字段（同名对同名）</div>
-              {keys.length === 0 && <div className="mb-1 rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-700">未配置匹配字段时，展示该来源的全部行。</div>}
+              <div className={rowLabel}>匹配字段（基础表字段 ↔ 关联表字段）</div>
+              {keys.length === 0 && <div className="mb-1 rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-700">未配置匹配字段时，展示该关联来源的全部行。</div>}
               {keys.map((kk, ki) => (
                 <div key={ki} className="mb-1 flex items-center gap-1">
-                  <select value={kk.field} onChange={(e) => { const a = keys.slice(); a[ki] = { field: e.target.value }; setTab(i, { matchKeys: a }); }} className={`${inputCls} flex-1`}>
-                    <option value="">选择匹配字段…</option>
-                    {cand.map((f) => (<option key={f} value={f}>{f}</option>))}
+                  <select value={kk.baseField ?? ''} onChange={(e) => { const a = keys.slice(); a[ki] = { ...a[ki], baseField: e.target.value }; setTab(i, { matchKeys: a }); }} className={`${inputCls} flex-1`}>
+                    <option value="">基础表字段…</option>
+                    {baseCols.map((f) => (<option key={f} value={f}>{f}</option>))}
+                  </select>
+                  <span className="shrink-0 text-[10px] text-gray-400">↔</span>
+                  <select value={kk.relField ?? ''} onChange={(e) => { const a = keys.slice(); a[ki] = { ...a[ki], relField: e.target.value }; setTab(i, { matchKeys: a }); }} className={`${inputCls} flex-1`}>
+                    <option value="">关联表字段…</option>
+                    {rc.map((f) => (<option key={f} value={f}>{f}</option>))}
                   </select>
                   <button type="button" onClick={() => setTab(i, { matchKeys: keys.filter((_, k2) => k2 !== ki) })} className="text-[10px] text-red-400 hover:text-red-600">删</button>
                 </div>
               ))}
-              <button type="button" onClick={() => setTab(i, { matchKeys: [...keys, { field: cand[0] ?? '' }] })} className="mt-0.5 text-[10px] text-pink-600 hover:text-pink-800">+ 添加匹配字段</button>
+              <button type="button" onClick={() => setTab(i, { matchKeys: [...keys, { baseField: baseCols[0] ?? '', relField: rc[0] ?? '' }] })} className="mt-0.5 text-[10px] text-pink-600 hover:text-pink-800">+ 添加匹配字段</button>
             </div>
           );
         })}

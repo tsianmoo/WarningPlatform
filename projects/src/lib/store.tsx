@@ -255,7 +255,8 @@ export function buildAlertsForRule(
     const buildLinkview = (rows: Array<Record<string, string | number>>): NodePreview['linkviewData'] | undefined => {
       if (!lvTabs.length) return undefined;
       const tabs = lvTabs.map((tab) => {
-        const keys = (Array.isArray(tab.matchKeys) ? tab.matchKeys : []).map((k) => k.field).filter((x) => x && x.trim());
+        // 匹配键字段对：基础表字段(baseField) ↔ 关联表字段(relField)；基础表即本条预警自己的命中行
+        const pairs = (Array.isArray(tab.matchKeys) ? tab.matchKeys : []).filter((k) => k && k.baseField && k.relField);
         let srcRows: Array<Record<string, string | number>> = [];
         let colNames: string[] = [];
         if (tab.source === 'node' && tab.srcNode) {
@@ -272,15 +273,15 @@ export function buildAlertsForRule(
           }
         }
         const filtered = srcRows.filter((sr) => {
-          if (!keys.length) return true;
-          return rows.some((mr) => keys.every((k) => String(sr[k] ?? '') === String(mr[k] ?? '')));
+          if (!pairs.length) return true;
+          return rows.some((mr) => pairs.every((k) => String(sr[k.relField ?? ''] ?? '') === String(mr[k.baseField ?? ''] ?? '')));
         });
         return {
           name: tab.name || tab.tableName || tab.srcNodeLabel || '关联',
           source: tab.source,
           tableName: tab.source === 'table' ? tab.tableName : undefined,
           srcNodeLabel: tab.source === 'node' ? tab.srcNodeLabel : undefined,
-          matchKeys: (Array.isArray(tab.matchKeys) ? tab.matchKeys : []).filter((k) => k && k.field),
+          matchKeys: pairs,
           columns: colNames,
           rows: filtered.slice(0, 200),
         };

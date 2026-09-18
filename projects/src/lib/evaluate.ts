@@ -93,7 +93,8 @@ export interface NodePreview {
   /** 预警关联展示：节点声明的各关联标签已按命中行解析出的关联数据（供「查看预警」弹窗标签页展示） */
   linkviewData?: {
     enabled: boolean;
-    tabs?: Array<{ name: string; source: 'table' | 'node'; tableName?: string; srcNodeLabel?: string; matchKeys?: Array<{ field: string }>; columns: string[]; rows: Record<string, string | number>[] }>;
+    baseCols?: string[];
+    tabs?: Array<{ name: string; source: 'table' | 'node'; tableName?: string; srcNodeLabel?: string; matchKeys?: Array<{ baseField?: string; relField?: string }>; columns: string[]; rows: Record<string, string | number>[] }>;
   };
 }
 
@@ -1169,8 +1170,12 @@ function evalNode(
     case 'linkview': {
       const lv = d as unknown as LinkViewNodeData;
       const tabsCfg = (Array.isArray(lv.tabs) ? lv.tabs : []).filter((t) => t && (t.tableId || t.srcNode || t.name));
-      const main = pickColumnOutput(outputs, incoming, undefined) || incoming.find((o) => o && o.rows.length > 0);
+      // 基础上表 = 预警动作节点结果（其字段作为基础表字段）
+      const baseNodeId = lv.baseNode;
+      const baseOut = baseNodeId ? byId(baseNodeId) : undefined;
+      const main = baseOut || pickColumnOutput(outputs, incoming, undefined) || incoming.find((o) => o && o.rows.length > 0);
       const mainRows = (main ? main.rows : []) as Record<string, string | number>[];
+      const baseCols = baseOut && Array.isArray(baseOut.columns) ? baseOut.columns : main ? main.columns ?? [] : [];
       const resolveSource = (
         srcCols: Array<{ key: string }>,
         tab: LinkViewTab,
@@ -1186,13 +1191,14 @@ function evalNode(
         return { label: tab.tableName || t.name || tab.tableId || '', rows: allRows(t) as Record<string, string | number>[], cols: t.fields.map((f) => f.key) };
       };
       const tabs = tabsCfg.map((tab) => {
-        const keys = (Array.isArray(tab.matchKeys) ? tab.matchKeys : []).map((k) => k.field).filter((x) => x && x.trim());
+        // 匹配键字段对：基础表字段(baseField) ↔ 关联表字段(relField)
+        const pairs = (Array.isArray(tab.matchKeys) ? tab.matchKeys : []).filter((k) => k && k.baseField && k.relField);
         const src = resolveSource([], tab);
         const keepCols = src && Array.isArray(src.cols) ? src.cols : [];
         const rows = src
           ? src.rows.filter((sr) => {
-              if (!keys.length) return true;
-              return mainRows.some((mr) => keys.every((k) => String(sr[k] ?? '') === String(mr[k] ?? '')));
+              if (!pairs.length) return true;
+              return mainRows.some((mr) => pairs.every((k) => String(sr[k.relField ?? ''] ?? '') === String(mr[k.baseField ?? ''] ?? '')));
             })
           : [];
         return {
@@ -1200,18 +1206,19 @@ function evalNode(
           source: tab.source,
           tableName: tab.source === 'table' ? tab.tableName : undefined,
           srcNodeLabel: tab.source === 'node' ? tab.srcNodeLabel : undefined,
-          matchKeys: (Array.isArray(tab.matchKeys) ? tab.matchKeys : []).filter((k) => k && k.field),
+          matchKeys: pairs,
+          baseCols,
           columns: keepCols,
           rows: rows.slice(0, 200),
         };
       });
       return {
         title: '预警关联展示',
-        columns: main ? (main.columns ?? []) : [],
+        columns: baseCols,
         rows: mainRows.slice(0, 100),
         shape: 'table',
-        note: tabsCfg.length ? `关联 ${tabsCfg.length} 个数据源（${tabsCfg.map((t) => t.name || t.tableName || t.srcNodeLabel || '关联').join('、')}），随预警弹窗标签页展示` : '请添加关联标签（选择数据表或节点结果 + 同名匹配键）',
-        linkviewData: { enabled: tabs.length > 0, tabs },
+        note: tabsCfg.length ? `关联 ${tabsCfg.length} 个数据源（${tabsCfg.map((t) => t.name || t.tableName || t.srcNodeLabel || '关联').join('、')}），随预警弹窗标签页展示` : '请添加关联标签（选择数据表或节点结果 + 基础表/关联表匹配字段）',
+        linkviewData: { enabled: tabs.length > 0, baseCols, tabs },
       };
     }
 

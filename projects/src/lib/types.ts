@@ -697,12 +697,15 @@ export interface LinkViewTab {
   tableName?: string;
   srcNode?: string;
   srcNodeLabel?: string;
-  /** 同名对同名匹配键（店仓对店仓/日期对日期/款色对款色），可多对 */
-  matchKeys?: Array<{ field: string }>;
+  /** 匹配键字段对（如 基础表[顾客手机] ↔ 关联表[顾客手机]），可多对 */
+  matchKeys?: Array<{ baseField?: string; relField?: string }>;
 }
 
-/** 预警关联展示节点数据：声明若干关联标签，供「查看预警」弹窗以标签页展示关联数据 */
+/** 预警关联展示节点数据：以预警动作结果为基础上表，声明若干关联标签，供「查看预警」弹窗以标签页展示关联数据 */
 export interface LinkViewNodeData {
+  /** 基础上表来源：预警动作节点结果（展示其字段作为基础表字段） */
+  baseNode?: string;
+  baseNodeLabel?: string;
   /** 关联标签列表 */
   tabs?: LinkViewTab[];
   /** 结果命名（可选备注） */
@@ -1089,10 +1092,10 @@ export interface AlertTask {
     linkview?: {
       /** 是否已配置关联展示 */
       enabled: boolean;
-      /** 命中数据行（用于关联取数的主键行，供弹窗展示当前命中范围） */
-      rows?: Record<string, string | number>[];
+      /** 基础表字段（预警动作结果字段） */
+      baseCols?: string[];
       /** 关联标签：每个标签已按命中行解析出关联数据 */
-      tabs?: Array<{ name: string; source: 'table' | 'node'; tableName?: string; srcNodeLabel?: string; matchKeys?: Array<{ field: string }>; columns: string[]; rows: Record<string, string | number>[] }>;
+      tabs?: Array<{ name: string; source: 'table' | 'node'; tableName?: string; srcNodeLabel?: string; matchKeys?: Array<{ baseField?: string; relField?: string }>; columns: string[]; rows: Record<string, string | number>[] }>;
     };
     /** 解析出的通知对象（按 store/employee/person 模式展开的门店/员工/人员），供列表与详情展示 */
     recipients?: { mode: NotifyMode; names: string[] }[];
