@@ -67,6 +67,24 @@ function ElapsedCell({ createdAt }: { createdAt: number }) {
 
 const IMG_EXT = /\.(png|jpe?g|gif|webp|svg|bmp|avif)([/?#]|$)/i;
 
+function formatRemain(ms: number): string {
+  if (ms <= 0) return '';
+  const d = Math.floor(ms / 86400000);
+  const h = Math.floor((ms % 86400000) / 3600000);
+  const m = Math.max(1, Math.floor((ms % 3600000) / 60000));
+  if (d > 0) return `${d} 天 ${h} 小时`;
+  if (h > 0) return `${h} 小时 ${m} 分`;
+  return `${m} 分钟`;
+}
+
+function DeadlineCell({ deadlineAt, now }: { deadlineAt?: number; now: number }) {
+  const dlAt = deadlineAt ?? 0;
+  if (!dlAt) return <span className="text-gray-300">—</span>;
+  const remain = dlAt - now;
+  if (remain >= 0) return <span className="tabular-nums text-gray-500">{formatRemain(remain)}</span>;
+  return <span className="tabular-nums font-medium text-red-500">已超期</span>;
+}
+
 function isImgUrl(v: unknown): string | null {
   if (v == null) return null;
   const s = String(v).trim();
@@ -489,6 +507,7 @@ export function AlertList() {
                 <th className="whitespace-nowrap px-4 py-3 font-medium">接收人</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">已过时间</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">处理耗时</th>
+                <th className="whitespace-nowrap px-4 py-3 font-medium">剩余时长</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">状态</th>
                 <th className="whitespace-nowrap px-4 py-3 pr-6 font-medium">操作</th>
               </tr>
@@ -500,9 +519,10 @@ export function AlertList() {
                 const count = a.preview?.storeMessages?.length ?? a.preview?.rows?.length ?? 0;
                 const stores = a.preview?.storeMessages ?? [];
                 const dur = a.startedAt ? formatDur(a.startedAt, a.handledAt ?? now) : null;
+                const overdue = (a.deadlineAt ?? 0) > 0 && (a.deadlineAt ?? 0) < now;
                 return (
                   <Fragment key={a.id}>
-                    <tr className="align-middle transition-colors last:border-0 hover:bg-gray-50/70">
+                    <tr className={`align-middle transition-colors last:border-0 ${overdue ? 'bg-red-50/60 hover:bg-red-100/50' : 'hover:bg-gray-50/70'}`}>
                       <td className="whitespace-nowrap px-4 py-3 pl-6 align-middle text-[13px] tabular-nums text-gray-400">{idx + 1}</td>
                       <td className="min-w-44 whitespace-nowrap px-4 py-3 align-middle">
                         <div className="text-[13px] font-medium text-gray-800">{a.title || '—'}</div>
@@ -530,6 +550,9 @@ export function AlertList() {
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs tabular-nums text-gray-600">
                         {dur ? <span className={a.status === 'processing' ? 'text-violet-500' : ''}>{dur}</span> : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-xs">
+                        <DeadlineCell deadlineAt={a.deadlineAt} now={now} />
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
                         <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[13px] font-medium">
