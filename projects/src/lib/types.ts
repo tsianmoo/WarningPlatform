@@ -76,6 +76,7 @@ export type NodeKind =
   | 'linkview' // 预警关联展示（把相关的其他表/节点结果，用同名匹配键关联到命中数据，供查看预警弹窗以标签页展示）
   | 'linkview_all' // 预警关联展示-全量（展示来源数据表/节点的全部行，不受基础表过滤；独立组件，按权限控制使用与数据可见）
   | 'timeout' // 超时动作（挂在预警动作后：规定用时+宽限期+超时转派对象，到预警动作这一步才知道超期转交谁）
+  | 'stockout' // 断码分析（按款色尺码销量占比把尺码分级为核心/重要/一般，再对照各店铺款色尺码库存判定断码分组）
 
 /** 比较运算符 */
 export type Operator =
@@ -798,6 +799,43 @@ export interface TimeoutNodeData {
   escalateTarget: TargetSetting;
 }
 
+/** 断码分析节点数据：按款色尺码销量占比把尺码分级，再对照各店铺款色尺码库存判定断码分组 */
+export interface StockoutNodeData {
+  /** 数据来源：数据表 / 上游节点输出（默认数据表） */
+  source?: DataSourceKind;
+  sourceNode?: string;
+  sourceNodeLabel?: string;
+  /** 明细数据表（含 店铺/款号/颜色/尺寸/销量/库存 列的明细表） */
+  tableId: string;
+  tableName: string;
+  /** 店铺字段 */
+  storeField: string;
+  storeFieldLabel?: string;
+  /** 款式字段（款号） */
+  styleField: string;
+  styleFieldLabel?: string;
+  /** 颜色字段 */
+  colorField: string;
+  colorFieldLabel?: string;
+  /** 尺码字段 */
+  sizeField: string;
+  sizeFieldLabel?: string;
+  /** 销量字段（用于计算尺码销售占比） */
+  qtyField: string;
+  qtyFieldLabel?: string;
+  /** 库存字段（用于对照判定断码） */
+  invField: string;
+  invFieldLabel?: string;
+  /** 核心尺码占比阈值（0~1，占比≥此值的尺码为核心尺码，默认 0.2） */
+  corePct: number;
+  /** 重要尺码占比阈值（0~1，占比≥此值且<corePct 的重要尺码，默认 0.1） */
+  impPct: number;
+  /** 断码判定：库存 ≤ 此值视为断码（默认 0，即完全没货；设 2 则 1~2 件也算断码） */
+  brokenMax: number;
+  /** 结果命名 */
+  resultLabel: string;
+}
+
 /** 时间窗口节点数据 */
 export interface TimeNodeData {
   timeWindow: TimeWindow;
@@ -875,6 +913,7 @@ export interface FlowNode {
     | LinkViewNodeData
     | LinkViewAllNodeData
     | TimeoutNodeData
+    | StockoutNodeData
     | Record<string, unknown>;
   position: { x: number; y: number };
 }
@@ -1081,6 +1120,7 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   linkview: '预警关联展示',
   linkview_all: '预警关联展示-全量',
   timeout: '超时动作',
+  stockout: '断码分析',
 };
 
 /** 节点分类色 */
@@ -1111,6 +1151,7 @@ export const KIND_COLOR: Record<
   linkview: { bg: '#FDF2F8', border: '#EC4899', text: '#BE185D', dot: '#EC4899' },
   linkview_all: { bg: '#FDF4FF', border: '#A855F7', text: '#7E22CE', dot: '#A855F7' },
   timeout: { bg: '#FFF1F2', border: '#F43F5E', text: '#BE123C', dot: '#F43F5E' },
+  stockout: { bg: '#FFFBEB', border: '#D97706', text: '#92400E', dot: '#D97706' },
 };
 
 /** 预警类型（级别→类型：提醒/预警） */

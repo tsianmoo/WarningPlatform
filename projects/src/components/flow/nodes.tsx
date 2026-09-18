@@ -56,6 +56,7 @@ import {
   type LinkViewAllTab,
   type DeadlineSetting,
   type TimeoutNodeData,
+  type StockoutNodeData,
 } from '@/lib/types';
 import { DEFAULT_DEADLINE } from '@/lib/types';
 import { useStore } from '@/lib/store';
@@ -85,7 +86,8 @@ type AnyData =
   | LinkJoinNodeData
   | LinkViewNodeData
   | LinkViewAllNodeData
-  | TimeoutNodeData;
+  | TimeoutNodeData
+  | StockoutNodeData;
 
 const KIND_ICON: Record<FlowNode['kind'], React.ReactNode> = {
   trigger: <Play size={13} strokeWidth={2.5} />,
@@ -111,6 +113,7 @@ const KIND_ICON: Record<FlowNode['kind'], React.ReactNode> = {
   linkview: <Search size={13} strokeWidth={2.5} />,
   linkview_all: <SearchCheck size={13} strokeWidth={2.5} />,
   timeout: <Timer size={13} strokeWidth={2.5} />,
+  stockout: <TrendingUp size={13} strokeWidth={2.5} />,
 };
 
 function useNodeUpdater(id: string) {
@@ -257,6 +260,7 @@ function nodeKindCn(kind: FlowNode['kind']) {
     linkview: '预警关联展示',
     linkview_all: '预警关联展示-全量',
     timeout: '超时动作',
+    stockout: '断码分析',
   };
   return map[kind];
 }
@@ -794,6 +798,174 @@ const FieldNode = memo(({ id, data }: NodeProps) => {
   );
 });
 
+const StockoutNode = memo(function StockoutNode({ id, data }: NodeProps) {
+  const fnode = { id, kind: 'stockout' as const, data, position: { x: 0, y: 0 } } as FlowNode;
+  const d = data as unknown as StockoutNodeData;
+  const update = useNodeUpdater(id);
+  const tables = useRuleTables();
+  const allNodes = useNodes();
+  const rowLabel = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
+  const inputCls =
+    'w-full rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-slate-400';
+  const src = d.source === 'node' ? 'node' : 'table';
+  const nodeOpts = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'column');
+  const nodeSel = d.sourceNode || nodeOpts[0]?.ref.nodeId || '';
+  const table = tables.find((t) => t.id === d.tableId);
+  const fields: ColOpt[] = src === 'node'
+    ? (nodeSel ? inferNodeCols(allNodes, tables, nodeSel) : [])
+    : (table?.fields ?? []).map((f) => ({ key: f.key ?? '', label: f.alias || f.key || '' }));
+  const fldOpts = fields.filter((f) => f.key);
+  const pick = (key: 'storeField' | 'styleField' | 'colorField' | 'sizeField' | 'qtyField' | 'invField', v: string) => {
+    const o = fldOpts.find((f) => f.key === v);
+    const patch: Record<string, unknown> = {};
+    if (key === 'storeField') { patch.storeField = v; patch.storeFieldLabel = o?.label ?? v; }
+    if (key === 'styleField') { patch.styleField = v; patch.styleFieldLabel = o?.label ?? v; }
+    if (key === 'colorField') { patch.colorField = v; patch.colorFieldLabel = o?.label ?? v; }
+    if (key === 'sizeField') { patch.sizeField = v; patch.sizeFieldLabel = o?.label ?? v; }
+    if (key === 'qtyField') { patch.qtyField = v; patch.qtyFieldLabel = o?.label ?? v; }
+    if (key === 'invField') { patch.invField = v; patch.invFieldLabel = o?.label ?? v; }
+    update(patch as Partial<AnyData>);
+  };
+  const FieldSelect = ({ val, onPick, ph }: { val: string; onPick: (v: string) => void; ph: string }) => (
+    <select value={val} onChange={(e) => onPick(e.target.value)} className={inputCls}>
+      <option value="">{ph}</option>
+      {fldOpts.map((f) => (
+        <option key={f.key} value={f.key}>{f.label}</option>
+      ))}
+    </select>
+  );
+  return (
+    <NodeShell fnode={fnode} width={400}>
+      <div className="space-y-1.5">
+        <div className="mb-1 mt-2 flex items-center gap-1">
+          <span className="shrink-0 text-[11px] text-gray-400">明细来源</span>
+          <select
+            value={src}
+            onChange={(e) => {
+              const s = e.target.value as 'table' | 'node';
+              update({ source: s, tableId: '', tableName: '', sourceNode: '', storeField: '', styleField: '', colorField: '', sizeField: '', qtyField: '', invField: '' });
+            }}
+            className={inputCls}
+          >
+            <option value="table">数据表</option>
+            <option value="node">节点结果</option>
+          </select>
+        </div>
+
+        {src === 'node' ? (
+          <>
+            <div className={rowLabel}>来源节点（含店/款/色/尺码/销量/库存 的明细结果）</div>
+            <select
+              value={nodeSel}
+              onChange={(e) => update({ sourceNode: e.target.value, sourceNodeLabel: e.target.selectedOptions[0]?.text })}
+              className={inputCls}
+            >
+              <option value="">选择节点结果…</option>
+              {nodeOpts.map((o) => (
+                <option key={o.ref.nodeId} value={o.ref.nodeId}>{o.ref.label || o.ref.nodeId}</option>
+              ))}
+            </select>
+          </>
+        ) : (
+          <>
+            <div className={rowLabel}>明细数据表</div>
+            <select
+              value={d.tableId}
+              onChange={(e) => {
+                const t = tables.find((x) => x.id === e.target.value);
+                update({ tableId: e.target.value, tableName: t?.name ?? '' });
+              }}
+              className={inputCls}
+            >
+              <option value="">选择数据表…</option>
+              {tables.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </>
+        )}
+
+        <div className={rowLabel}>字段映射</div>
+        <div className="grid grid-cols-2 gap-1">
+          <div>
+            <span className="text-[10px] text-gray-400">店铺</span>
+            <FieldSelect val={d.storeField} onPick={(v) => pick('storeField', v)} ph="选择店铺列" />
+          </div>
+          <div>
+            <span className="text-[10px] text-gray-400">款号</span>
+            <FieldSelect val={d.styleField} onPick={(v) => pick('styleField', v)} ph="选择款号列" />
+          </div>
+          <div>
+            <span className="text-[10px] text-gray-400">颜色</span>
+            <FieldSelect val={d.colorField} onPick={(v) => pick('colorField', v)} ph="选择颜色列" />
+          </div>
+          <div>
+            <span className="text-[10px] text-gray-400">尺码</span>
+            <FieldSelect val={d.sizeField} onPick={(v) => pick('sizeField', v)} ph="选择尺码列" />
+          </div>
+          <div>
+            <span className="text-[10px] text-gray-400">销量</span>
+            <FieldSelect val={d.qtyField} onPick={(v) => pick('qtyField', v)} ph="选择销量列" />
+          </div>
+          <div>
+            <span className="text-[10px] text-gray-400">库存</span>
+            <FieldSelect val={d.invField} onPick={(v) => pick('invField', v)} ph="选择库存列" />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-1">
+          <div>
+            <span className="text-[10px] text-gray-400">核心占比≥</span>
+            <input
+              type="number"
+              value={Number.isFinite(d.corePct) ? d.corePct : 0.2}
+              step={0.05}
+              min={0}
+              max={1}
+              onChange={(e) => update({ corePct: Math.min(1, Math.max(0, parseFloat(e.target.value) || 0)) })}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <span className="text-[10px] text-gray-400">重要占比≥</span>
+            <input
+              type="number"
+              value={Number.isFinite(d.impPct) ? d.impPct : 0.1}
+              step={0.05}
+              min={0}
+              max={1}
+              onChange={(e) => update({ impPct: Math.min(1, Math.max(0, parseFloat(e.target.value) || 0)) })}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <span className="text-[10px] text-gray-400">断码库存≤</span>
+            <input
+              type="number"
+              value={Number.isFinite(d.brokenMax) ? d.brokenMax : 0}
+              min={0}
+              step={1}
+              onChange={(e) => update({ brokenMax: Math.max(0, parseInt(e.target.value) || 0) })}
+              className={inputCls}
+            />
+          </div>
+        </div>
+
+        <div className={rowLabel}>结果命名</div>
+        <input
+          value={d.resultLabel || ''}
+          placeholder="断码分析"
+          onChange={(e) => update({ resultLabel: e.target.value })}
+          className={inputCls}
+        />
+        <p className="mt-1 text-[10px] leading-4 text-gray-400">
+          按 款×色 尺码销量占比分级（核心/重要/一般），对照各店铺该款色尺码库存，库存≤设定值判定断码，输出每店每款色的断码分组。
+        </p>
+      </div>
+    </NodeShell>
+  );
+});
+
 // ---------- 判断节点 ----------
 
 /** 从画布节点中提取"可作为节点结果引用"的输出节点（标量基准值 / 逐组列） */
@@ -930,6 +1102,9 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
   const kind = (fn as unknown as FlowNode).kind;
   const s = (v: unknown): string => (typeof v === 'string' && v ? v : '');
   switch (kind) {
+    case 'stockout':
+      // 输出列与 evaluate stockout case 对齐
+      return ['店铺', '款号', '颜色', '尺码占比', '核心断码', '重要断码', '一般断码', '断码数', '核心占比'].map((c) => ({ key: c, label: c }));
     case 'topn':
       // 输出列名 = 分组列展示名 + 结果命名(resultLabel)；key 必须对齐真实输出列
       return [
@@ -6073,6 +6248,7 @@ export const nodeTypes = {
   linkview: LinkViewNode,
   linkview_all: LinkViewAllNode,
   timeout: TimeoutNode,
+  stockout: StockoutNode,
 };
 
 TopNNode.displayName = 'TopNNode';
@@ -6307,6 +6483,22 @@ export function createNodeData(
         actionLabel: '',
         deadline: { ...DEFAULT_DEADLINE },
         escalateTarget: { departments: [], personnel: [] },
+      };
+    case 'stockout':
+      return {
+        source: 'table',
+        tableId: '',
+        tableName: '',
+        storeField: '',
+        styleField: '',
+        colorField: '',
+        sizeField: '',
+        qtyField: '',
+        invField: '',
+        corePct: 0.2,
+        impPct: 0.1,
+        brokenMax: 0,
+        resultLabel: '断码分析',
       };
     default:
       return {};

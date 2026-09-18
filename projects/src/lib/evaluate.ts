@@ -29,6 +29,7 @@ import type {
   LinkViewTab,
   LinkViewAllNodeData,
   LinkViewAllTab,
+  StockoutNodeData,
 } from './types';
 import { resolveTimeWindow, resolveElapsedDays, compareModes, computeCompareWindow } from './time';
 import type { TimeWindow } from './types';
@@ -2866,6 +2867,118 @@ function evalNode(
 
     case 'timeout':
       return { title: '超时动作', columns: [], rows: [], note: '为关联预警动作配置处理时限与超时转派，不产生数据。', unsupported: true };
+
+    case 'stockout': {
+      const sd = d as unknown as StockoutNodeData;
+      const rs = resolveRowset(
+        {
+          tableId: sd.tableId,
+          source: sd.source as 'table' | 'node' | undefined,
+          sourceNode: sd.sourceNode as string | undefined,
+        },
+        tables,
+        byId,
+        incoming,
+      );
+      const storeF = sd.storeField;
+      const styleF = sd.styleField;
+      const colorF = sd.colorField;
+      const sizeF = sd.sizeField;
+      const qtyF = sd.qtyField;
+      const invF = sd.invField;
+      if (!storeF || !styleF || !sizeF || !qtyF) {
+        return {
+          title: '断码分析',
+          columns: [],
+          rows: [],
+          note: '请先选择明细数据，并映射“店铺/款号/颜色/尺寸/销量/库存”字段。',
+        };
+      }
+      const src = rs ? allRows(rs.t) : [];
+      // 全局按 款+色 聚合计销量 → 每尺码销售占比
+      const shared = new Map<string, number>(); // key 款|色 → 总销量
+      const sizeQty = new Map<string, Map<string, number>>(); // 款|色 → (尺码 → 销量)
+      for (const r of src) {
+        const style = String(r[styleF] ?? '');
+        const color = colorF ? String(r[colorF] ?? '') : '';
+        const size = String(r[sizeF] ?? '');
+        const qty = toNum(r[qtyF]);
+        if (!style || !size || !Number.isFinite(qty)) continue;
+        const sk = `${style}|${color}`;
+        shared.set(sk, (shared.get(sk) || 0) + qty);
+        if (!sizeQty.has(sk)) sizeQty.set(sk, new Map());
+        const sm = sizeQty.get(sk)!;
+        sm.set(size, (sm.get(size) || 0) + qty);
+      }
+      const shareOf = (sk: string, size: string): number => {
+        const tot = shared.get(sk) || 0;
+        const sq = sizeQty.get(sk)?.get(size) || 0;
+        return tot > 0 ? sq / tot : 0;
+      };
+      const corePct = Number.isFinite(sd.corePct) ? sd.corePct : 0.2;
+      const impPct = Number.isFinite(sd.impPct) ? sd.impPct : 0.1;
+      const brokenMax = Number.isFinite(sd.brokenMax) ? sd.brokenMax : 0;
+      const tier = (share: number): '核心' | '重要' | '一般' =>
+        share >= corePct ? '核心' : share >= impPct ? '重要' : '一般';
+      // 按 店铺×款×色 聚合并输出断码分组
+      const outRows: Record<string, string | number>[] = [];
+      const storeGroups = new Map<string, Record<string, unknown>[]>();
+      for (const r of src) {
+        const store = String(r[storeF] ?? '');
+        const style = String(r[styleF] ?? '');
+        const color = colorF ? String(r[colorF] ?? '') : '';
+        const size = String(r[sizeF] ?? '');
+        const inv = toNum(r[invF]);
+        if (!store || !style || !size) continue;
+        const sk = `${style}|${color}`;
+        const share = shareOf(sk, size);
+        const t = tier(share);
+        const broken = Number.isFinite(inv) && inv <= brokenMax;
+        const stKey = `${store}|${style}|${color}`;
+        if (!storeGroups.has(stKey)) storeGroups.set(stKey, []);
+        storeGroups.get(stKey)!.push({ store, style, color, size, share, tier: t, broken, inv });
+      }
+      for (const [stKey, rows] of storeGroups) {
+        const [store, style, color] = stKey.split('|');
+        const broken = rows.filter((x: Record<string, unknown>) => x.broken);
+        const fmtSize = (xs: Record<string, unknown>[]) => {
+          return xs
+            .sort((a, b) => (b.share as number) - (a.share as number))
+            .map((x) => `${x.size}${Math.round((x.share as number) * 100)}%`)
+            .join('、');
+        };
+        const coreB = broken.filter((x: Record<string, unknown>) => x.tier === '核心');
+        const impB = broken.filter((x: Record<string, unknown>) => x.tier === '重要');
+        const normalB = broken.filter((x: Record<string, unknown>) => x.tier === '一般');
+        const allSizes = rows
+          .sort((a, b) => (b.share as number) - (a.share as number))
+          .map((x) => `${x.size}${Math.round((x.share as number) * 100)}%`)
+          .join('、');
+        const corePctText = rows
+          .filter((x: Record<string, unknown>) => x.tier === '核心')
+          .reduce((s, x) => s + (x.share as number), 0);
+        outRows.push({
+          店铺: store,
+          款号: style,
+          颜色: color,
+          尺码占比: allSizes,
+          核心断码: fmtSize(coreB),
+          重要断码: fmtSize(impB),
+          一般断码: fmtSize(normalB),
+          断码数: broken.length,
+          核心占比: `${Math.round(corePctText * 100)}%`,
+        });
+      }
+      const totalBroken = outRows.reduce((s, o) => s + (o['断码数'] as number), 0);
+      return {
+        title: sd.resultLabel || '断码分析',
+        columns: ['店铺', '款号', '颜色', '尺码占比', '核心断码', '重要断码', '一般断码', '断码数', '核心占比'],
+        rows: cap(outRows),
+        shape: 'table',
+        allCols: ['店铺', '款号', '颜色', '尺码占比', '核心断码', '重要断码', '一般断码', '断码数', '核心占比'],
+        note: `来自「${rs?.from ?? '明细'}」共 ${src.length} 行 → 按款×色尺码销量占比分级（核心≥${Math.round(corePct * 100)}%、重要≥${Math.round(impPct * 100)}%），库存≤${brokenMax} 视为断码。断码分组 ${outRows.length} 组，共断码尺码 ${totalBroken} 个。`,
+      };
+    }
 
     default:
       return { title: '节点', columns: [], rows: [], note: '该节点暂不支持逐行预览。', unsupported: true };

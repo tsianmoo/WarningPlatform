@@ -429,6 +429,7 @@ export function PalettePanel({
     { kind: 'linkview_all', label: '预警关联展示-全量', desc: '展示来源全部行·需权限', payload: { kind: 'linkview_all' }, color: KIND_COLOR.linkview_all.border, dot: KIND_COLOR.linkview_all.dot },
     { kind: 'action', label: '预警动作', desc: '终点·通知', payload: { kind: 'action' }, color: KIND_COLOR.action.border, dot: KIND_COLOR.action.dot },
     { kind: 'timeout', label: '超时动作', desc: '处理时限·超时转派', payload: { kind: 'timeout' }, color: KIND_COLOR.timeout.border, dot: KIND_COLOR.timeout.dot },
+    { kind: 'stockout', label: '断码分析', desc: '款色尺码销量占比分级·对照库存判断码', payload: { kind: 'stockout' }, color: KIND_COLOR.stockout.border, dot: KIND_COLOR.stockout.dot },
   ];
 
   // 按功能分组（kinds 引用 flowItems），便于直观选择
@@ -436,7 +437,7 @@ export function PalettePanel({
     { title: '数据与窗口', kinds: ['trigger', 'base', 'relation', 'lookup', 'time', 'elapsed'] },
     { title: '筛选与排名', kinds: ['topn', 'rank', 'filter', 'diff', 'filljoin'] },
     { title: '计算与统计', kinds: ['compute', 'groupby', 'baseline', 'calc', 'linkjoin'] },
-    { title: '条件与输出', kinds: ['condition', 'logic', 'linkview', 'linkview_all', 'action', 'timeout'] },
+    { title: '条件与输出', kinds: ['condition', 'logic', 'linkview', 'linkview_all', 'action', 'timeout', 'stockout'] },
   ];
 
   const NODE_ICON: Record<string, ComponentType<{ size?: number; className?: string; style?: CSSProperties }>> = {
@@ -461,6 +462,7 @@ export function PalettePanel({
     logic: Waypoints,
     action: Bell,
     timeout: Timer,
+    stockout: BarChart3,
   };
   const flowByKind = new Map(flowItems.map((it) => [it.kind, it]));
   if (!canLinkviewAll) flowByKind.delete('linkview_all');
