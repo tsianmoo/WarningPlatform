@@ -692,7 +692,7 @@ export function DataTableManager() {
       </AlertDialog>
 
       <AlertDialog open={!!openUpdate} onOpenChange={(v) => !v && setOpenUpdate(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-h-[85vh] overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle>更新数据表「{openUpdate?.t.name}」</AlertDialogTitle>
             <AlertDialogDescription>
