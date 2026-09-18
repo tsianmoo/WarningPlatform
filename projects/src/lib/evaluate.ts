@@ -1295,13 +1295,21 @@ function evalNode(
       const total = tabs.reduce((s, t) => s + t.rows.length, 0);
       const previewTab = tabs.find((t) => t.rows.length > 0) || tabs[0];
       const hasPairs = tabsCfg.some((t) => (Array.isArray(t.matchKeys) ? t.matchKeys : []).some((k) => k && k.baseField && k.relField));
+      const baseValNote = (() => {
+        const firstPair = (tabsCfg[0] && Array.isArray(tabsCfg[0].matchKeys) ? tabsCfg[0].matchKeys : []).find((k) => k && k.baseField && k.relField);
+        if (!firstPair || !baseRows.length) return hasPairs ? '（基础表无数据行）' : '';
+        const bf = firstPair.baseField ?? '';
+        const vals = Array.from(new Set(baseRows.map((mr) => String(mr[bf] ?? '')).filter(Boolean)));
+        const shown = vals.slice(0, 10).join('、');
+        return `基础[${bf}]=${shown}${vals.length > 10 ? `…共${vals.length}个值` : ''}`;
+      })();
       return {
         title: lva.resultLabel || '预警关联展示-全量',
         columns: previewTab ? previewTab.columns : [],
         rows: previewTab ? previewTab.rows.slice(0, 100) : [],
         shape: 'table',
         note: tabsCfg.length
-          ? `按匹配字段${hasPairs ? '（基础表字段↔关联表字段）' : ''}展示来源全部匹配行，共 ${total} 行。来源：${tabsCfg.map((t) => t.name || t.tableName || t.srcNodeLabel || '全量数据').join('、')}`
+          ? `按匹配字段${hasPairs ? `（${baseValNote}）` : ''}展示来源全部匹配行，共 ${total} 行。来源：${tabsCfg.map((t) => t.name || t.tableName || t.srcNodeLabel || '全量数据').join('、')}`
           : '请添加全量数据来源（数据表或节点结果）',
         linkviewData: { enabled: tabs.length > 0, all: true, tabs },
       };
