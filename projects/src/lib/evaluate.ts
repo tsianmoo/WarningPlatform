@@ -1126,9 +1126,15 @@ function evalNode(
       const mainCols = main.t.fields.map((f) => f.key);
       const addLabels = addFields.map((f) => f.label || f.key);
       const joinColumns = [...mainCols, ...addLabels];
+      // 取值兼容：优先按字段键，其次在该行内按 names 匹配（列名 trim 后一致也算命中）
       const pick = (hit: Record<string, unknown> | undefined, f: { key: string }): string | number => {
         if (!hit) return '';
-        const v = hit[f.key];
+        let v: unknown = hit[f.key];
+        if ((v === undefined || v === null) && f.key) {
+          const fk = f.key.trim();
+          const found = Object.keys(hit).find((k) => String(k).trim() === fk);
+          if (found !== undefined) v = hit[found];
+        }
         return v === undefined || v === null ? '' : (typeof v === 'string' || typeof v === 'number' ? v : String(v));
       };
       if (!keys.length) {
@@ -1146,7 +1152,7 @@ function evalNode(
           note: `无匹配键：取源表「${src.from}」首行字段值逐行补入`,
         };
       }
-      const keyOf = (row: Record<string, unknown>) => keys.map((k) => String(row[k] ?? '')).join('␟');
+      const keyOf = (row: Record<string, unknown>) => keys.map((k) => String(row[k] ?? '').trim()).join('␟');
       const index = new Map<string, Record<string, unknown>>();
       for (const s of srcRows) {
         const kk = keyOf(s);
@@ -1158,12 +1164,13 @@ function evalNode(
         for (const f of addFields) o[f.label || f.key] = pick(hit, f);
         return o;
       });
+      const matched = rows.filter((_, i) => index.has(keyOf(mainRows[i]))).length;
       return {
         title: '其他表添加列',
         columns: joinColumns,
         rows,
         shape: 'table',
-        note: `按匹配键（${keys.join('、')}）对齐源「${src.from}」，取列：${addLabels.join('、')||'（未选）'}；未匹配的行留空`,
+        note: `按匹配键（${keys.join('、')}）对齐源「${src.from}」，取列：${addLabels.join('、')||'（未选）'}；主表 ${mainRows.length} 行中匹配 ${matched} 行，未匹配留空`,
       };
     }
 
