@@ -422,6 +422,7 @@ export function NewRule({ onBack, meName = '' }: { onBack: () => void; meName?: 
         }
         canStart={title.trim().length > 0 && selected.length > 0}
         onStart={() => setStarted(true)}
+        onCancel={onBack}
         groups={state.ruleGroups}
         groupId={groupId}
         setGroupId={setGroupId}
@@ -454,6 +455,7 @@ function NewRuleGate({
   toggle,
   canStart,
   onStart,
+  onCancel,
   groups,
   groupId,
   setGroupId,
@@ -470,6 +472,7 @@ function NewRuleGate({
   toggle: (id: string) => void;
   canStart: boolean;
   onStart: () => void;
+  onCancel: () => void;
   groups: RuleGroup[];
   groupId: string;
   setGroupId: (id: string) => void;
@@ -595,6 +598,13 @@ function NewRuleGate({
         )}
 
         <div className="mt-5 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg border border-gray-200 bg-white px-4 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+          >
+            取消
+          </button>
           <button
             onClick={onStart}
             disabled={!canStart}
