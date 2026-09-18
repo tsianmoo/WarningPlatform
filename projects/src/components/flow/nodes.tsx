@@ -2386,6 +2386,7 @@ const BaseNode = memo(({ id, data }: NodeProps) => {
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
+  const edges = useEdges();
   const source = d.source ?? 'table';
   const nodeOutputs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'column');
 
@@ -4101,8 +4102,17 @@ const FilterNode = memo(({ id, data }: NodeProps) => {
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
+  const edges = useEdges();
   const source = d.source ?? 'table';
   const nodeOutputs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'column');
+  // 节点结果的真实输出行（供字段去重候选值），失败时回退为空
+  const evalRows = useMemo<Record<string, { rows?: Array<Record<string, unknown>> }> | undefined>(() => {
+    try {
+      return evaluateFlow(allNodes as unknown as FlowNode[], edges as unknown as FlowEdge[], tables as unknown as DataTable[]) as Record<string, { rows?: Array<Record<string, unknown>> }>;
+    } catch {
+      return undefined;
+    }
+  }, [allNodes, edges, tables]);
 
   const table = tables.find((t) => t.id === d.tableId) ?? tables[0];
   // 数据表字段
@@ -4136,9 +4146,19 @@ const FilterNode = memo(({ id, data }: NodeProps) => {
     update({ conditions: conds.filter((_, j) => j !== i) });
   };
 
-  // 取某字段的去重候选值：数据表用全量行；节点结果无前端行数据时给空（运行时按上游结果）
+  // 取某字段的去重候选值：数据表用全量行；节点结果用 evaluateFlow 上游输出行的该列值
   const distinctValues = (fieldKey: string): string[] => {
-    if (source === 'node') return [];
+    if (source === 'node') {
+      if (!d.sourceNode) return [];
+      const set = new Set<string>();
+      const rows = evalRows?.[d.sourceNode]?.rows;
+      if (rows) {
+        for (const r of rows) {
+          if (r[fieldKey] != null && r[fieldKey] !== '') set.add(String(r[fieldKey]));
+        }
+      }
+      return [...set];
+    }
     if (!table) return [];
     const set = new Set<string>();
     const src = table.rows && table.rows.length ? table.rows : table.previewRows;
