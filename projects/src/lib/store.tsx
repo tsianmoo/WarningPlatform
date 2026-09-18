@@ -224,6 +224,21 @@ export function calcDeadline(from: number, d?: DeadlineSetting): number | undefi
   return new Date(year, month, cand.getDate(), hh, mm, 0, 0).getTime();
 }
 
+const DEADLINE_UNIT_LABEL: Record<string, string> = { minute: '分钟', hour: '小时', day: '天', week: '周', month: '个月' };
+const WEEKDAY_LABEL: Record<string, string> = { '1': '周一', '2': '周二', '3': '周三', '4': '周四', '5': '周五', '6': '周六', '7': '周日' };
+
+/** 把「规定用时」配置渲染为可读文案（如 30 分钟 / 每周五 18:00 / 每月 3 号 09:00），未启用返回空 */
+export function describeDeadlineText(d?: DeadlineSetting): string {
+  if (!d || !d.enabled) return '';
+  if (d.kind === 'duration') {
+    const v = Math.max(0, Number(d.value) || 0);
+    return `${v || 0} ${DEADLINE_UNIT_LABEL[d.unit ?? 'minute'] ?? d.unit ?? ''}`;
+  }
+  const clock = d.clock || '18:00';
+  if (d.kind === 'weekly') return `每周${WEEKDAY_LABEL[String(d.weekday ?? 5) ] ?? ''} ${clock}`;
+  return `每月${d.monthDay ?? 1} 号 ${clock}`;
+}
+
 /** 超时动作「转派对象」配置 → 具体人员名单（复用通知对象的选择方式：person 按职位/岗位；manual 手动选中人员） */
 function resolveEscalateNames(t?: TargetSetting, ctx?: BuildAlertCtx): string[] {
   const mode = t?.mode ?? 'manual';
@@ -462,6 +477,7 @@ export function buildAlertsForRule(
         ? {}
         : {
             deadlineAt: dl,
+            deadlineLabel: describeDeadlineText(tcfg?.deadline),
             graceMinutes: tcfg?.deadline?.graceMinutes ?? 20,
             graceUntil: dl + ((tcfg?.deadline?.graceMinutes ?? 20) * 60_000),
             escalateTo: escNames,

@@ -507,6 +507,7 @@ export function AlertList() {
                 <th className="whitespace-nowrap px-4 py-3 font-medium">接收人</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">已过时间</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">处理耗时</th>
+                <th className="whitespace-nowrap px-4 py-3 font-medium">规定用时</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">剩余时长</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">状态</th>
                 <th className="whitespace-nowrap px-4 py-3 pr-6 font-medium">操作</th>
@@ -550,6 +551,9 @@ export function AlertList() {
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs tabular-nums text-gray-600">
                         {dur ? <span className={a.status === 'processing' ? 'text-violet-500' : ''}>{dur}</span> : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-600">
+                        {a.deadlineLabel ? <span>{a.deadlineLabel}</span> : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs">
                         <DeadlineCell deadlineAt={a.deadlineAt} now={now} />

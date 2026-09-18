@@ -1198,6 +1198,7 @@ export interface AlertTask {
   };
   /** 处理时限到期（时间戳，来自开始组件「规定用时」） */
   deadlineAt?: number;
+  deadlineLabel?: string;
   /** 宽限期（分钟） */
   graceMinutes?: number;
   /** 宽限期截止（= deadlineAt + graceMinutes），超过则锁定并转派 */
