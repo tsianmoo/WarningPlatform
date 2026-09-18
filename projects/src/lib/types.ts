@@ -811,6 +811,9 @@ export interface StockoutNodeData {
   /** 店铺字段 */
   storeField: string;
   storeFieldLabel?: string;
+  /** 款型组字段（商品款型组属性，用于跨店全局聚合口径：款型组+款号+颜色） */
+  familyField: string;
+  familyFieldLabel?: string;
   /** 款式字段（款号） */
   styleField: string;
   styleFieldLabel?: string;

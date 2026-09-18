@@ -815,9 +815,10 @@ const StockoutNode = memo(function StockoutNode({ id, data }: NodeProps) {
     ? (nodeSel ? inferNodeCols(allNodes, tables, nodeSel) : [])
     : (table?.fields ?? []).map((f) => ({ key: f.key ?? '', label: f.alias || f.key || '' }));
   const fldOpts = fields.filter((f) => f.key);
-  const pick = (key: 'storeField' | 'styleField' | 'colorField' | 'sizeField' | 'qtyField' | 'invField', v: string) => {
+  const pick = (key: 'familyField' | 'storeField' | 'styleField' | 'colorField' | 'sizeField' | 'qtyField' | 'invField', v: string) => {
     const o = fldOpts.find((f) => f.key === v);
     const patch: Record<string, unknown> = {};
+    if (key === 'familyField') { patch.familyField = v; patch.familyFieldLabel = o?.label ?? v; }
     if (key === 'storeField') { patch.storeField = v; patch.storeFieldLabel = o?.label ?? v; }
     if (key === 'styleField') { patch.styleField = v; patch.styleFieldLabel = o?.label ?? v; }
     if (key === 'colorField') { patch.colorField = v; patch.colorFieldLabel = o?.label ?? v; }
@@ -843,7 +844,7 @@ const StockoutNode = memo(function StockoutNode({ id, data }: NodeProps) {
             value={src}
             onChange={(e) => {
               const s = e.target.value as 'table' | 'node';
-              update({ source: s, tableId: '', tableName: '', sourceNode: '', storeField: '', styleField: '', colorField: '', sizeField: '', qtyField: '', invField: '' });
+              update({ source: s, tableId: '', tableName: '', sourceNode: '', familyField: '', storeField: '', styleField: '', colorField: '', sizeField: '', qtyField: '', invField: '' });
             }}
             className={inputCls}
           >
@@ -887,6 +888,10 @@ const StockoutNode = memo(function StockoutNode({ id, data }: NodeProps) {
 
         <div className={rowLabel}>字段映射</div>
         <div className="grid grid-cols-2 gap-1">
+          <div>
+            <span className="text-[10px] text-gray-400">款型组</span>
+            <FieldSelect val={d.familyField} onPick={(v) => pick('familyField', v)} ph="选择款型组列（可选）" />
+          </div>
           <div>
             <span className="text-[10px] text-gray-400">店铺</span>
             <FieldSelect val={d.storeField} onPick={(v) => pick('storeField', v)} ph="选择店铺列" />
@@ -959,7 +964,7 @@ const StockoutNode = memo(function StockoutNode({ id, data }: NodeProps) {
           className={inputCls}
         />
         <p className="mt-1 text-[10px] leading-4 text-gray-400">
-          按 款×色 尺码销量占比分级（核心/重要/一般），对照各店铺该款色尺码库存，库存≤设定值判定断码，输出每店每款色的断码分组。
+          把所有店铺合并，按 款型组+款+色 的尺码销量算出每尺码全局占比并分级（核心/重要/一般），再对照各店铺该款色尺码库存，库存≤设定值判定断码。
         </p>
       </div>
     </NodeShell>
@@ -1104,7 +1109,7 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
   switch (kind) {
     case 'stockout':
       // 输出列与 evaluate stockout case 对齐
-      return ['店铺', '款号', '颜色', '尺码占比', '核心断码', '重要断码', '一般断码', '断码数', '核心占比'].map((c) => ({ key: c, label: c }));
+      return ['店铺', '款型组', '款号', '颜色', '尺码占比', '核心断码', '重要断码', '一般断码', '断码数', '核心占比'].map((c) => ({ key: c, label: c }));
     case 'topn':
       // 输出列名 = 分组列展示名 + 结果命名(resultLabel)；key 必须对齐真实输出列
       return [
@@ -6489,6 +6494,7 @@ export function createNodeData(
         source: 'table',
         tableId: '',
         tableName: '',
+        familyField: '',
         storeField: '',
         styleField: '',
         colorField: '',

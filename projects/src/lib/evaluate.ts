@@ -2881,6 +2881,7 @@ function evalNode(
         incoming,
       );
       const storeF = sd.storeField;
+      const familyF = sd.familyField;
       const styleF = sd.styleField;
       const colorF = sd.colorField;
       const sizeF = sd.sizeField;
@@ -2895,16 +2896,17 @@ function evalNode(
         };
       }
       const src = rs ? allRows(rs.t) : [];
-      // 全局按 款+色 聚合计销量 → 每尺码销售占比
-      const shared = new Map<string, number>(); // key 款|色 → 总销量
-      const sizeQty = new Map<string, Map<string, number>>(); // 款|色 → (尺码 → 销量)
+      // 占比口径：把所有店铺合并，按 款型组+款+色 聚合计销量 → 每尺码销售占比（全局尺码占比）
+      const shared = new Map<string, number>(); // key 款型组|款|色 → 总销量
+      const sizeQty = new Map<string, Map<string, number>>(); // 款型组|款|色 → (尺码 → 销量)
       for (const r of src) {
+        const family = familyF ? String(r[familyF] ?? '') : '';
         const style = String(r[styleF] ?? '');
         const color = colorF ? String(r[colorF] ?? '') : '';
         const size = String(r[sizeF] ?? '');
         const qty = toNum(r[qtyF]);
         if (!style || !size || !Number.isFinite(qty)) continue;
-        const sk = `${style}|${color}`;
+        const sk = `${family}|${style}|${color}`;
         shared.set(sk, (shared.get(sk) || 0) + qty);
         if (!sizeQty.has(sk)) sizeQty.set(sk, new Map());
         const sm = sizeQty.get(sk)!;
@@ -2920,26 +2922,27 @@ function evalNode(
       const brokenMax = Number.isFinite(sd.brokenMax) ? sd.brokenMax : 0;
       const tier = (share: number): '核心' | '重要' | '一般' =>
         share >= corePct ? '核心' : share >= impPct ? '重要' : '一般';
-      // 按 店铺×款×色 聚合并输出断码分组
+      // 按 店铺×款型组×款×色 聚合并输出断码分组
       const outRows: Record<string, string | number>[] = [];
       const storeGroups = new Map<string, Record<string, unknown>[]>();
       for (const r of src) {
         const store = String(r[storeF] ?? '');
+        const family = familyF ? String(r[familyF] ?? '') : '';
         const style = String(r[styleF] ?? '');
         const color = colorF ? String(r[colorF] ?? '') : '';
         const size = String(r[sizeF] ?? '');
         const inv = toNum(r[invF]);
         if (!store || !style || !size) continue;
-        const sk = `${style}|${color}`;
+        const sk = `${family}|${style}|${color}`;
         const share = shareOf(sk, size);
         const t = tier(share);
         const broken = Number.isFinite(inv) && inv <= brokenMax;
-        const stKey = `${store}|${style}|${color}`;
+        const stKey = `${store}|${family}|${style}|${color}`;
         if (!storeGroups.has(stKey)) storeGroups.set(stKey, []);
-        storeGroups.get(stKey)!.push({ store, style, color, size, share, tier: t, broken, inv });
+        storeGroups.get(stKey)!.push({ store, family, style, color, size, share, tier: t, broken, inv });
       }
       for (const [stKey, rows] of storeGroups) {
-        const [store, style, color] = stKey.split('|');
+        const [store, family, style, color] = stKey.split('|');
         const broken = rows.filter((x: Record<string, unknown>) => x.broken);
         const fmtSize = (xs: Record<string, unknown>[]) => {
           return xs
@@ -2959,6 +2962,7 @@ function evalNode(
           .reduce((s, x) => s + (x.share as number), 0);
         outRows.push({
           店铺: store,
+          款型组: family,
           款号: style,
           颜色: color,
           尺码占比: allSizes,
@@ -2972,11 +2976,11 @@ function evalNode(
       const totalBroken = outRows.reduce((s, o) => s + (o['断码数'] as number), 0);
       return {
         title: sd.resultLabel || '断码分析',
-        columns: ['店铺', '款号', '颜色', '尺码占比', '核心断码', '重要断码', '一般断码', '断码数', '核心占比'],
+        columns: ['店铺', '款型组', '款号', '颜色', '尺码占比', '核心断码', '重要断码', '一般断码', '断码数', '核心占比'],
         rows: cap(outRows),
         shape: 'table',
-        allCols: ['店铺', '款号', '颜色', '尺码占比', '核心断码', '重要断码', '一般断码', '断码数', '核心占比'],
-        note: `来自「${rs?.from ?? '明细'}」共 ${src.length} 行 → 按款×色尺码销量占比分级（核心≥${Math.round(corePct * 100)}%、重要≥${Math.round(impPct * 100)}%），库存≤${brokenMax} 视为断码。断码分组 ${outRows.length} 组，共断码尺码 ${totalBroken} 个。`,
+        allCols: ['店铺', '款型组', '款号', '颜色', '尺码占比', '核心断码', '重要断码', '一般断码', '断码数', '核心占比'],
+        note: `来自「${rs?.from ?? '明细'}」共 ${src.length} 行 → 把所有店铺合并，按款型组+款+色聚合计销量得全局尺码占比并分级（核心≥${Math.round(corePct * 100)}%、重要≥${Math.round(impPct * 100)}%），库存≤${brokenMax} 视为断码。断码分组 ${outRows.length} 组，共断码尺码 ${totalBroken} 个。`,
       };
     }
 
