@@ -727,12 +727,17 @@ export interface LinkViewAllTab {
   tableName?: string;
   srcNode?: string;
   srcNodeLabel?: string;
+  /** 匹配字段（基础表字段 ↔ 关联表字段） */
+  matchKeys?: Array<{ baseField?: string; relField?: string }>;
   /** 返回列：勾选的来源列名（key）。为空则返回来源全部列 */
   returnCols?: string[];
 }
 
 /** 预警关联展示-全量节点数据：独立组件，按权限（linkview_all）控制使用与数据可见 */
 export interface LinkViewAllNodeData {
+  /** 基础表（预警动作结果等，提供匹配字段的下侧字段选择） */
+  baseNode?: string;
+  baseNodeLabel?: string;
   /** 数据来源及其它标签列表（一般一个即可；支持多来源多标签） */
   tabs?: LinkViewAllTab[];
   /** 结果命名（可选备注） */
