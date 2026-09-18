@@ -1894,6 +1894,19 @@ function evalNode(
         });
         return row;
       });
+      // 分组维度唯一排序字段：全部分组维度中只能有一个字段启用升/降序
+      const numCmp = (a: string, b: string): number => {
+        const na = Number(a), nb = Number(b);
+        if (a !== '' && b !== '' && Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+        return a === b ? 0 : a < b ? -1 : 1;
+      };
+      const sortIdx = Array.isArray(gd.dims) ? gd.dims.findIndex((x) => x.sort === 'asc' || x.sort === 'desc') : -1;
+      if (sortIdx >= 0) {
+        const sd = gd.dims[sortIdx];
+        const key = dimLabels[sortIdx] ?? groupLabel(sd.fieldLabel || sd.fieldKey, sd.granularity);
+        const dir = sd.sort === 'desc' ? -1 : 1;
+        out.sort((a, b) => dir * numCmp(String(a[key] ?? ''), String(b[key] ?? '')));
+      }
       // 兜底：若 groups 为空（无行），仍构造一次以便展示类型
       const cmpColNames = (m: string) =>
         cmpEnabled.flatMap((s) => [

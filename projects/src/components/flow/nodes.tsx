@@ -3439,6 +3439,23 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
                   <option value="day">按天</option>
                 </select>
               )}
+            {dim.fieldKey && (
+              <select
+                value={dim.sort || ''}
+                onChange={(e) => {
+                  const v = e.target.value as '' | 'asc' | 'desc';
+                  const next = [...(d.dims || [])].map((x) => ({ ...x, sort: undefined as 'asc' | 'desc' | undefined }));
+                  if (v) next[idx] = { ...next[idx], sort: v };
+                  update({ dims: next });
+                }}
+                className="shrink-0 rounded-md border bg-white px-1.5 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                title="排序：全部分组维度只能选一个字段排序"
+              >
+                <option value="">排序</option>
+                <option value="asc">升序</option>
+                <option value="desc">降序</option>
+              </select>
+            )}
             {(d.dims || []).length > 1 && (
               <button
                 type="button"

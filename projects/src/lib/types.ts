@@ -450,6 +450,8 @@ export interface GroupDim {
   fieldLabel?: string;
   /** 当维度字段为日期类型时的分组粒度 */
   granularity?: DateGranularity;
+  /** 排序方向（升序/降序）：全部维度中只能有一个字段启用排序 */
+  sort?: 'asc' | 'desc';
 }
 
 /** 分组聚合节点的单个聚合指标：字段 + 聚合方式（支持对文本字段做计数/去重计数） */
