@@ -73,7 +73,7 @@ export function RuleConfigurator({
   onBack: () => void;
   meName?: string;
 }) {
-  const { state, addRule, setBuilderTables, addAlert, updateAlertStatus, addRuleGroup, removeRuleGroup } = useStore();
+  const { state, addRule, setBuilderTables, removeRuleAlertsToday, addAlert, addRuleGroup, removeRuleGroup } = useStore();
   const [rule, setRule] = useState<AlertRule>(draft);
   const [, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -149,35 +149,11 @@ export function RuleConfigurator({
       // 幂等保存：同 id 已存在则覆盖（addRule 内部按 id 去重），避免双击产生多条
       addRule(final);
       // 激活时按配置的预警动作生成/刷新预警到预警列表：
-      // 同规则同级别已有“待处理/处理中”预警则刷新其标题/描述/判断/预览（保证旧数据也能补齐），否则新增；避免重复点击翻倍。
+      // 采用「覆盖当日、保留历史日」语义——先清掉该规则当日旧预警，再用最新配置全量重新生成（带 deadline 等），
+      // 避免旧条堆积、避免逐条 UPDATE 漏带新字段。
       if (final.status === 'active') {
-        const existing = state.alerts ?? [];
-        buildAlertsForRule(final, state.tables, { stores: state.stores ?? [], employees: state.employees ?? [], persons: state.persons ?? [], orgs: state.orgs ?? [] }).forEach((a) => {
-          const hit = existing.find(
-            (x) =>
-              x.ruleId === a.ruleId &&
-              x.level === a.level &&
-              (x.status === 'new' || x.status === 'processing')
-          );
-          if (hit) {
-            updateAlertStatus(hit.id, {
-              title: a.title,
-              content: a.content,
-              reason: a.reason,
-              conditionDesc: a.conditionDesc,
-              preview: a.preview,
-              ruleName: a.ruleName,
-              deadlineAt: a.deadlineAt,
-              deadlineLabel: a.deadlineLabel,
-              graceMinutes: a.graceMinutes,
-              graceUntil: a.graceUntil,
-              escalateTo: a.escalateTo,
-              escalated: a.escalated ?? false,
-            });
-          } else {
-            addAlert(a);
-          }
-        });
+        removeRuleAlertsToday(final.id);
+        buildAlertsForRule(final, state.tables, { stores: state.stores ?? [], employees: state.employees ?? [], persons: state.persons ?? [], orgs: state.orgs ?? [] }).forEach((a) => addAlert(a));
       }
       setSaved(true);
       toast.success(mode === 'activate' ? (exists ? '规则已激活' : '规则已创建并激活') : '规则已保存');

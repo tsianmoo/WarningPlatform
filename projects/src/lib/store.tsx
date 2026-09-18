@@ -654,6 +654,7 @@ type StoreApi = {
   // alerts
   addAlert: (a: Omit<AlertTask, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateAlertStatus: (id: string, patch: Partial<AlertTask>) => void;
+  removeRuleAlertsToday: (ruleId: string) => void;
   // groups
   addRuleGroup: (name: string) => RuleGroup;
   updateRuleGroup: (id: string, name: string) => void;
@@ -1279,6 +1280,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       updateTableGroup: (id, name) => dispatch('UPDATE_TABLE_GROUP', { id, name }),
       addAlert: (alert) => dispatch('ADD_ALERT', alert),
       updateAlertStatus: (alertId, patch) => dispatch('UPDATE_ALERT', { alertId, patch }),
+      removeRuleAlertsToday: (ruleId) => {
+        const d = new Date();
+        d.setHours(0, 0, 0, 0);
+        dispatch('REMOVE_ALERTS', { ruleId, since: d.getTime() });
+      },
       addOrg: (o) => {
         const org: Organization = { ...o, id: uid('org'), createdAt: Date.now() };
         dispatch('ADD_ORG', org);
