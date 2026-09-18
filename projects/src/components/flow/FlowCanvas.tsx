@@ -39,6 +39,7 @@ import {
 import type { FlowEdge, FlowNode, Schedule, TargetSetting } from '@/lib/types';
 import { KIND_COLOR, uid } from '@/lib/types';
 import { useStore } from '@/lib/store';
+import { resolvePerm, resolveAuthAccount, canView } from '@/lib/perm';
 import { BuildCtx, createNodeData, nodeTypes } from './nodes';
 import { NodePreviewProvider } from './NodePreview';
 
@@ -389,6 +390,12 @@ export function PalettePanel({
 }) {
   const { state } = useStore();
   const [showAdd, setShowAdd] = useState(false);
+  // 预警关联展示-全量 为独立权限组件：无权限用户不显示/不可添加
+  const meName = typeof window !== 'undefined' ? (localStorage.getItem('dn_auth') ?? '') : '';
+  const me = state.persons?.find((p) => p.name === meName) ?? null;
+  const { subject } = resolveAuthAccount(state.stores ?? [], state.dealers ?? [], state.employees ?? [], meName, me);
+  const perm = resolvePerm(me, state.config, subject);
+  const canLinkviewAll = canView(perm, 'linkview_all');
   // 仅展示规则已选择的数据表，其余通过「添加数据表」展开加入
   const selected = state.tables.filter((t) => selectedTableIds.includes(t.id));
   const candidates = state.tables.filter((t) => !selectedTableIds.includes(t.id));
@@ -413,6 +420,7 @@ export function PalettePanel({
     { kind: 'calc', label: '添加公式列', desc: '公式计算追加新列·IF/拼接/日期差', payload: { kind: 'calc' }, color: KIND_COLOR.calc.border, dot: KIND_COLOR.calc.dot },
     { kind: 'linkjoin', label: '其他表添加列', desc: '跨表/节点按匹配键取列追加', payload: { kind: 'linkjoin' }, color: KIND_COLOR.linkjoin.border, dot: KIND_COLOR.linkjoin.dot },
     { kind: 'linkview', label: '预警关联展示', desc: '关联商品档案/库存/零售单·弹窗标签展示', payload: { kind: 'linkview' }, color: KIND_COLOR.linkview.border, dot: KIND_COLOR.linkview.dot },
+    { kind: 'linkview_all', label: '预警关联展示-全量', desc: '展示来源全部行·需权限', payload: { kind: 'linkview_all' }, color: KIND_COLOR.linkview_all.border, dot: KIND_COLOR.linkview_all.dot },
     { kind: 'action', label: '预警动作', desc: '终点·通知', payload: { kind: 'action' }, color: KIND_COLOR.action.border, dot: KIND_COLOR.action.dot },
   ];
 
@@ -421,7 +429,7 @@ export function PalettePanel({
     { title: '数据与窗口', kinds: ['trigger', 'base', 'relation', 'lookup', 'time', 'elapsed'] },
     { title: '筛选与排名', kinds: ['topn', 'rank', 'filter', 'diff', 'filljoin'] },
     { title: '计算与统计', kinds: ['compute', 'groupby', 'baseline', 'calc', 'linkjoin'] },
-    { title: '条件与输出', kinds: ['condition', 'logic', 'linkview', 'action'] },
+    { title: '条件与输出', kinds: ['condition', 'logic', 'linkview', 'linkview_all', 'action'] },
   ];
 
   const NODE_ICON: Record<string, ComponentType<{ size?: number; className?: string; style?: CSSProperties }>> = {
@@ -441,11 +449,13 @@ export function PalettePanel({
     baseline: BarChart3,
     linkjoin: Combine,
     linkview: SearchCheck,
+    linkview_all: SearchCheck,
     condition: GitBranch,
     logic: Waypoints,
     action: Bell,
   };
   const flowByKind = new Map(flowItems.map((it) => [it.kind, it]));
+  if (!canLinkviewAll) flowByKind.delete('linkview_all');
 
   return (
     <div className="w-60 shrink-0 overflow-y-auto border-r bg-white p-3">

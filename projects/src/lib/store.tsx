@@ -247,12 +247,13 @@ export function buildAlertsForRule(
         })
       : undefined;
     // 预警关联展示：一个或多个「预警关联展示」节点，动作节点上可勾选是否在本弹窗展示；关联数据按每条预警自己的命中行重算
-    const lvNodes = rule.flow.nodes.filter((n) => n.kind === 'linkview');
+    const lvNodes = rule.flow.nodes.filter((n) => n.kind === 'linkview' || n.kind === 'linkview_all');
     const tableRowsOf = (t?: DataTable): Array<Record<string, string | number>> =>
       (t && t.rows && t.rows.length ? t.rows : (t?.previewRows ?? [])) as unknown as Array<Record<string, string | number>>;
     const resolveLv = (lv: FlowNode, rows: Array<Record<string, string | number>>): NodePreview['linkviewData'] | undefined => {
       const tabsCfg: LinkViewTab[] = Array.isArray((lv.data as LinkViewNodeData).tabs) ? ((lv.data as LinkViewNodeData).tabs ?? []) : [];
       if (!tabsCfg.length) return { enabled: false, tabs: [] };
+      const isAll = lv.kind === 'linkview_all';
       const tabs = tabsCfg.map((tab) => {
         // 匹配键字段对：基础表字段(baseField) ↔ 关联表字段(relField)；基础表即本条预警自己的命中行
         const pairs = (Array.isArray(tab.matchKeys) ? tab.matchKeys : []).filter((k) => k && k.baseField && k.relField);
@@ -271,7 +272,8 @@ export function buildAlertsForRule(
             colNames = t.fields.map((f) => f.key);
           }
         }
-        const filtered = srcRows.filter((sr) => {
+        // 全量模式：展示来源全部行，不做基础表/命中行匹配
+        const filtered = isAll ? srcRows.slice() : srcRows.filter((sr) => {
           if (!pairs.length) return true;
           return rows.some((mr) => pairs.every((k) => String(sr[k.relField ?? ''] ?? '') === String(mr[k.baseField ?? ''] ?? '')));
         });
@@ -287,6 +289,7 @@ export function buildAlertsForRule(
         });
         return {
           name: tab.name || tab.tableName || tab.srcNodeLabel || '关联',
+          all: isAll,
           source: tab.source,
           tableName: tab.source === 'table' ? tab.tableName : undefined,
           srcNodeLabel: tab.source === 'node' ? tab.srcNodeLabel : undefined,
@@ -302,7 +305,7 @@ export function buildAlertsForRule(
     (Array.isArray(a.data.linkviews) ? a.data.linkviews : []).forEach((li) => lvEnabled.set(li.id, !!li.enabled));
     const lvLabel = (n: FlowNode) => {
       const rd = n.data as Record<string, unknown>;
-      return typeof rd?.resultLabel === 'string' && rd.resultLabel ? rd.resultLabel : '预警关联展示';
+      return typeof rd?.resultLabel === 'string' && rd.resultLabel ? rd.resultLabel : (n.kind === 'linkview_all' ? '预警关联展示-全量' : '预警关联展示');
     };
     const buildLinkviews = (rows: Array<Record<string, string | number>>): Array<{ label: string; linkview: NonNullable<NodePreview['linkviewData']> }> =>
       lvNodes

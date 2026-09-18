@@ -29,6 +29,7 @@ export const ALL_MODULES: PermModule[] = [
   'homecfg',
   'datasync',
   'perms',
+  'linkview_all',
 ];
 
 /** 岗位默认（未配置任何权限时的兜底）：所有页面及操作全放开 → 系统开箱可用，配置了岗位后才按角色收紧 */

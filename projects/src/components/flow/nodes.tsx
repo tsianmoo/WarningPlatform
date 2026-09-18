@@ -2,7 +2,7 @@
 
 import React, { memo, useEffect, useState, useMemo, useRef, createContext, useContext } from 'react';
 import { Handle, Position, useReactFlow, useEdges, useNodes, type NodeProps } from '@xyflow/react';
-import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus, ChevronDown } from 'lucide-react';
+import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, SearchCheck, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus, ChevronDown, LayoutList } from 'lucide-react';
 import CalcExprEditor, { type CalcExprEditorHandle } from './CalcExprEditor';
 import {
   KIND_COLOR,
@@ -52,6 +52,8 @@ import {
   type LinkJoinNodeData,
   type LinkViewNodeData,
   type LinkViewTab,
+  type LinkViewAllNodeData,
+  type LinkViewAllTab,
 } from '@/lib/types';
 import { useStore } from '@/lib/store';
 import TimeComponent from './TimeComponent';
@@ -78,7 +80,8 @@ type AnyData =
   | RankNodeData
   | CalcNodeData
   | LinkJoinNodeData
-  | LinkViewNodeData;
+  | LinkViewNodeData
+  | LinkViewAllNodeData;
 
 const KIND_ICON: Record<FlowNode['kind'], React.ReactNode> = {
   trigger: <Play size={13} strokeWidth={2.5} />,
@@ -102,6 +105,7 @@ const KIND_ICON: Record<FlowNode['kind'], React.ReactNode> = {
   calc: <TableProperties size={13} strokeWidth={2.5} />,
   linkjoin: <Link2 size={13} strokeWidth={2.5} />,
   linkview: <Search size={13} strokeWidth={2.5} />,
+  linkview_all: <SearchCheck size={13} strokeWidth={2.5} />,
 };
 
 function useNodeUpdater(id: string) {
@@ -246,6 +250,7 @@ function nodeKindCn(kind: FlowNode['kind']) {
     calc: '添加公式列',
     linkjoin: '其他表添加列',
     linkview: '预警关联展示',
+    linkview_all: '预警关联展示-全量',
   };
   return map[kind];
 }
@@ -606,6 +611,11 @@ function getNodeOutputs(allNodes: ReturnType<typeof useNodes>, selfId: string): 
         out.push({ ref: { nodeId: n.id, nodeKind: 'linkview', outputKind: 'column', label: '预警关联展示' } });
         break;
       }
+      case 'linkview_all': {
+        const rl = (n.data as { resultLabel?: string } | undefined)?.resultLabel;
+        out.push({ ref: { nodeId: n.id, nodeKind: 'linkview_all', outputKind: 'column', label: rl || '预警关联展示-全量' } });
+        break;
+      }
       case 'diff': {
         const df = n.data as unknown as DiffNodeData;
         out.push({ ref: { nodeId: n.id, nodeKind: 'diff', outputKind: 'column', label: str(df.resultLabel) || '反匹配结果' } });
@@ -850,6 +860,22 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
         if (f && f.key) pushUniqC({ key: f.label || f.key, label: f.label || f.key });
       }
       return base;
+    }
+    case 'linkview_all': {
+      // 全量展示：输出列 = 各标签来源（表或节点）字段，取并集；同 linkview 可作后续动作的来源
+      const outAll: ColOpt[] = [];
+      const pushU = (c: ColOpt) => {
+        if (c.key && !outAll.some((b) => b.key === c.key)) outAll.push(c);
+      };
+      for (const tb of (Array.isArray(data.tabs) ? data.tabs : []) as LinkViewAllTab[]) {
+        if (tb.source === 'node' && tb.srcNode) {
+          for (const c of inferNodeCols(allNodes, tables, tb.srcNode, seen)) pushU(c);
+        } else if (tb.tableId) {
+          const t = tables.find((x) => x.id === tb.tableId);
+          if (t) for (const f of t.fields) pushU({ key: f.key, label: f.alias || f.key });
+        }
+      }
+      return outAll;
     }
     case 'filter': {
       const src = s(data.source);
@@ -2680,7 +2706,7 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
           规则终点：输入位置插入 {`{字段名}`}，触发时替换为命中行的实际值
         </div>
         {(() => {
-          const lvs = (allNodes as unknown as FlowNode[]).filter((n) => n.kind === 'linkview' && n.id !== id);
+          const lvs = (allNodes as unknown as FlowNode[]).filter((n) => (n.kind === 'linkview' || n.kind === 'linkview_all') && n.id !== id);
           if (!lvs.length) return null;
           const cur = Array.isArray(d.linkviews) ? d.linkviews : [];
           const curMap = new Map(cur.map((x) => [x.id, x.enabled] as const));
@@ -5562,6 +5588,131 @@ const LinkViewNode = memo(function LinkViewNode({ id, data }: NodeProps) {
   );
 });
 
+const LinkViewAllNode = memo(function LinkViewAllNode({ id, data }: NodeProps) {
+  const fnode = { id, kind: 'linkview_all' as const, data, position: { x: 0, y: 0 } } as FlowNode;
+  const d = data as unknown as LinkViewAllNodeData;
+  const update = useNodeUpdater(id);
+  const tables = useRuleTables();
+  const allNodes = useNodes();
+  const allEdges = useEdges() as unknown as FlowEdge[];
+  const inputCls = 'w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-400';
+  const rowLabel = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
+  const tabs = Array.isArray(d.tabs) ? d.tabs : [];
+
+  const allFlow = allNodes as unknown as FlowNode[];
+  const allNodeOpts = allFlow
+    .filter((n) => n.id !== id && !['trigger', 'time', 'elapsed', 'baseline', 'linkview', 'linkview_all'].includes(n.kind))
+    .map((n) => {
+      const rd = n.data as Record<string, unknown>;
+      const rl = typeof rd?.resultLabel === 'string' && rd.resultLabel ? rd.resultLabel : '';
+      return { nodeId: n.id, kind: n.kind, label: rl ? `${KIND_LABEL[n.kind] ?? n.kind}·${rl}` : (KIND_LABEL[n.kind] ?? n.kind) };
+    });
+  const uniqStr = (arr: string[]) => Array.from(new Set(arr.filter((x) => x)));
+  const inEdgesById: Record<string, { source: string }[]> = {};
+  allEdges.forEach((e) => { (inEdgesById[e.target] ??= []).push(e); });
+  const colsOf = (nodeId: string, seen = new Set<string>()): string[] => {
+    if (!nodeId || seen.has(nodeId)) return [];
+    seen.add(nodeId);
+    const direct = inferNodeCols(allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>, tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, nodeId).map((c) => c.label || c.key);
+    const dr = uniqStr(direct);
+    if (dr.length) return dr;
+    for (const e of inEdgesById[nodeId] ?? []) {
+      const r = colsOf(e.source, seen);
+      if (r.length) return r;
+    }
+    return [];
+  };
+  const relCand = (tab: LinkViewAllTab): string[] => {
+    const srcFields =
+      tab.source === 'node'
+        ? (tab.srcNode ? colsOf(tab.srcNode) : [])
+        : (() => {
+            const t = tables.find((x) => x.id === tab.tableId);
+            return t ? t.fields.map((f) => f.alias || f.key) : [];
+          })();
+    return uniqStr(srcFields);
+  };
+
+  const setTab = (i: number, patch: Partial<LinkViewAllTab>) => {
+    const arr = tabs.slice();
+    arr[i] = { ...arr[i], ...patch };
+    update({ tabs: arr });
+  };
+  const addTab = () => update({ tabs: [...tabs, { name: '', source: 'table' }] });
+  const removeTab = (i: number) => update({ tabs: tabs.filter((_, k) => k !== i) });
+
+  return (
+    <NodeShell fnode={fnode}>
+      <div className="space-y-1.5">
+        <div className="rounded-md bg-purple-50 px-2 py-1 text-[10px] leading-relaxed text-purple-700">
+          展示来源数据表/节点的全部行（不受基础表与命中行过滤），供「查看预警」弹窗以标签页查看。独立组件，需在系统-权限管理中授予「预警关联展示-全量」权限才能使用与看到数据。
+        </div>
+        {tabs.length === 0 && (
+          <button type="button" onClick={addTab} className="w-full rounded-md border border-dashed border-purple-300 py-1.5 text-xs text-purple-600 hover:bg-purple-50">+ 添加全量数据来源</button>
+        )}
+        {tabs.map((tab, i) => {
+          const rc = relCand(tab);
+          const selFC = Array.isArray(tab.returnCols) ? tab.returnCols : [];
+          return (
+            <div key={i} className="rounded-md border border-gray-100 bg-gray-50/60 p-1.5">
+              <div className="flex items-center gap-1">
+                <span className="whitespace-nowrap px-1 text-[10px] font-medium text-gray-500">标签名</span>
+                <input value={tab.name ?? ''} onChange={(e) => setTab(i, { name: e.target.value })} placeholder="如：全部商品档案" className={`${inputCls} flex-1`} />
+                <button type="button" onClick={() => removeTab(i)} className="shrink-0 text-[10px] text-red-400 hover:text-red-600">删</button>
+              </div>
+              <div className={rowLabel}>数据来源</div>
+              <div className="flex gap-1">
+                {(['table', 'node'] as const).map((s2) => (
+                  <button
+                    key={s2}
+                    type="button"
+                    onClick={() => setTab(i, { source: s2, tableId: s2 === 'table' ? (tab.tableId ?? tables[0]?.id ?? '') : undefined, srcNode: s2 === 'node' ? (tab.srcNode ?? allNodeOpts[0]?.nodeId ?? '') : undefined })}
+                    className={`rounded px-1.5 py-0.5 text-[10px] ring-1 ${tab.source === s2 ? 'bg-purple-600 text-white ring-purple-600' : 'bg-white text-gray-600 ring-gray-200 hover:bg-gray-100'}`}
+                  >
+                    {s2 === 'table' ? '数据表' : '节点结果'}
+                  </button>
+                ))}
+              </div>
+              {tab.source === 'table' ? (
+                <select value={tab.tableId ?? ''} onChange={(e) => { const t = tables.find((x) => x.id === e.target.value); setTab(i, { tableId: e.target.value, tableName: t?.name }); }} className={`mt-1 ${inputCls}`}>
+                  <option value="">选择数据表…</option>
+                  {tables.map((t) => (<option key={t.id} value={t.id}>{t.name}</option>))}
+                </select>
+              ) : (
+                <select value={tab.srcNode ?? ''} onChange={(e) => { const o = allNodeOpts.find((x) => x.nodeId === e.target.value); setTab(i, { srcNode: e.target.value, srcNodeLabel: o?.label }); }} className={`mt-1 ${inputCls}`}>
+                  <option value="">选择规则内节点结果…</option>
+                  {allNodeOpts.map((o) => (<option key={o.nodeId} value={o.nodeId}>{o.label}</option>))}
+                </select>
+              )}
+              {rc.length > 0 && (
+                <div className="mt-1.5 border-t border-gray-200 pt-1.5">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-[10px] font-medium text-gray-500">返回列（可勾选，不勾默认返回全部）</span>
+                    <button type="button" onClick={() => setTab(i, { returnCols: selFC.length ? [] : rc.slice() })} className="text-[10px] text-purple-600 hover:text-purple-800">{selFC.length ? '清空' : '全选'}</button>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {rc.map((f) => {
+                      const on = selFC.includes(f);
+                      return (
+                        <button key={f} type="button" onClick={() => { const ns = on ? selFC.filter((x) => x !== f) : [...selFC, f]; setTab(i, { returnCols: ns }); }} className={`rounded px-1.5 py-0.5 text-[10px] ring-1 ${on ? 'bg-purple-500 text-white ring-purple-500' : 'bg-white text-gray-600 ring-gray-200 hover:bg-gray-100'}`}>
+                          {on ? '✓ ' : ''}{f}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {tabs.length > 0 && (
+          <button type="button" onClick={addTab} className="w-full rounded-md border border-dashed border-purple-300 py-1 text-xs text-purple-600 hover:bg-purple-50">+ 添加全量数据来源</button>
+        )}
+      </div>
+    </NodeShell>
+  );
+});
+
 export const nodeTypes = {
   trigger: TriggerNode,
   field: FieldNode,
@@ -5584,6 +5735,7 @@ export const nodeTypes = {
   calc: CalcNode,
   linkjoin: LinkJoinNode,
   linkview: LinkViewNode,
+  linkview_all: LinkViewAllNode,
 };
 
 TopNNode.displayName = 'TopNNode';
@@ -5607,6 +5759,7 @@ RankNode.displayName = 'RankNode';
 
 LinkJoinNode.displayName = 'LinkJoinNode';
 LinkViewNode.displayName = 'LinkViewNode';
+LinkViewAllNode.displayName = 'LinkViewAllNode';
 
 /** 依据 kind 创建默认数据 */
 export function createNodeData(
@@ -5809,6 +5962,8 @@ export function createNodeData(
       };
     case 'linkview':
       return { tabs: [], resultLabel: '关联展示' };
+    case 'linkview_all':
+      return { tabs: [], resultLabel: '预警关联展示-全量' };
     default:
       return {};
   }

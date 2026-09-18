@@ -27,6 +27,8 @@ import type {
   LinkJoinNodeData,
   LinkViewNodeData,
   LinkViewTab,
+  LinkViewAllNodeData,
+  LinkViewAllTab,
 } from './types';
 import { resolveTimeWindow, resolveElapsedDays, compareModes, computeCompareWindow } from './time';
 import type { TimeWindow } from './types';
@@ -93,8 +95,9 @@ export interface NodePreview {
   /** 预警关联展示：节点声明的各关联标签已按命中行解析出的关联数据（供「查看预警」弹窗标签页展示） */
   linkviewData?: {
     enabled: boolean;
+    all?: boolean;
     baseCols?: string[];
-    tabs?: Array<{ name: string; source: 'table' | 'node'; tableName?: string; srcNodeLabel?: string; matchKeys?: Array<{ baseField?: string; relField?: string }>; columns: string[]; rows: Record<string, string | number>[] }>;
+    tabs?: Array<{ name: string; source: 'table' | 'node'; all?: boolean; tableName?: string; srcNodeLabel?: string; matchKeys?: Array<{ baseField?: string; relField?: string }>; columns: string[]; rows: Record<string, string | number>[] }>;
   };
 }
 
@@ -1239,6 +1242,57 @@ function evalNode(
           ? `按基础(判断命中)与来源匹配，共匹配 ${matchedTotal} 行。来源：${tabsCfg.map((t) => t.name || t.tableName || t.srcNodeLabel || '关联').join('、')}（多标签全量在预警弹窗标签页查看）`
           : '请添加关联标签（选择数据表或节点结果 + 基础表/关联表匹配字段）',
         linkviewData: { enabled: tabs.length > 0, baseCols, tabs },
+      };
+    }
+
+    case 'linkview_all': {
+      const lva = d as unknown as LinkViewAllNodeData;
+      const tabsCfg = (Array.isArray(lva.tabs) ? lva.tabs : []).filter((t) => t && (t.tableId || t.srcNode || t.name));
+      const resolveSrc = (tab: LinkViewAllTab): { label: string; rows: Record<string, string | number>[]; cols: string[] } | null => {
+        if (tab.source === 'node') {
+          if (!tab.srcNode) return null;
+          const o = byId(tab.srcNode);
+          if (!o) return { label: tab.srcNodeLabel || '节点', rows: [], cols: [] };
+          return { label: tab.srcNodeLabel || tab.srcNode, rows: (o.rows as Record<string, string | number>[]) ?? [], cols: o.columns ?? [] };
+        }
+        const t = tables.find((x) => x.id === tab.tableId);
+        if (!t) return null;
+        return { label: tab.tableName || t.name || tab.tableId || '', rows: allRows(t) as Record<string, string | number>[], cols: t.fields.map((f) => f.key) };
+      };
+      const tabs = tabsCfg.map((tab) => {
+        const src = resolveSrc(tab);
+        const keepCols = src ? src.cols : [];
+        const rcList = (Array.isArray(tab.returnCols) ? tab.returnCols : []).map((c) => String(c)).filter((c) => c && keepCols.includes(c));
+        const projCols = Array.from(new Set(rcList.length ? rcList : keepCols));
+        const projRows = (src ? src.rows : []).map((sr) => {
+          const o: Record<string, string | number> = {};
+          projCols.forEach((c) => {
+            if (c in sr) o[c] = sr[c] as string | number;
+          });
+          return o;
+        });
+        return {
+          name: tab.name || tab.tableName || tab.srcNodeLabel || '全量数据',
+          all: true,
+          source: tab.source,
+          tableName: tab.source === 'table' ? tab.tableName : undefined,
+          srcNodeLabel: tab.source === 'node' ? tab.srcNodeLabel : undefined,
+          matchKeys: [],
+          columns: projCols,
+          rows: projRows.slice(0, 200),
+        };
+      });
+      const total = tabs.reduce((s, t) => s + t.rows.length, 0);
+      const previewTab = tabs.find((t) => t.rows.length > 0) || tabs[0];
+      return {
+        title: lva.resultLabel || '预警关联展示-全量',
+        columns: previewTab ? previewTab.columns : [],
+        rows: previewTab ? previewTab.rows.slice(0, 100) : [],
+        shape: 'table',
+        note: tabsCfg.length
+          ? `全量展示来源全部数据，共 ${total} 行。来源：${tabsCfg.map((t) => t.name || t.tableName || t.srcNodeLabel || '全量数据').join('、')}`
+          : '请添加全量数据来源（数据表或节点结果）',
+        linkviewData: { enabled: tabs.length > 0, all: true, tabs },
       };
     }
 
@@ -2818,6 +2872,10 @@ function collectNodeDataRefs(node: FlowNode): string[] {
   push((d.ref as { nodeId?: unknown } | null | undefined)?.nodeId);
   if (node.kind === 'linkview') {
     push(d.baseNode as unknown);
+    const tabs = (d.tabs as Array<{ srcNode?: string }> | null | undefined) ?? [];
+    for (const t of tabs) if (t && typeof t.srcNode === 'string' && t.srcNode) refs.push(t.srcNode);
+  }
+  if (node.kind === 'linkview_all') {
     const tabs = (d.tabs as Array<{ srcNode?: string }> | null | undefined) ?? [];
     for (const t of tabs) if (t && typeof t.srcNode === 'string' && t.srcNode) refs.push(t.srcNode);
   }

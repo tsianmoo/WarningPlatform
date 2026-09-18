@@ -808,9 +808,10 @@ export function AlertList() {
                   </div>
                 ) : null}
                 {(() => {
-                const groups =
-                  open.preview?.linkviews?.filter((g) => g.linkview?.enabled && g.linkview.tabs?.length) ??
-                  (open.preview?.linkview?.enabled && open.preview.linkview.tabs?.length
+                const canAllLv = canView(perm, 'linkview_all');
+    const groups =
+                  open.preview?.linkviews?.filter((g) => g.linkview?.enabled && g.linkview.tabs?.length && (canAllLv || !((g.linkview.tabs ?? []).some((t) => t.all)))) ??
+                  (open.preview?.linkview?.enabled && open.preview.linkview.tabs?.length && (canAllLv || !((open.preview.linkview.tabs ?? []).some((t) => t.all)))
                     ? [{ label: '预警关联展示', linkview: open.preview.linkview }]
                     : []);
                 if (!groups.length) return null;

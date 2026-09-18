@@ -74,6 +74,7 @@ export type NodeKind =
   | 'calc' // 添加列（选择数据表/节点，逐行用函数公式计算追加新列：IF/CONCAT/文本/当前日期/日期函数/时间差）
   | 'linkjoin' // 其他表添加列（把另一张表/节点结果按匹配键对齐后，取列附加到当前表）
   | 'linkview' // 预警关联展示（把相关的其他表/节点结果，用同名匹配键关联到命中数据，供查看预警弹窗以标签页展示）
+  | 'linkview_all' // 预警关联展示-全量（展示来源数据表/节点的全部行，不受基础表过滤；独立组件，按权限控制使用与数据可见）
 
 /** 比较运算符 */
 export type Operator =
@@ -716,6 +717,28 @@ export interface LinkViewNodeData {
   resultLabel?: string;
 }
 
+/** 预警关联展示-全量：单标签——选择来源数据表/节点结果，展示其全部行（不受基础表过滤），仅勾选返回列 */
+export interface LinkViewAllTab {
+  /** 标签名 */
+  name?: string;
+  /** 关联来源：table=数据表 / node=节点结果 */
+  source: 'table' | 'node';
+  tableId?: string;
+  tableName?: string;
+  srcNode?: string;
+  srcNodeLabel?: string;
+  /** 返回列：勾选的来源列名（key）。为空则返回来源全部列 */
+  returnCols?: string[];
+}
+
+/** 预警关联展示-全量节点数据：独立组件，按权限（linkview_all）控制使用与数据可见 */
+export interface LinkViewAllNodeData {
+  /** 数据来源及其它标签列表（一般一个即可；支持多来源多标签） */
+  tabs?: LinkViewAllTab[];
+  /** 结果命名（可选备注） */
+  resultLabel?: string;
+}
+
 /** 预警消息分段：弹窗展示时若 isVar 则该段为变量字段（加粗紫色） */
 export interface MsgPart {
   /** 该段文本 */
@@ -728,10 +751,12 @@ export interface MsgPart {
 export interface LinkViewResolved {
   /** 是否已配置关联展示 */
   enabled: boolean;
+  /** 是否全量展示（来自「预警关联展示-全量」节点：展示来源全部行，不受基础表过滤；本字段用于弹窗做权限控制） */
+  all?: boolean;
   /** 基础表字段（预警动作结果字段） */
   baseCols?: string[];
   /** 关联标签：每个标签已按命中行解析出关联数据 */
-  tabs?: Array<{ name: string; source: 'table' | 'node'; tableName?: string; srcNodeLabel?: string; matchKeys?: Array<{ baseField?: string; relField?: string }>; columns: string[]; rows: Record<string, string | number>[] }>;
+  tabs?: Array<{ name: string; source: 'table' | 'node'; all?: boolean; tableName?: string; srcNodeLabel?: string; matchKeys?: Array<{ baseField?: string; relField?: string }>; columns: string[]; rows: Record<string, string | number>[] }>;
 }
 
 /** 预警动作节点数据 */
@@ -830,6 +855,7 @@ export interface FlowNode {
     | CalcNodeData
     | LinkJoinNodeData
     | LinkViewNodeData
+    | LinkViewAllNodeData
     | Record<string, unknown>;
   position: { x: number; y: number };
 }
@@ -998,6 +1024,7 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   calc: '添加公式列',
   linkjoin: '其他表添加列',
   linkview: '预警关联展示',
+  linkview_all: '预警关联展示-全量',
 };
 
 /** 节点分类色 */
@@ -1026,6 +1053,7 @@ export const KIND_COLOR: Record<
   calc: { bg: '#FDF4FF', border: '#D946EF', text: '#A21CAF', dot: '#D946EF' },
   linkjoin: { bg: '#FAF5FF', border: '#9333EA', text: '#6B21A8', dot: '#9333EA' },
   linkview: { bg: '#FDF2F8', border: '#EC4899', text: '#BE185D', dot: '#EC4899' },
+  linkview_all: { bg: '#FDF4FF', border: '#A855F7', text: '#7E22CE', dot: '#A855F7' },
 };
 
 /** 预警类型（级别→类型：提醒/预警） */
@@ -1274,7 +1302,8 @@ export type PermModule =
   | 'attrs'       // 人事-属性管理
   | 'homecfg'     // 系统-首页管理
   | 'datasync'    // 数据同步平台
-  | 'perms';      // 系统-权限管理
+  | 'perms'      // 系统-权限管理
+  | 'linkview_all'; // 预警关联展示-全量（按此权限控制该节点的使用与全量数据可见）
 
 /** 权限操作码（可勾选的最小操作单元，越细越好） */
 export type PermOp =
