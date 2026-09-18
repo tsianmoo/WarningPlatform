@@ -27,7 +27,7 @@ import { uid, OPERATOR_OPTIONS, DEFAULT_HOME_CONFIG, normalizeHomeConfig } from 
 import { buildSampleTable, ensureFieldsComplete } from './parser';
 import { evaluateFlow } from './evaluate';
 import type { NodePreview } from './evaluate';
-import type { ActionNodeData, ConditionItem, ConditionNodeData, FlowNode } from './types';
+import type { ActionNodeData, ConditionItem, ConditionNodeData, FlowNode, MsgPart } from './types';
 import { manageStoreIds } from './perm';
 
 /** 判断预警是否为残缺脏数据（标题与规则名均为空且无预览，仅基础字段的残留记录） */
@@ -218,17 +218,47 @@ export function buildAlertsForRule(
         return st === 'undefined' || st === '' ? '' : st;
       }).trim();
     };
+    // 消息分段：变量字段段 isVar=true，供查看预警弹窗加粗紫色展示（模板结构在每行一致）
+    const renderParts = (row: Record<string, unknown>): MsgPart[] => {
+      if (!rawTpl) return [];
+      const parts: MsgPart[] = [];
+      let last = 0;
+      const re = /\{([^}]+)\}/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(rawTpl))) {
+        if (m.index > last) parts.push({ t: rawTpl.slice(last, m.index) });
+        const st = String(row[m[1]] ?? '');
+        parts.push({ t: st === 'undefined' || st === '' ? '' : st, isVar: true });
+        last = m.index + m[0].length;
+      }
+      if (last < rawTpl.length) parts.push({ t: rawTpl.slice(last) });
+      return parts;
+    };
     const storeMessages = hitRows.length
       ? hitRows.map((row) => {
           const r = row as Record<string, unknown>;
           return {
             store: storeCol ? String(r[storeCol] ?? '') : '',
             message: renderMsg(r, `${rule.name} 命中预警，请及时处理`),
+            parts: renderParts(r),
           };
         })
       : undefined;
+    // 预警关联展示：取规则中「预警关联展示」节点的已解析关联数据（标签页展示）
+    let linkviewData: NodePreview['linkviewData'] | undefined;
+    if (evalMap && rule.flow.nodes.some((n) => n.kind === 'linkview')) {
+      const lvNode = rule.flow.nodes.find((n) => n.kind === 'linkview');
+      if (lvNode && evalMap[lvNode.id]?.linkviewData) linkviewData = evalMap[lvNode.id].linkviewData;
+    }
+    const hit0Parts = hitRows[0] ? renderParts(hitRows[0] as Record<string, unknown>) : undefined;
     const preview = hit && hitRows.length
-      ? { columns: hit.columns, rows: hitRows, ...(storeMessages ? { storeMessages } : {}) }
+      ? {
+          columns: hit.columns,
+          rows: hitRows,
+          ...(storeMessages ? { storeMessages } : {}),
+          ...(hit0Parts ? { msgParts: hit0Parts } : {}),
+          ...(linkviewData ? { linkview: linkviewData } : {}),
+        }
       : undefined;
     // 类型/重要等级 → 兼容 level；字段模板替换（列表预览取第一行）
     const type = a.data.type;
@@ -276,7 +306,7 @@ export function buildAlertsForRule(
       });
       recipients = [{ mode: m, names: pers.map((p) => p.name) }];
     }
-    const mk = (title: string, storeMsg?: { store?: string; message?: string; }) => {
+    const mk = (title: string, storeMsg?: { store?: string; message?: string; parts?: MsgPart[] }) => {
       const curStores = storeMsg
         ? [{ store: storeMsg.store || actionTitle, message: storeMsg.message || content || `${rule.name} · ${actionTitle} 已触发，请及时处理` }]
         : (storeMessages ?? []);
@@ -300,6 +330,8 @@ export function buildAlertsForRule(
             : (preview?.rows ?? []),
           ...(curStores.length ? { storeMessages: curStores } : {}),
           ...(recipients ? { recipients: [{ mode: m, names: curNames }] } : {}),
+          ...((storeMsg?.parts ?? hit0Parts) ? { msgParts: storeMsg?.parts ?? hit0Parts } : {}),
+          ...(linkviewData ? { linkview: linkviewData } : {}),
         },
         createdBy: '系统',
         dept: notify?.departments?.[0] ?? targets?.departments?.[0] ?? '',

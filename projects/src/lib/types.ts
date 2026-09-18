@@ -73,6 +73,7 @@ export type NodeKind =
   | 'logic' // 逻辑关联（如果/且/或），串联多个判断
   | 'calc' // 添加列（选择数据表/节点，逐行用函数公式计算追加新列：IF/CONCAT/文本/当前日期/日期函数/时间差）
   | 'linkjoin' // 其他表添加列（把另一张表/节点结果按匹配键对齐后，取列附加到当前表）
+  | 'linkview' // 预警关联展示（把相关的其他表/节点结果，用同名匹配键关联到命中数据，供查看预警弹窗以标签页展示）
 
 /** 比较运算符 */
 export type Operator =
@@ -686,6 +687,36 @@ export interface LinkJoinNodeData {
   resultLabel?: string;
 }
 
+/** 预警关联展示 —— 单个关联标签：把来源表/节点结果按同名匹配键关联到命中数据 */
+export interface LinkViewTab {
+  /** 标签名（如 商品档案/库存/零售单） */
+  name: string;
+  /** 关联来源：table=数据表 / node=节点结果 */
+  source: 'table' | 'node';
+  tableId?: string;
+  tableName?: string;
+  srcNode?: string;
+  srcNodeLabel?: string;
+  /** 同名对同名匹配键（店仓对店仓/日期对日期/款色对款色），可多对 */
+  matchKeys?: Array<{ field: string }>;
+}
+
+/** 预警关联展示节点数据：声明若干关联标签，供「查看预警」弹窗以标签页展示关联数据 */
+export interface LinkViewNodeData {
+  /** 关联标签列表 */
+  tabs?: LinkViewTab[];
+  /** 结果命名（可选备注） */
+  resultLabel?: string;
+}
+
+/** 预警消息分段：弹窗展示时若 isVar 则该段为变量字段（加粗紫色） */
+export interface MsgPart {
+  /** 该段文本 */
+  t: string;
+  /** 是否为变量字段（来自 {字段} 模板替换） */
+  isVar?: boolean;
+}
+
 /** 预警动作节点数据 */
 export interface ActionNodeData {
   /** 类型：提醒 / 预警（新结构，替代 level） */
@@ -779,6 +810,7 @@ export interface FlowNode {
     | ElapsedNodeData
     | CalcNodeData
     | LinkJoinNodeData
+    | LinkViewNodeData
     | Record<string, unknown>;
   position: { x: number; y: number };
 }
@@ -946,6 +978,7 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   rank: '排名',
   calc: '添加公式列',
   linkjoin: '其他表添加列',
+  linkview: '预警关联展示',
 };
 
 /** 节点分类色 */
@@ -973,6 +1006,7 @@ export const KIND_COLOR: Record<
   rank: { bg: '#EFF6FF', border: '#2563EB', text: '#1D4ED8', dot: '#2563EB' },
   calc: { bg: '#FDF4FF', border: '#D946EF', text: '#A21CAF', dot: '#D946EF' },
   linkjoin: { bg: '#FAF5FF', border: '#9333EA', text: '#6B21A8', dot: '#9333EA' },
+  linkview: { bg: '#FDF2F8', border: '#EC4899', text: '#BE185D', dot: '#EC4899' },
 };
 
 /** 预警类型（级别→类型：提醒/预警） */
@@ -1049,6 +1083,17 @@ export interface AlertTask {
     createdBy?: string;
     /** 每个店铺/店仓的预警消息（逐行渲染 action 消息模板） */
     storeMessages?: { store: string; message: string }[];
+    /** 预警消息分段（变量字段段 isVar=true，弹窗加粗紫色展示） */
+    msgParts?: MsgPart[];
+    /** 预警关联展示（查看预警弹窗按标签页展示的关联数据，来自「预警关联展示」节点） */
+    linkview?: {
+      /** 是否已配置关联展示 */
+      enabled: boolean;
+      /** 命中数据行（用于关联取数的主键行，供弹窗展示当前命中范围） */
+      rows?: Record<string, string | number>[];
+      /** 关联标签：每个标签已按命中行解析出关联数据 */
+      tabs?: Array<{ name: string; source: 'table' | 'node'; tableName?: string; srcNodeLabel?: string; matchKeys?: Array<{ field: string }>; columns: string[]; rows: Record<string, string | number>[] }>;
+    };
     /** 解析出的通知对象（按 store/employee/person 模式展开的门店/员工/人员），供列表与详情展示 */
     recipients?: { mode: NotifyMode; names: string[] }[];
   };

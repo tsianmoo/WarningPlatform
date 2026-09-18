@@ -166,6 +166,7 @@ export function AlertList() {
   const [chatDraft, setChatDraft] = useState('');
   const [planDraft, setPlanDraft] = useState('');
   const [replyTarget, setReplyTarget] = useState<string | null>(null);
+  const [lvTab, setLvTab] = useState(0);
   const [replyDraft, setReplyDraft] = useState('');
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -715,7 +716,19 @@ export function AlertList() {
               {/* 正文 */}
               <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
                 <div className="rounded-lg border-l-2 border-violet-400 bg-violet-50/50 px-3 py-2">
-                  <p className="text-[14px] font-medium leading-relaxed text-gray-800">{open.content || open.reason || '规则命中产生预警。'}</p>
+                  <p className="text-[14px] leading-relaxed text-gray-800">
+                    {open.preview?.msgParts?.length ? (
+                      open.preview.msgParts.map((p, pi) =>
+                        p.isVar ? (
+                          <span key={pi} className="font-bold text-purple-600">{p.t}</span>
+                        ) : (
+                          <span key={pi}>{p.t}</span>
+                        )
+                      )
+                    ) : (
+                      open.content || open.reason || '规则命中产生预警。'
+                    )}
+                  </p>
                 </div>
                 {open.preview?.recipients?.length ? (
                   <div className="mt-4">
@@ -761,6 +774,59 @@ export function AlertList() {
                         ))}
                       </div>
                     ) : null}
+                  </div>
+                ) : null}
+                {open.preview?.linkview?.enabled && open.preview.linkview.tabs?.length ? (
+                  <div className="mt-4">
+                    <h4 className="mb-2 text-sm font-semibold text-pink-600">预警关联展示</h4>
+                    <div className="mb-2 flex flex-wrap gap-1">
+                      {open.preview.linkview.tabs.map((tb, ti) => {
+                        const active = (lvTab ?? 0) === ti;
+                        const label = tb.name || tb.tableName || tb.srcNodeLabel || `关联${ti + 1}`;
+                        return (
+                          <button
+                            key={ti}
+                            type="button"
+                            onClick={() => setLvTab(ti)}
+                            className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${active ? 'bg-pink-600 text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}
+                          >
+                            {label}
+                            <span className={`ml-1 text-[10px] ${active ? 'text-pink-100' : 'text-gray-300'}`}>{tb.rows?.length ?? 0}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {(() => {
+                      const tb = open.preview!.linkview!.tabs![Math.min(lvTab ?? 0, open.preview!.linkview!.tabs!.length - 1)];
+                      const cols = tb.columns ?? [];
+                      const rows = tb.rows ?? [];
+                      return (
+                        <div className="overflow-auto rounded-lg border border-gray-100">
+                          {rows.length ? (
+                            <table className="w-full border-collapse text-[11px]">
+                              <thead>
+                                <tr className="bg-gray-50/40 text-left text-gray-400">
+                                  {cols.map((c) => (
+                                    <th key={c} className="whitespace-nowrap px-2.5 py-2 font-medium">{c}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {rows.slice(0, 100).map((r, ri) => (
+                                  <tr key={ri} className="border-t border-gray-50">
+                                    {cols.map((c) => (
+                                      <td key={c} className="whitespace-nowrap px-2.5 py-2 text-gray-500">{String(r[c] ?? '')}</td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          ) : (
+                            <div className="px-3 py-3 text-xs text-gray-400">该标签暂无关联数据。</div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 ) : null}
                 {(open.resolution || open.failedReason) ? (

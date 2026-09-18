@@ -25,6 +25,8 @@ import type {
   RankNodeData,
   CalcNodeData,
   LinkJoinNodeData,
+  LinkViewNodeData,
+  LinkViewTab,
 } from './types';
 import { resolveTimeWindow, resolveElapsedDays, compareModes, computeCompareWindow } from './time';
 import type { TimeWindow } from './types';
@@ -88,6 +90,11 @@ export interface NodePreview {
   shape?: 'scalar' | 'table';
   /** 预警动作：将通知消息模板对每个命中行渲染后的实际消息（用于预览通知内容） */
   alertMessages?: { title: string; content: string }[];
+  /** 预警关联展示：节点声明的各关联标签已按命中行解析出的关联数据（供「查看预警」弹窗标签页展示） */
+  linkviewData?: {
+    enabled: boolean;
+    tabs?: Array<{ name: string; source: 'table' | 'node'; tableName?: string; srcNodeLabel?: string; matchKeys?: Array<{ field: string }>; columns: string[]; rows: Record<string, string | number>[] }>;
+  };
 }
 
 type OutputMap = Record<string, NodePreview>;
@@ -1156,6 +1163,55 @@ function evalNode(
         rows,
         shape: 'table',
         note: `按匹配键（${keys.join('、')}）对齐源「${src.from}」，取列：${addLabels.join('、')||'（未选）'}；未匹配的行留空`,
+      };
+    }
+
+    case 'linkview': {
+      const lv = d as unknown as LinkViewNodeData;
+      const tabsCfg = (Array.isArray(lv.tabs) ? lv.tabs : []).filter((t) => t && (t.tableId || t.srcNode || t.name));
+      const main = pickColumnOutput(outputs, incoming, undefined) || incoming.find((o) => o && o.rows.length > 0);
+      const mainRows = (main ? main.rows : []) as Record<string, string | number>[];
+      const resolveSource = (
+        srcCols: Array<{ key: string }>,
+        tab: LinkViewTab,
+      ): { label: string; rows: Record<string, string | number>[]; cols: string[] } | null => {
+        if (tab.source === 'node') {
+          if (!tab.srcNode) return null;
+          const o = byId(tab.srcNode);
+          if (!o || !o.rows.length) return { label: tab.srcNodeLabel || '节点', rows: [], cols: [] };
+          return { label: tab.srcNodeLabel || tab.srcNode, rows: o.rows as Record<string, string | number>[], cols: o.columns ?? [] };
+        }
+        const t = tables.find((x) => x.id === tab.tableId);
+        if (!t) return null;
+        return { label: tab.tableName || t.name || tab.tableId || '', rows: allRows(t) as Record<string, string | number>[], cols: t.fields.map((f) => f.key) };
+      };
+      const tabs = tabsCfg.map((tab) => {
+        const keys = (Array.isArray(tab.matchKeys) ? tab.matchKeys : []).map((k) => k.field).filter((x) => x && x.trim());
+        const src = resolveSource([], tab);
+        const keepCols = src && Array.isArray(src.cols) ? src.cols : [];
+        const rows = src
+          ? src.rows.filter((sr) => {
+              if (!keys.length) return true;
+              return mainRows.some((mr) => keys.every((k) => String(sr[k] ?? '') === String(mr[k] ?? '')));
+            })
+          : [];
+        return {
+          name: tab.name || tab.tableName || tab.srcNodeLabel || '关联',
+          source: tab.source,
+          tableName: tab.source === 'table' ? tab.tableName : undefined,
+          srcNodeLabel: tab.source === 'node' ? tab.srcNodeLabel : undefined,
+          matchKeys: (Array.isArray(tab.matchKeys) ? tab.matchKeys : []).filter((k) => k && k.field),
+          columns: keepCols,
+          rows: rows.slice(0, 200),
+        };
+      });
+      return {
+        title: '预警关联展示',
+        columns: main ? (main.columns ?? []) : [],
+        rows: mainRows.slice(0, 100),
+        shape: 'table',
+        note: tabsCfg.length ? `关联 ${tabsCfg.length} 个数据源（${tabsCfg.map((t) => t.name || t.tableName || t.srcNodeLabel || '关联').join('、')}），随预警弹窗标签页展示` : '请添加关联标签（选择数据表或节点结果 + 同名匹配键）',
+        linkviewData: { enabled: tabs.length > 0, tabs },
       };
     }
 
