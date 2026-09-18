@@ -6100,81 +6100,6 @@ const PivotNode = memo(function PivotNode({ id, data }: NodeProps) {
   const valueFields = Array.isArray(d.valueFields) ? d.valueFields.filter((v) => v && colKey.includes(v.field)) : [];
   const colField = d.colField && colKey.includes(d.colField) ? d.colField : '';
 
-  // 内联求值出矩阵数据
-  const matrix = useMemo(() => {
-    if (!colField || !rowFields.length || !valueFields.length) return null;
-    try {
-      const ev = src === 'node' ? evaluateFlow(allFlow, edges as unknown as FlowEdge[], tables)[srcNodeObj!.id] : undefined;
-      const rawRows: Record<string, unknown>[] = src === 'node' ? (ev?.rows as Record<string, unknown>[] ?? []) : (srcTable?.rows as Record<string, unknown>[] ?? srcTable?.previewRows ?? []);
-      if (!rawRows.length) return null;
-      const str = (v: unknown) => (v === null || v === undefined || v === '') ? '' : String(v);
-      const aggFold = (agg: string, acc: number[], v: unknown) => {
-        const n = Number(v);
-        if (!Number.isFinite(n)) return acc;
-        if (agg === 'count') { acc[0] = acc[0] + 1; return acc; }
-        acc[1] = acc[1] + n;
-        if (agg === 'min') acc[0] = acc.length ? Math.min(acc[0] === Number.MAX_SAFE_INTEGER ? n : acc[0], n) : n;
-        if (agg === 'max') acc[0] = Math.max(acc[0], n);
-        return acc;
-      };
-      const colValues: string[] = (Array.isArray(d.colOrder) && d.colOrder.length ? d.colOrder : []).concat(
-        Array.from(new Set(rawRows.map((r) => str(r[colField])))).filter((x) => x && !(d.colOrder || []).includes(x)),
-      );
-      const rowKeyAll: Record<string, string>[] = [];
-      const keyOf = (r: Record<string, unknown>) => rowFields.map((f) => str(r[f])).join('\u0001');
-      for (const r of rawRows) {
-        const k = keyOf(r);
-        if (!rowKeyAll.some((x) => keyOf(x) === k)) {
-          const rec: Record<string, string> = {};
-          rowFields.forEach((f) => { rec[f] = str(r[f]); });
-          rowKeyAll.push(rec as never);
-        }
-      }
-      const aggInit = () => { const acc: number[] = [0, 0, 1]; return acc; }; // [count, sum, n]
-      const map = new Map<string, Record<string, number[]>>();
-      for (const r of rawRows) {
-        const k = keyOf(r);
-        const cv = str(r[colField]);
-        if (!colValues.includes(cv)) continue;
-        if (!map.has(k)) map.set(k, {});
-        const rec = map.get(k)!;
-        valueFields.forEach((vf) => {
-          const key = `${vf.field}\u0001${cv}`;
-          if (!rec[key]) rec[key] = aggInit();
-          rec[key] = aggFold(vf.agg, rec[key], r[vf.field]);
-        });
-      }
-      const rows: Array<Record<string, string> & { cells: Record<string, string> }> = rowKeyAll.map((rowRec) => {
-        const rowOut: Record<string, string> = {};
-        rowFields.forEach((f) => { rowOut[f] = rowRec[f] ?? ''; });
-        const cells: Record<string, string> = {};
-        const m = map.get(keyOf(rowRec as never)) ?? {};
-        valueFields.forEach((vf) => {
-          colValues.forEach((cv) => {
-            const acc = m[`${vf.field}\u0001${cv}`];
-            let v = '';
-            if (acc) {
-              const [c, s, n] = acc;
-              if (vf.agg === 'count') v = String(c);
-              else if (n === 0) v = '—';
-              else if (vf.agg === 'avg') v = String(parseFloat((s / n).toFixed(2)));
-              else v = String(s);
-            } else {
-              v = '—';
-            }
-            cells[`${vf.field}\u0001${cv}`] = v;
-          });
-        });
-        const merged = { ...rowOut, cells } as Record<string, string> & { cells: Record<string, string> };
-        return merged;
-      });
-      return { rowFields, colValues, valueFields: valueFields.map((v) => v.field), aggMap: Object.fromEntries(valueFields.map((v) => [v.field, v.agg])), rows };
-    } catch {
-      return null;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src, srcNodeObj, srcTable, colField, rowFields, valueFields, d.colOrder, allNodes, edges, tables]);
-
   const initRef = useRef(false);
   useEffect(() => {
     if (initRef.current) return;
@@ -6236,7 +6161,7 @@ const PivotNode = memo(function PivotNode({ id, data }: NodeProps) {
               {srcCols.map((c) => (<option key={c.key} value={c.key}>{c.label}</option>))}
             </select>
 
-            <div className={rowLabel}>值字段（可多选，输出为分组列）</div>
+            <div className={rowLabel}>列分组（值字段，可多选）——每个值字段是一组横排列，例如「销量」一组、「库存」一组</div>
             {valueFields.map((vf, i) => {
               const f = srcCols.find((c) => c.key === vf.field);
               return (
@@ -6259,40 +6184,13 @@ const PivotNode = memo(function PivotNode({ id, data }: NodeProps) {
           </>
         )}
 
-        {matrix ? (
-          <div className="mt-2 overflow-x-auto rounded-md border border-gray-200">
-            <table className="min-w-max border-collapse text-[10px]">
-              <thead>
-                <tr className="bg-violet-50">
-                  {rowFields.map((f) => (<th key={f} className="whitespace-nowrap border border-gray-200 px-2 py-1 text-left font-semibold text-gray-600">{f}</th>))}
-                  {matrix.valueFields.map((vf) => (
-                    <th key={vf} colSpan={matrix.colValues.length} className="whitespace-nowrap border border-gray-200 px-2 py-1 text-center font-semibold text-violet-700">{vf}（{matrix.aggMap[vf]}）</th>
-                  ))}
-                </tr>
-                {matrix.colValues.length > 1 && (
-                  <tr>
-                    {rowFields.map((f) => (<th key={f} className="border border-gray-200"></th>))}
-                    {matrix.valueFields.flatMap((vf) => matrix.colValues.map((cv) => (
-                      <th key={`${vf}\u0001${cv}`} className="whitespace-nowrap border border-gray-200 px-2 py-1 font-medium text-gray-500">{cv}</th>
-                    )))}
-                  </tr>
-                )}
-              </thead>
-              <tbody>
-                {matrix.rows.slice(0, 50).map((r, ri) => (
-                  <tr key={ri} className={ri % 2 ? 'bg-gray-50/60' : 'bg-white'}>
-                    {rowFields.map((f) => (<td key={f} className="whitespace-nowrap border border-gray-100 px-2 py-1 text-gray-700">{String(r[f] ?? '')}</td>))}
-                    {matrix.valueFields.flatMap((vf) => matrix.colValues.map((cv) => (
-                      <td key={`${vf}\u0001${cv}`} className="whitespace-nowrap border border-gray-100 px-2 py-1 text-right tabular-nums text-gray-700">{r.cells?.[`${vf}\u0001${cv}`] ?? '—'}</td>
-                    )))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {rowFields.length && colField && valueFields.length ? (
+          <div className="mt-2 rounded-md bg-violet-50 px-2 py-1.5 text-[10px] leading-relaxed text-violet-700">
+            配置完成。点击节点右上角「预览」按钮查看透视结果表格（按行维度×列维度分组，值字段为列分组，列值尺码横排）。
           </div>
         ) : (
           <div className="mt-2 rounded-md bg-gray-50 px-2 py-1.5 text-[10px] text-gray-500">
-            {srcCols.length ? (rowFields.length && colField && valueFields.length ? '计算中…' : '请先选择行维度、列维度与值字段。') : '请先选择数据来源。'}
+            {srcCols.length ? '请先选择行维度、列维度与值字段。' : '请先选择数据来源。'}
           </div>
         )}
       </div>
