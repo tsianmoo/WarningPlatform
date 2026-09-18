@@ -210,6 +210,17 @@ export function AlertList() {
   useEffect(() => {
     if (openForSync) setPlanDraft(openForSync.plan || '');
   }, [openForSync?.id]);
+  // 规定用时超宽限期 → 标记转派（一次性），转给指定人员
+  useEffect(() => {
+    const t = openForSync;
+    if (!t) return;
+    const dlAt = t.deadlineAt ?? 0;
+    const grace = t.graceUntil ?? 0;
+    const escTo = t.escalateTo ?? [];
+    if (dlAt > 0 && Date.now() > grace && !t.escalated && escTo.length) {
+      updateAlertStatus(t.id, { escalated: true, handoffTo: escTo.join('、'), updatedAt: Date.now() });
+    }
+  }, [openId, openForSync?.escalated]);
   const activeRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     if (showHist) activeRef.current?.scrollIntoView({ block: 'nearest' });
@@ -553,6 +564,15 @@ export function AlertList() {
         if (!open) return null;
         const lv = LEVEL_META[(open.level ?? 'warn') as keyof typeof LEVEL_META] ?? LEVEL_META.warn;
         const st = STATUS_META[open.status];
+        const dlAt = open.deadlineAt ?? 0;
+        const graceUntil = open.graceUntil ?? 0;
+        const dlActive = dlAt > 0;
+        const overdue = dlActive && now > dlAt;
+        const locked = dlActive && now > graceUntil;
+        const escNames: string[] = open.escalateTo ?? [];
+        const lockedForMe = locked && !(meName && escNames.includes(meName));
+        const fmtClock = (t: number) =>
+          new Date(t).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
         const stores = open.preview?.storeMessages ?? [];
         const scopeNames = [...new Set(stores.map((s) => s.store).filter(Boolean))] as string[];
         let detailRows = open.preview?.rows ?? [];
@@ -576,6 +596,7 @@ export function AlertList() {
         const sendMsg = () => {
           const text = (chatDraft || '').trim();
           if (!text) return;
+          if (lockedForMe) { toast.error('此条预警已超时，你已没有操作权限，无法发送留言'); return; }
           updateAlertStatus(open.id, {
             comments: [...comments, { id: `c${Date.now()}`, by: meName || '当前用户', text, at: Date.now() }],
             updatedAt: Date.now(),
@@ -585,6 +606,7 @@ export function AlertList() {
         const sendReply = (cid: string) => {
           const text = (replyDraft || '').trim();
           if (!text) return;
+          if (lockedForMe) { toast.error('此条预警已超时，你已没有操作权限，无法回复'); return; }
           updateAlertStatus(open.id, {
             comments: comments.map((c) =>
               c.id === cid ? { ...c, replies: [...(c.replies ?? []), { id: `r${Date.now()}`, by: meName || '当前用户', text, at: Date.now() }] } : c
@@ -720,7 +742,7 @@ export function AlertList() {
                   {open.ruleName ? <p className="mt-0.5 truncate text-xs text-gray-400">{open.ruleName}</p> : null}
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                  {buildActions(open, updateAlertStatus, setHandoffId, openConfirm, meName).map((x) => (
+                  {buildActions(open, updateAlertStatus, setHandoffId, openConfirm, meName, lockedForMe).map((x) => (
                     <button
                       key={x.label}
                       onClick={x.fn}
@@ -737,6 +759,15 @@ export function AlertList() {
                   </button>
                 </div>
               </div>
+              {dlActive ? (
+                <div className={`mx-6 mt-3 rounded-md border px-3 py-2 text-xs leading-relaxed ${locked ? 'border-red-100 bg-red-50 text-red-600' : overdue ? 'border-amber-100 bg-amber-50 text-amber-600' : 'border-gray-100 bg-gray-50 text-gray-500'}`}>
+                  {locked
+                    ? (escNames.length ? `此条预警已超时，你已没有操作权限，已转派给 ${escNames.join('、')} 处理。` : '此条预警已超时，你已没有操作权限。')
+                    : overdue
+                    ? `已超过规定用时（${fmtClock(graceUntil)} 前未完成将锁定并转派），请在宽限期内完成操作。`
+                    : `须在 ${fmtClock(dlAt)} 前完成；超时后进入宽限期（${fmtClock(graceUntil)} 截止），超宽限期将锁定并转派给${escNames.length ? escNames.join('、') : '指定人员'}处理。`}
+                </div>
+              ) : null}
               {/* 元信息 */}
               <div className="grid grid-cols-2 gap-x-6 gap-y-2 border-y border-gray-100 bg-gray-50/40 px-6 py-3 text-xs sm:grid-cols-5">
                 <div><dt className="text-gray-400">接收人</dt><dd className="mt-0.5 truncate text-gray-700">{recipient}</dd></div>
@@ -906,7 +937,7 @@ export function AlertList() {
                   <textarea
                     value={planDraft}
                     onChange={(e) => setPlanDraft(e.target.value)}
-                    onBlur={() => { if (planDraft !== (openForSync?.plan || '')) updateAlertStatus(open.id, { plan: planDraft }); }}
+                    onBlur={() => { if (lockedForMe) return; if (planDraft !== (openForSync?.plan || '')) updateAlertStatus(open.id, { plan: planDraft }); }}
                     rows={3}
                     placeholder="请填写此条预警你的处理方式，你准备如何解决这条预警，写出可行方案，立刻执行，问题解决多了，就可以得到你心里想要的结果了"
                     className="mt-2.5 w-full resize-none rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5 text-[13px] leading-relaxed text-gray-700 outline-none transition placeholder:text-gray-300 focus:border-gray-300 focus:bg-white"
@@ -1160,10 +1191,20 @@ function buildActions(
   update: (id: string, patch: Partial<AlertTask>) => void,
   handoff: (id: string) => void,
   ask: (c: ConfirmReq) => void,
-  who = '当前用户'
+  who = '当前用户',
+  lockedForMe = false
 ): AlertAction[] {
   const N = Date.now();
   const upd = (patch: Partial<AlertTask>) => update(a.id, { ...patch, updatedAt: N });
+  const guard = () => toast.error('此条预警已超时，你已没有操作权限，操作已被禁用');
+  if (lockedForMe) {
+    return [
+      { label: '开始处理', cls: 'cursor-default bg-gray-100 text-gray-400', fn: guard },
+      { label: '完成', cls: 'cursor-default bg-gray-100 text-gray-400', fn: guard },
+      { label: '转交', cls: 'cursor-default bg-gray-100 text-gray-400', fn: guard },
+      { label: '无法完成', cls: 'cursor-default bg-gray-100 text-gray-400', fn: guard },
+    ];
+  }
   // 已完成/不可用 → 灰色；未完成且可操作 → 蓝色
   const blue = 'bg-blue-600 text-white shadow-sm hover:bg-blue-600/90';
   const gray = 'cursor-default bg-gray-100 text-gray-400';

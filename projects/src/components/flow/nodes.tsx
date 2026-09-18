@@ -2,7 +2,7 @@
 
 import React, { memo, useEffect, useState, useMemo, useRef, createContext, useContext } from 'react';
 import { Handle, Position, useReactFlow, useEdges, useNodes, type NodeProps } from '@xyflow/react';
-import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, SearchCheck, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus, ChevronDown, LayoutList } from 'lucide-react';
+import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, SearchCheck, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus, ChevronDown, LayoutList, Timer } from 'lucide-react';
 import CalcExprEditor, { type CalcExprEditorHandle } from './CalcExprEditor';
 import {
   KIND_COLOR,
@@ -54,7 +54,9 @@ import {
   type LinkViewTab,
   type LinkViewAllNodeData,
   type LinkViewAllTab,
+  type DeadlineSetting,
 } from '@/lib/types';
+import { DEFAULT_DEADLINE } from '@/lib/types';
 import { useStore } from '@/lib/store';
 import TimeComponent from './TimeComponent';
 import { useNodePreview } from './NodePreview';
@@ -120,12 +122,16 @@ function useRuleTables(): DataTable[] {
   return ids.length ? state.tables.filter((t) => ids.includes(t.id)) : state.tables;
 }
 
-/** 规则级配置（触发调度 / 通知对象）构建上下文，供开始、预警动作节点内嵌配置 */
+/** 规则级配置（触发调度 / 通知对象 / 处理时限）构建上下文，供开始、预警动作节点内嵌配置 */
 export type RuleMetaValue = {
   schedule: Schedule;
   targets: TargetSetting;
+  deadline: DeadlineSetting;
   setSchedule: (s: Schedule) => void;
   setTargets: (t: TargetSetting) => void;
+  setDeadline: (d: DeadlineSetting) => void;
+  /** 超时转派可选人员（全员名单） */
+  candidateUsers: string[];
 };
 export const BuildCtx = createContext<RuleMetaValue | null>(null);
 function useRuleMeta(): RuleMetaValue | null {
@@ -478,6 +484,144 @@ function SchedulePanel({ schedule }: { schedule: Schedule }) {
     </div>
   );
 }
+
+const DEADLINE_UNITS: { value: DeadlineSetting['unit']; label: string; ms: number }[] = [
+  { value: 'minute', label: '分钟', ms: 60_000 },
+  { value: 'hour', label: '小时', ms: 3_600_000 },
+  { value: 'day', label: '天', ms: 86_400_000 },
+  { value: 'week', label: '周', ms: 604_800_000 },
+  { value: 'month', label: '月', ms: 30 * 86_400_000 },
+];
+
+function DeadlinePanel() {
+  const meta = useRuleMeta();
+  if (!meta) return null;
+  const d = meta.deadline ?? DEFAULT_DEADLINE;
+  const set = (patch: Partial<DeadlineSetting>) => meta.setDeadline({ ...d, ...patch });
+  const row = 'mb-1.5';
+  const label = 'mb-1 text-[10px] text-gray-400';
+  const chip = (active: boolean) =>
+    `rounded px-1.5 py-0.5 text-[10px] transition ${
+      active ? 'bg-orange-600 text-white' : 'bg-white text-gray-500 hover:bg-orange-100'
+    }`;
+  const input = 'rounded-md border bg-white px-1.5 py-0.5 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-orange-300';
+  return (
+    <div className="mt-1 rounded-lg border border-orange-100 bg-orange-50/40 p-1.5">
+      <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold text-orange-700">
+        <Timer size={11} /> 规定用时（处理时限）
+        <button
+          type="button"
+          onClick={() => set({ enabled: !d.enabled })}
+          className={`ml-auto rounded-md px-1.5 py-0.5 text-[10px] transition ${
+            d.enabled ? 'bg-orange-600 text-white' : 'bg-gray-200 text-gray-500'
+          }`}
+        >
+          {d.enabled ? '已启用' : '未启用'}
+        </button>
+      </div>
+      {d.enabled && (
+        <>
+          <div className={`${row} flex flex-wrap gap-1`}>
+            {(
+              [
+                { value: 'duration', label: '相对时长' },
+                { value: 'weekly', label: '每周' },
+                { value: 'monthly', label: '每月' },
+              ] as const
+            ).map((o) => (
+              <button key={o.value} type="button" onClick={() => set({ kind: o.value })} className={chip(d.kind === o.value)}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+          {d.kind === 'duration' ? (
+            <div className={row}>
+              <div className={label}>需在生成后的</div>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={1}
+                  value={String(d.value || 30)}
+                  onChange={(e) => set({ value: Math.max(1, Number(e.target.value) || 30) })}
+                  className={`w-16 ${input}`}
+                />
+                <select value={d.unit} onChange={(e) => set({ unit: e.target.value as DeadlineSetting['unit'] })} className={input}>
+                  {DEADLINE_UNITS.map((u) => (
+                    <option key={u.value} value={u.value}>
+                      {u.label}
+                    </option>
+                  ))}
+                </select>
+                内完成
+              </div>
+            </div>
+          ) : (
+            <div className={row}>
+              <div className={label}>到期时点（取下一个到达时刻）</div>
+              <div className="flex items-center gap-1">
+                {d.kind === 'weekly' ? (
+                  <div className="flex gap-1">
+                    {WEEKDAYS.map((w) => (
+                      <button
+                        key={w.n}
+                        type="button"
+                        onClick={() => set({ weekday: w.n })}
+                        className={`h-6 w-6 rounded text-[10px] transition ${
+                          d.weekday === w.n ? 'bg-orange-600 text-white' : 'bg-white text-gray-500 hover:bg-orange-100'
+                        }`}
+                      >
+                        {w.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <input
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={String(d.monthDay || 1)}
+                    onChange={(e) => set({ monthDay: Math.min(31, Math.max(1, Number(e.target.value) || 1)) })}
+                    className={`w-16 ${input}`}
+                  />
+                )}
+                <input type="time" value={d.clock || '18:00'} onChange={(e) => set({ clock: e.target.value })} className={input} />
+              </div>
+            </div>
+          )}
+          <div className={row}>
+            <div className={label}>超时后宽限期（分钟，可操作缓冲）</div>
+            <input
+              type="number"
+              min={0}
+              value={String(d.graceMinutes ?? 20)}
+              onChange={(e) => set({ graceMinutes: Math.max(0, Number(e.target.value) || 0) })}
+              className={`w-16 ${input}`}
+            />
+          </div>
+          <div className={row}>
+            <div className={label}>超过宽限期后转派处理（可多选）</div>
+            <div className="flex flex-wrap gap-1">
+              {(meta.candidateUsers ?? []).map((u) => {
+                const active = (d.escalateTo ?? []).includes(u);
+                return (
+                  <button
+                    key={u}
+                    type="button"
+                    onClick={() => set({ escalateTo: active ? (d.escalateTo ?? []).filter((x) => x !== u) : [...(d.escalateTo ?? []), u] })}
+                    className={chip(active)}
+                  >
+                    {u}
+                  </button>
+                );
+              })}
+              {(meta.candidateUsers ?? []).length === 0 && <span className="text-[10px] text-gray-400">暂无可选人员</span>}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 const TriggerNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'trigger' as const, data, position: { x: 0, y: 0 } } as FlowNode;
   const meta = useRuleMeta();
@@ -486,6 +630,7 @@ const TriggerNode = memo(({ id, data }: NodeProps) => {
       <div className="text-sm font-medium text-gray-700">开始监测</div>
       <div className="mt-1 text-xs text-gray-400">规则触发入口 · 在此配置调度</div>
       {meta && <SchedulePanel schedule={meta.schedule} />}
+      {meta && <DeadlinePanel />}
     </NodeShell>
   );
 });

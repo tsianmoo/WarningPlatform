@@ -24,8 +24,9 @@ import type {
   PersonPermOverride,
   LinkViewTab,
   LinkViewNodeData,
+  DeadlineSetting,
 } from './types';
-import { uid, OPERATOR_OPTIONS, DEFAULT_HOME_CONFIG, normalizeHomeConfig } from './types';
+import { uid, OPERATOR_OPTIONS, DEFAULT_HOME_CONFIG, normalizeHomeConfig, DEFAULT_DEADLINE } from './types';
 import { buildSampleTable, ensureFieldsComplete } from './parser';
 import { evaluateFlow } from './evaluate';
 import type { NodePreview } from './evaluate';
@@ -178,6 +179,49 @@ export function computeAlertDims(
   }
 
   return Object.keys(dims).length ? dims : undefined;
+}
+
+const DEADLINE_UNIT_MS: Record<DeadlineSetting['unit'], number> = {
+  minute: 60_000,
+  hour: 3_600_000,
+  day: 86_400_000,
+  week: 604_800_000,
+  month: 30 * 86_400_000,
+};
+
+/** 依据开始组件「规定用时」计算某次预警的到期时刻（时间戳，未启用返回 undefined） */
+export function calcDeadline(from: number, d?: DeadlineSetting): number | undefined {
+  if (!d || !d.enabled) return undefined;
+  const [hh, mm] = (d.clock || '18:00').split(':').map((x) => Number(x) || 0);
+  const dayClock = hh * 3_600_000 + mm * 60_000;
+  if (d.kind === 'duration') {
+    const v = Math.max(0, Number(d.value) || 0);
+    return from + v * (DEADLINE_UNIT_MS[d.unit ?? 'minute'] ?? DEADLINE_UNIT_MS.minute);
+  }
+  if (d.kind === 'weekly') {
+    const target = (((d.weekday ?? 1) % 7) + 7) % 7 || 7; // 1-7 → JS 周日=0
+    let date = new Date(from);
+    let weekdayJS = date.getDay(); // 0=周日
+    if (weekdayJS === 0) weekdayJS = 7;
+    let diff = target - weekdayJS;
+    if (diff < 0 || (diff === 0 && from % 86_400_000 >= dayClock)) diff += 7;
+    const at = new Date((from - (from % 86_400_000)) + diff * 86_400_000 + dayClock);
+    return at.getTime();
+  }
+  // monthly：下一个月指定的「号」+ 时点
+  const md = Math.min(31, Math.max(1, Number(d.monthDay) || 1));
+  let base = new Date(from);
+  let year = base.getFullYear();
+  let month = base.getMonth();
+  const clamp = (y: number, mo: number) => Math.min(md, new Date(y, mo + 1, 0).getDate());
+  let cand = new Date(year, month, clamp(year, month));
+  if (cand.getTime() < from || (cand.getTime() <= from - (from % 86_400_000) + dayClock - 1 && cand.getDate() === base.getDate() && cand.getMonth() === base.getMonth())) {
+    // 本次已过 → 下月
+    year = month === 11 ? year + 1 : year;
+    month = (month + 1) % 12;
+    cand = new Date(year, month, clamp(year, month));
+  }
+  return new Date(year, month, cand.getDate(), hh, mm, 0, 0).getTime();
 }
 
 export function buildAlertsForRule(
@@ -367,6 +411,16 @@ export function buildAlertsForRule(
       recipients = [{ mode: m, names: pers.map((p) => p.name) }];
     }
     const mk = (title: string, storeMsg?: { store?: string; message?: string; parts?: MsgPart[] }) => {
+      const dl = calcDeadline(Date.now(), rule.deadline);
+      const deadlineFields = dl === undefined
+        ? {}
+        : {
+            deadlineAt: dl,
+            graceMinutes: rule.deadline?.graceMinutes ?? 20,
+            graceUntil: dl + ((rule.deadline?.graceMinutes ?? 20) * 60_000),
+            escalateTo: rule.deadline?.escalateTo ?? [],
+            escalated: false,
+          };
       const curStores = storeMsg
         ? [{ store: storeMsg.store || actionTitle, message: storeMsg.message || content || `${rule.name} · ${actionTitle} 已触发，请及时处理` }]
         : (storeMessages ?? []);
@@ -403,6 +457,7 @@ export function buildAlertsForRule(
         storeIds: Array.from(new Set(curStores.map((s) => storesList.find((x) => x.name === s.store)?.id).filter(Boolean) as string[])),
         dealerIds: Array.from(new Set(storesList.filter((x) => curStores.some((s) => s.store === x.name)).map((x) => x.dealerId).filter(Boolean) as string[])),
         notified: curNames.slice(),
+        ...deadlineFields,
         status: 'new' as const,
       };
       return { ...obj, dims: computeAlertDims(obj, storesList) };
@@ -639,6 +694,7 @@ export function makeDefaultRule(): AlertRule {
     flow: { nodes: [], edges: [] },
     schedule: makeDefaultSchedule(),
     targets: { departments: [], personnel: [] },
+    deadline: { ...DEFAULT_DEADLINE },
     executions: [],
   };
 }

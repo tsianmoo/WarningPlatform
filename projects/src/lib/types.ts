@@ -894,6 +894,40 @@ export interface Schedule {
   nextTriggerAt: string;
 }
 
+/** 处理时限（开始组件「规定用时」）：预警生成后须在该时限内处理，超时则提示/锁定/转派 */
+export interface DeadlineSetting {
+  /** 是否启用处理时限 */
+  enabled: boolean;
+  /** 到期计算方式：duration=相对时长；weekly=每周几几点；monthly=每月几号几点 */
+  kind: 'duration' | 'weekly' | 'monthly';
+  /** 相对时长单位 */
+  unit: 'minute' | 'hour' | 'day' | 'week' | 'month';
+  /** 相对时长数值 */
+  value: number;
+  /** 每周几（1-7，周一=1） */
+  weekday: number;
+  /** 每月几号（1-31） */
+  monthDay: number;
+  /** 到期时点 HH:mm（weekly/monthly 使用） */
+  clock: string;
+  /** 宽限期（分钟）：超时后仍可操作的缓冲时长，默认 20 */
+  graceMinutes: number;
+  /** 超过宽限期后转派处理的人员（可多选） */
+  escalateTo: string[];
+}
+
+export const DEFAULT_DEADLINE: DeadlineSetting = {
+  enabled: false,
+  kind: 'duration',
+  unit: 'minute',
+  value: 30,
+  weekday: 5,
+  monthDay: 1,
+  clock: '18:00',
+  graceMinutes: 20,
+  escalateTo: [],
+};
+
 // ============ 通知对象 ============
 
 /** 通知对象来源方式 */
@@ -971,6 +1005,7 @@ export interface AlertRule {
   flow: { nodes: FlowNode[]; edges: FlowEdge[] };
   schedule: Schedule;
   targets: TargetSetting;
+  deadline: DeadlineSetting;
   executions: ExecutionRecord[];
 }
 
@@ -1144,6 +1179,16 @@ export interface AlertTask {
     /** 解析出的通知对象（按 store/employee/person 模式展开的门店/员工/人员），供列表与详情展示 */
     recipients?: { mode: NotifyMode; names: string[] }[];
   };
+  /** 处理时限到期（时间戳，来自开始组件「规定用时」） */
+  deadlineAt?: number;
+  /** 宽限期（分钟） */
+  graceMinutes?: number;
+  /** 宽限期截止（= deadlineAt + graceMinutes），超过则锁定并转派 */
+  graceUntil?: number;
+  /** 超时转派对象（可多选） */
+  escalateTo?: string[];
+  /** 是否已超时转派 */
+  escalated?: boolean;
   /** 创建人（展示用，持久化于 preview.createdBy） */
   createdBy?: string;
   dept: string;

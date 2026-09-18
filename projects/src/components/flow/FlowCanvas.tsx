@@ -36,7 +36,7 @@ import {
   Bell,
   SearchCheck,
 } from 'lucide-react';
-import type { FlowEdge, FlowNode, Schedule, TargetSetting } from '@/lib/types';
+import type { FlowEdge, FlowNode, Schedule, TargetSetting, DeadlineSetting } from '@/lib/types';
 import { KIND_COLOR, uid } from '@/lib/types';
 import { useStore } from '@/lib/store';
 import { resolvePerm, resolveAuthAccount, canView } from '@/lib/perm';
@@ -331,6 +331,9 @@ export function FlowEditor({
   targets,
   onSchedule,
   onTargets,
+  deadline,
+  onDeadline,
+  candidateUsers = [],
 }: {
   nodes: FlowNode[];
   edges: FlowEdge[];
@@ -339,10 +342,21 @@ export function FlowEditor({
   targets: TargetSetting;
   onSchedule: (s: Schedule) => void;
   onTargets: (t: TargetSetting) => void;
+  deadline: DeadlineSetting;
+  onDeadline: (d: DeadlineSetting) => void;
+  candidateUsers?: string[];
 }) {
   const ctx = useMemo(
-    () => ({ schedule, targets, setSchedule: onSchedule, setTargets: onTargets }),
-    [schedule, targets, onSchedule, onTargets]
+    () => ({
+      schedule,
+      targets,
+      deadline,
+      candidateUsers,
+      setSchedule: onSchedule,
+      setTargets: onTargets,
+      setDeadline: onDeadline,
+    }),
+    [schedule, targets, deadline, candidateUsers, onSchedule, onTargets, onDeadline]
   );
 
   return (
