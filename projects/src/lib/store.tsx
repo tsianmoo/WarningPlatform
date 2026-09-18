@@ -275,14 +275,24 @@ export function buildAlertsForRule(
           if (!pairs.length) return true;
           return rows.some((mr) => pairs.every((k) => String(sr[k.relField ?? ''] ?? '') === String(mr[k.baseField ?? ''] ?? '')));
         });
+        // 返回列：勾选则只保留这些列；未勾选默认返回来源全部列
+        const rcList = (Array.isArray(tab.returnCols) ? tab.returnCols : []).map((c) => String(c)).filter((c) => c && colNames.includes(c));
+        const projCols = rcList.length ? rcList : colNames;
+        const projRows = filtered.map((sr) => {
+          const o: Record<string, string | number> = {};
+          projCols.forEach((c) => {
+            if (c in sr) o[c] = sr[c] as string | number;
+          });
+          return o;
+        });
         return {
           name: tab.name || tab.tableName || tab.srcNodeLabel || '关联',
           source: tab.source,
           tableName: tab.source === 'table' ? tab.tableName : undefined,
           srcNodeLabel: tab.source === 'node' ? tab.srcNodeLabel : undefined,
           matchKeys: pairs,
-          columns: colNames,
-          rows: filtered.slice(0, 200),
+          columns: projCols,
+          rows: projRows.slice(0, 200),
         };
       });
       return { enabled: true, tabs };

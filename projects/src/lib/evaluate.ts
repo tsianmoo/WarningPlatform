@@ -1201,6 +1201,15 @@ function evalNode(
               return mainRows.some((mr) => pairs.every((k) => String(sr[k.relField ?? ''] ?? '') === String(mr[k.baseField ?? ''] ?? '')));
             })
           : [];
+        const rcList = (Array.isArray(tab.returnCols) ? tab.returnCols : []).map((c) => String(c)).filter((c) => c && keepCols.includes(c));
+        const projCols = rcList.length ? rcList : keepCols;
+        const projRows = rows.map((sr) => {
+          const o: Record<string, string | number> = {};
+          projCols.forEach((c) => {
+            if (c in sr) o[c] = sr[c] as string | number;
+          });
+          return o;
+        });
         return {
           name: tab.name || tab.tableName || tab.srcNodeLabel || '关联',
           source: tab.source,
@@ -1208,8 +1217,8 @@ function evalNode(
           srcNodeLabel: tab.source === 'node' ? tab.srcNodeLabel : undefined,
           matchKeys: pairs,
           baseCols,
-          columns: keepCols,
-          rows: rows.slice(0, 200),
+          columns: projCols,
+          rows: projRows.slice(0, 200),
         };
       });
       return {

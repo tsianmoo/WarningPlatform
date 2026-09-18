@@ -699,6 +699,8 @@ export interface LinkViewTab {
   srcNodeLabel?: string;
   /** 匹配键字段对（如 基础表[顾客手机] ↔ 关联表[顾客手机]），可多对 */
   matchKeys?: Array<{ baseField?: string; relField?: string }>;
+  /** 返回列：勾选的来源列名（key）。为空则返回来源全部列 */
+  returnCols?: string[];
 }
 
 /** 预警关联展示节点数据：以预警动作结果为基础上表，声明若干关联标签，供「查看预警」弹窗以标签页展示关联数据 */

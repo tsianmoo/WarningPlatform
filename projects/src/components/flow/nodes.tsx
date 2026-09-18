@@ -5461,6 +5461,7 @@ const LinkViewNode = memo(function LinkViewNode({ id, data }: NodeProps) {
         {tabs.map((tab, i) => {
           const keys = Array.isArray(tab.matchKeys) ? tab.matchKeys : [];
           const rc = relCand(tab);
+          const selFC = Array.isArray(tab.returnCols) ? tab.returnCols : [];
           return (
             <div key={i} className="rounded-md border border-gray-100 bg-gray-50/60 p-1.5">
               <div className="flex items-center gap-1">
@@ -5509,6 +5510,24 @@ const LinkViewNode = memo(function LinkViewNode({ id, data }: NodeProps) {
                 </div>
               ))}
               <button type="button" onClick={() => setTab(i, { matchKeys: [...keys, { baseField: baseCols[0] ?? '', relField: rc[0] ?? '' }] })} className="mt-0.5 text-[10px] text-pink-600 hover:text-pink-800">+ 添加匹配字段</button>
+              {rc.length > 0 && (
+                <div className="mt-1.5 border-t border-gray-200 pt-1.5">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-[10px] font-medium text-gray-500">返回列（可勾选，不勾默认返回全部）</span>
+                    <button type="button" onClick={() => setTab(i, { returnCols: selFC.length ? [] : rc.slice() })} className="text-[10px] text-pink-600 hover:text-pink-800">{selFC.length ? '清空' : '全选'}</button>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {rc.map((f) => {
+                      const on = selFC.includes(f);
+                      return (
+                        <button key={f} type="button" onClick={() => { const ns = on ? selFC.filter((x) => x !== f) : [...selFC, f]; setTab(i, { returnCols: ns }); }} className={`rounded px-1.5 py-0.5 text-[10px] ring-1 ${on ? 'bg-pink-500 text-white ring-pink-500' : 'bg-white text-gray-600 ring-gray-200 hover:bg-gray-100'}`}>
+                          {on ? '✓ ' : ''}{f}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
