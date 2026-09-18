@@ -40,7 +40,7 @@ const fmtSchedule = (s?: { repeatType?: string; timeOfDay?: string; nextTriggerA
 };
 import type { AlertRule, DataTable, FlowEdge, FlowNode, RuleGroup } from '@/lib/types';
 import { uid } from '@/lib/types';
-import { useStore, makeDefaultRule, createPendingExecution, computeNextTrigger, buildAlertsForRule } from '@/lib/store';
+import { useStore, makeDefaultRule, createPendingExecution, computeNextTrigger, buildAlertsForRule, validateRuleTimeout } from '@/lib/store';
 import { PalettePanel, FlowEditor } from './flow/FlowCanvas';
 import { toast } from 'sonner';
 
@@ -120,6 +120,11 @@ export function RuleConfigurator({
         }
         if (!hasTargets) {
           toast.error('请至少选择通知部门或人员');
+          return;
+        }
+        const tErr = validateRuleTimeout(r);
+        if (tErr) {
+          toast.error(tErr);
           return;
         }
       }

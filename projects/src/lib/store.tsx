@@ -238,6 +238,29 @@ function resolveEscalateNames(t?: TargetSetting, ctx?: BuildAlertCtx): string[] 
   return (t?.personnel ?? []).slice();
 }
 
+/**
+ * 激活前置校验：预警规则必须包含「超时动作」节点；
+ * 若该节点开关开启，则必须已配置规定用时 + 指定转派人员，否则不允许激活。
+ * 返回错误提示；无错误时返回空串。
+ */
+export function validateRuleTimeout(r: AlertRule): string {
+  const tNodes = r.flow.nodes.filter((n) => n.kind === 'timeout');
+  if (tNodes.length === 0) return '请至少添加一个「超时动作」节点，配置完成后才能激活';
+  for (const tn of tNodes) {
+    const data = tn.data as unknown as { deadline?: DeadlineSetting; escalateTarget?: TargetSetting };
+    const d = data?.deadline;
+    if (!d || !d.enabled) continue; // 开关关闭：允许直接激活
+    const okDeadline = d.kind === 'duration' ? (d.value ?? 0) > 0 && !!d.unit : !!d.clock;
+    if (!okDeadline) return '已开启「超时动作」，请先配置规定用时';
+    const esc = data?.escalateTarget;
+    const okEsc =
+      !!esc &&
+      (esc.mode === 'manual' ? (esc.personnel ?? []).length > 0 : (esc.personPositions ?? []).length > 0 || (esc.personPosts ?? []).length > 0);
+    if (!okEsc) return '已开启「超时动作」，超时后必须指定转派人员';
+  }
+  return '';
+}
+
 export function buildAlertsForRule(
   rule: AlertRule,
   tables?: DataTable[],
