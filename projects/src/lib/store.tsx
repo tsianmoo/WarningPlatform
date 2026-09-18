@@ -52,6 +52,22 @@ export function normalizeHrAttrs(attrs: unknown[]): HrAttribute[] {
   });
 }
 
+/** 归一化数据表：兜底缺失的 fields/previewRows/rows/rowCount，避免渲染期读取 undefined.length 崩溃（如恢复的表缺 previewRows/rows） */
+function normalizeTables(tables: unknown[]): DataTable[] {
+  return (tables ?? []).map((t) => {
+    const table = t as DataTable;
+    const rows = Array.isArray(table.rows) ? table.rows : [];
+    const fields = ensureFieldsComplete(Array.isArray(table.fields) ? table.fields : [], rows);
+    return {
+      ...table,
+      fields,
+      previewRows: Array.isArray(table.previewRows) ? table.previewRows : [],
+      rows,
+      rowCount: typeof table.rowCount === 'number' ? table.rowCount : rows.length,
+    };
+  });
+}
+
 /** 拼接“为什么预警”的判断规则描述，如：如果未开单天数大于平均未开单天数，提醒 */
 function buildConditionDesc(nodes: FlowNode[]): string {
   const opLabel = (op: string | undefined) => OPERATOR_OPTIONS.find((o) => o.value === op)?.label ?? String(op ?? '');
@@ -759,7 +775,7 @@ function migrateState(raw: AppState | null): AppState {
     return { ...r, tableIds };
   });
   const cfg = normalizeHomeConfig(raw.config);
-  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [], hrAttributes: normalizeHrAttrs((Array.isArray(raw.hrAttributes) ? raw.hrAttributes : []).filter((a) => (a.category ?? 'person') !== ('org' as never))), dealers: Array.isArray(raw.dealers) ? raw.dealers : [], stores: Array.isArray(raw.stores) ? raw.stores : [], employees: Array.isArray(raw.employees) ? raw.employees : [], config: cfg, permissions: Array.isArray(cfg.permissions) ? cfg.permissions : (Array.isArray(raw.permissions) ? raw.permissions : []), permOverrides: Array.isArray(cfg.permOverrides) ? cfg.permOverrides : (Array.isArray(raw.permOverrides) ? raw.permOverrides : []) };
+  return { ...raw, tables: normalizeTables(raw.tables), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [], hrAttributes: normalizeHrAttrs((Array.isArray(raw.hrAttributes) ? raw.hrAttributes : []).filter((a) => (a.category ?? 'person') !== ('org' as never))), dealers: Array.isArray(raw.dealers) ? raw.dealers : [], stores: Array.isArray(raw.stores) ? raw.stores : [], employees: Array.isArray(raw.employees) ? raw.employees : [], config: cfg, permissions: Array.isArray(cfg.permissions) ? cfg.permissions : (Array.isArray(raw.permissions) ? raw.permissions : []), permOverrides: Array.isArray(cfg.permOverrides) ? cfg.permOverrides : (Array.isArray(raw.permOverrides) ? raw.permOverrides : []) };
 }
 
 function loadInitial(): AppState {
@@ -1210,7 +1226,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const alertsPatched = backfillDeadlines(rules, loadedAlerts, remote.persons ?? [], remote.orgs ?? []);
         setState((s) => ({
           ...s,
-          tables: (tables ?? []).map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })),
+          tables: normalizeTables(tables),
           rules,
           ruleGroups: remote.ruleGroups ?? [],
           tableGroups: remote.tableGroups ?? [],
