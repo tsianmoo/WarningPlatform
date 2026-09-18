@@ -76,6 +76,7 @@ export type NodeKind =
   | 'linkview' // 预警关联展示（把相关的其他表/节点结果，用同名匹配键关联到命中数据，供查看预警弹窗以标签页展示）
   | 'linkview_all' // 预警关联展示-全量（展示来源数据表/节点的全部行，不受基础表过滤；独立组件，按权限控制使用与数据可见）
   | 'timeout' // 超时动作（挂在预警动作后：规定用时+宽限期+超时转派对象，到预警动作这一步才知道超期转交谁）
+  | 'pivot' // 透视表（对来源数据/节点结果按 行维度+列维度 交叉透视，值字段聚合，输出多级表头矩阵表）
 
 /** 比较运算符 */
 export type Operator =
@@ -753,6 +754,37 @@ export interface MsgPart {
   isVar?: boolean;
 }
 
+/** 透视表数值字段聚合方式 */
+export type PivotAgg = 'sum' | 'avg' | 'count' | 'min' | 'max';
+
+/** 透视表值字段：选一个数值/文本字段 + 聚合方式 */
+export interface PivotValueField {
+  /** 来源字段名 */
+  field: string;
+  /** 聚合方式 */
+  agg: PivotAgg;
+}
+
+/** 透视表（交叉矩阵）展示节点数据：对来源行按 行维度字段组合 × 列维度字段值 交叉分组，值字段聚合；输出多级表头矩阵 */
+export interface PivotNodeData {
+  /** 数据来源：table=数据表 / node=节点结果 */
+  source: 'table' | 'node';
+  tableId?: string;
+  tableName?: string;
+  srcNode?: string;
+  srcNodeLabel?: string;
+  /** 行维度字段（如 店仓/款号/颜色/断码判断），按组合去重作为每行 */
+  rowFields?: string[];
+  /** 列维度字段（如 尺码），其取值作为列的二级表头（配合 值字段 分组成一级表头） */
+  colField?: string;
+  /** 列维度取值顺序（如 S/M/L/XL/XXL），不填则按出现顺序 */
+  colOrder?: string[];
+  /** 值字段（如 销量/销量占比/库存） + 聚合方式 */
+  valueFields?: PivotValueField[];
+  /** 结果命名（可选备注） */
+  resultLabel?: string;
+}
+
 /** 预警关联展示：查看预警弹窗按标签页展示的关联数据 */
 export interface LinkViewResolved {
   /** 是否已配置关联展示 */
@@ -1080,6 +1112,7 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   linkjoin: '其他表添加列',
   linkview: '预警关联展示',
   linkview_all: '预警关联展示-全量',
+  pivot: '透视表',
   timeout: '超时动作',
 };
 
@@ -1110,6 +1143,7 @@ export const KIND_COLOR: Record<
   linkjoin: { bg: '#FAF5FF', border: '#9333EA', text: '#6B21A8', dot: '#9333EA' },
   linkview: { bg: '#FDF2F8', border: '#EC4899', text: '#BE185D', dot: '#EC4899' },
   linkview_all: { bg: '#FDF4FF', border: '#A855F7', text: '#7E22CE', dot: '#A855F7' },
+  pivot: { bg: '#F5F3FF', border: '#7C3AED', text: '#5B21B6', dot: '#7C3AED' },
   timeout: { bg: '#FFF1F2', border: '#F43F5E', text: '#BE123C', dot: '#F43F5E' },
 };
 

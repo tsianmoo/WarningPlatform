@@ -199,18 +199,44 @@ function PreviewModal({ state, onClose }: { state: PreviewState; onClose: () => 
                     className="max-h-[70vh] w-full overflow-auto overscroll-x-contain"
                   >
                     <table className="min-w-max border-collapse text-[12px]">
-                      <thead>
-                        <tr className="bg-gray-50">
-                          {r.columns.map((c) => (
-                            <th
-                              key={c}
-                              className="sticky top-0 z-[1] whitespace-nowrap border-b border-gray-200 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-600"
-                            >
-                              {c}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
+                      {r.pivotInfo ? (() => {
+                        const vf = r.pivotInfo!.valueFields;
+                        const cv = r.pivotInfo!.colValues;
+                        const rf = r.pivotInfo!.rowFields;
+                        return (
+                          <thead>
+                            <tr className="bg-violet-50">
+                              {rf.map((f) => (
+                                <th key={f} className="sticky top-0 z-[1] whitespace-nowrap border-b border-gray-200 bg-violet-50 px-3 py-2 text-left font-semibold text-gray-600">{f}</th>
+                              ))}
+                              {vf.map((v) => (
+                                <th key={v.field} colSpan={Math.max(cv.length, 1)} className="sticky top-0 z-[1] whitespace-nowrap border-b border-gray-200 bg-violet-50 px-3 py-2 text-center font-semibold text-violet-700">{v.field}（{v.agg}）</th>
+                              ))}
+                            </tr>
+                            {cv.length > 1 && (
+                              <tr className="bg-violet-50/60">
+                                {rf.map((f) => (<th key={f} className="sticky top-9 z-[1] border-b border-gray-200 bg-violet-50/60"></th>))}
+                                {vf.flatMap((v) => cv.map((c) => (
+                                  <th key={`${v.field}\u0001${c}`} className="sticky top-9 z-[1] whitespace-nowrap border-b border-gray-200 bg-violet-50/60 px-3 py-1.5 font-medium text-gray-500">{c}</th>
+                                )))}
+                              </tr>
+                            )}
+                          </thead>
+                        );
+                      })() : (
+                        <thead>
+                          <tr className="bg-gray-50">
+                            {r.columns.map((c) => (
+                              <th
+                                key={c}
+                                className="sticky top-0 z-[1] whitespace-nowrap border-b border-gray-200 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-600"
+                              >
+                                {c}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                      )}
                       <tbody>
                         {r.rows.length === 0 ? (
                           <tr>

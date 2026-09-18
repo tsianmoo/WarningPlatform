@@ -29,6 +29,8 @@ import type {
   LinkViewTab,
   LinkViewAllNodeData,
   LinkViewAllTab,
+  PivotNodeData,
+  PivotAgg,
 } from './types';
 import { resolveTimeWindow, resolveElapsedDays, compareModes, computeCompareWindow } from './time';
 import type { TimeWindow } from './types';
@@ -99,6 +101,8 @@ export interface NodePreview {
     baseCols?: string[];
     tabs?: Array<{ name: string; source: 'table' | 'node'; all?: boolean; tableName?: string; srcNodeLabel?: string; matchKeys?: Array<{ baseField?: string; relField?: string }>; columns: string[]; rows: Record<string, string | number>[] }>;
   };
+  /** 透视表结构信息（供节点预览渲染分组表头） */
+  pivotInfo?: { rowFields: string[]; colField: string; colValues: string[]; valueFields: Array<{ field: string; agg: string }> };
 }
 
 type OutputMap = Record<string, NodePreview>;
@@ -1312,6 +1316,85 @@ function evalNode(
           ? `按匹配字段${hasPairs ? `（${baseValNote}）` : ''}展示来源全部匹配行，共 ${total} 行。来源：${tabsCfg.map((t) => t.name || t.tableName || t.srcNodeLabel || '全量数据').join('、')}`
           : '请添加全量数据来源（数据表或节点结果）',
         linkviewData: { enabled: tabs.length > 0, all: true, tabs },
+      };
+    }
+
+    case 'pivot': {
+      const pv = d as unknown as PivotNodeData;
+      const srcRows: Record<string, string | number>[] = pv.source === 'node'
+        ? (pv.srcNode ? ((byId(pv.srcNode)?.rows ?? []) as Record<string, string | number>[]) : [])
+        : (allRows(tables.find((t) => t.id === pv.tableId)) as Record<string, string | number>[]);
+      const rowFields = (Array.isArray(pv.rowFields) ? pv.rowFields : []).filter((f) => typeof f === 'string' && f);
+      const colField = pv.colField || '';
+      const vfs = (Array.isArray(pv.valueFields) ? pv.valueFields : []).filter((v) => v && v.field);
+      const str = (v: unknown) => (v === null || v === undefined || v === '') ? '' : String(v);
+      const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : Number.NaN; };
+      if (!srcRows.length || !rowFields.length || !colField || !vfs.length) {
+        return {
+          title: pv.resultLabel || '透视表',
+          columns: rowFields,
+          rows: [],
+          shape: 'table',
+          unsupported: !srcRows.length,
+          note: srcRows.length ? (rowFields.length && colField && vfs.length ? `正在透视…` : '请先配置行维度、列维度与值字段。') : '来源暂无数据行，请先确认数据源有数据。',
+        };
+      }
+      const keyOf = (r: Record<string, string | number>) => rowFields.map((f) => str(r[f])).join('\u0001');
+      const rowKeys: string[] = [];
+      const rowRecs: { key: string; cells: Record<string, unknown> }[] = [];
+      for (const r of srcRows) {
+        const k = keyOf(r);
+        if (!rowKeys.includes(k)) { rowKeys.push(k); const cr: Record<string, unknown> = {}; rowFields.forEach((f) => { cr[f] = r[f]; }); rowRecs.push({ key: k, cells: cr }); }
+      }
+      const colVals: string[] = (Array.isArray(pv.colOrder) && pv.colOrder.length ? pv.colOrder.slice() : []).concat(
+        Array.from(new Set(srcRows.map((r) => str(r[colField])))).filter((x) => x && !!x && !(pv.colOrder || []).includes(x)),
+      );
+      // 每个 值字段 × 每个 列值 → 聚合
+      const fold = (agg: PivotAgg, acc: { cnt: number; sum: number; min: number; max: number }, v: unknown): { cnt: number; sum: number; min: number; max: number } => {
+        const n = num(v);
+        if (Number.isNaN(n)) return agg === 'count' ? { ...acc, cnt: acc.cnt + 1 } : acc;
+        return { cnt: acc.cnt + 1, sum: acc.sum + n, min: Math.min(acc.min, n), max: Math.max(acc.max, n) };
+      };
+      const mCell = new Map<string, { cnt: number; sum: number; min: number; max: number }>();
+      for (const r of srcRows) {
+        const k = keyOf(r);
+        const cv = str(r[colField]);
+        if (!colVals.includes(cv)) continue;
+        vfs.forEach((vf) => {
+          const cellKey = `${k}\u0001${vf.field}\u0001${cv}`;
+          const acc = mCell.get(cellKey) ?? { cnt: 0, sum: 0, min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY };
+          mCell.set(cellKey, fold(vf.agg, acc, r[vf.field]));
+        });
+      }
+      const fmt = (agg: PivotAgg, acc?: { cnt: number; sum: number; min: number; max: number }): string => {
+        if (!acc) return '—';
+        if (agg === 'count') return String(acc.cnt);
+        if (agg === 'avg') { const n = acc.cnt; return n ? String(+((acc.sum / n).toFixed(2))) : '—'; }
+        if (agg === 'min') return Number.isFinite(acc.min) ? String(+acc.min.toFixed(2)) : '—';
+        if (agg === 'max') return Number.isFinite(acc.max) ? String(+acc.max.toFixed(2)) : '—';
+        return String(+acc.sum.toFixed(2));
+      };
+      const outCols: string[] = rowFields.slice();
+      vfs.forEach((vf) => { colVals.forEach((cv) => { outCols.push(`${vf.field}·${cv}`); }); });
+      const outRows: Record<string, string | number>[] = rowRecs.map((rowRec) => {
+        const o: Record<string, string | number> = {};
+        rowFields.forEach((f) => { o[f] = rowRec.cells[f] as string | number; });
+        vfs.forEach((vf) => {
+          colVals.forEach((cv) => {
+            const acc = mCell.get(`${rowRec.key}\u0001${vf.field}\u0001${cv}`);
+            o[`${vf.field}·${cv}`] = fmt(vf.agg, acc);
+          });
+        });
+        return o;
+      });
+      return {
+        title: pv.resultLabel || '透视表',
+        columns: outCols,
+        rows: outRows.slice(0, 100),
+        shape: 'table',
+        allCols: outCols,
+        note: `来源 ${srcRows.length} 行 → 透视 ${rowRecs.length} 行 × ${colVals.length} 个列值。行维度：${rowFields.join('、')}；列维度：${colField}；值：${vfs.map((v) => `${v.field}(${v.agg})`).join('、')}。`,
+        pivotInfo: { rowFields, colField, colValues: colVals, valueFields: vfs },
       };
     }
 
@@ -2901,6 +2984,9 @@ function collectNodeDataRefs(node: FlowNode): string[] {
     push(d.baseNode as unknown);
     const tabs = (d.tabs as Array<{ srcNode?: string }> | null | undefined) ?? [];
     for (const t of tabs) if (t && typeof t.srcNode === 'string' && t.srcNode) refs.push(t.srcNode);
+  }
+  if (node.kind === 'pivot') {
+    push(d.srcNode as unknown);
   }
   const ex = (d.expr as { left?: { nodeId?: unknown }; ref?: { nodeId?: unknown } } | null | undefined);
   push(ex?.left?.nodeId);

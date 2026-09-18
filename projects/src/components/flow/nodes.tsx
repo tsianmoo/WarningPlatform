@@ -2,7 +2,7 @@
 
 import React, { memo, useEffect, useState, useMemo, useRef, createContext, useContext } from 'react';
 import { Handle, Position, useReactFlow, useEdges, useNodes, type NodeProps } from '@xyflow/react';
-import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, SearchCheck, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus, ChevronDown, LayoutList, Timer } from 'lucide-react';
+import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, SearchCheck, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus, ChevronDown, LayoutList, Timer, LayoutGrid } from 'lucide-react';
 import CalcExprEditor, { type CalcExprEditorHandle } from './CalcExprEditor';
 import {
   KIND_COLOR,
@@ -56,6 +56,8 @@ import {
   type LinkViewAllTab,
   type DeadlineSetting,
   type TimeoutNodeData,
+  type PivotNodeData,
+  type PivotValueField,
 } from '@/lib/types';
 import { DEFAULT_DEADLINE } from '@/lib/types';
 import { useStore } from '@/lib/store';
@@ -85,7 +87,8 @@ type AnyData =
   | LinkJoinNodeData
   | LinkViewNodeData
   | LinkViewAllNodeData
-  | TimeoutNodeData;
+  | TimeoutNodeData
+  | PivotNodeData;
 
 const KIND_ICON: Record<FlowNode['kind'], React.ReactNode> = {
   trigger: <Play size={13} strokeWidth={2.5} />,
@@ -111,6 +114,7 @@ const KIND_ICON: Record<FlowNode['kind'], React.ReactNode> = {
   linkview: <Search size={13} strokeWidth={2.5} />,
   linkview_all: <SearchCheck size={13} strokeWidth={2.5} />,
   timeout: <Timer size={13} strokeWidth={2.5} />,
+  pivot: <LayoutGrid size={13} strokeWidth={2.5} />,
 };
 
 function useNodeUpdater(id: string) {
@@ -257,6 +261,7 @@ function nodeKindCn(kind: FlowNode['kind']) {
     linkview: '预警关联展示',
     linkview_all: '预警关联展示-全量',
     timeout: '超时动作',
+    pivot: '透视表',
   };
   return map[kind];
 }
@@ -6049,6 +6054,252 @@ const LinkViewAllNode = memo(function LinkViewAllNode({ id, data }: NodeProps) {
   );
 });
 
+const PivotNode = memo(function PivotNode({ id, data }: NodeProps) {
+  const fnode = { id, kind: 'pivot' as const, data, position: { x: 0, y: 0 } } as FlowNode;
+  const d = data as unknown as PivotNodeData;
+  const update = useNodeUpdater(id);
+  const tables = useRuleTables();
+  const allNodes = useNodes();
+  const edges = useEdges();
+  const inputCls = 'w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400';
+  const rowLabel = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
+  const src = d.source ?? 'table';
+  const srcTable = src === 'table' ? (d.tableId ? tables.find((t) => t.id === d.tableId) : tables[0]) : undefined;
+  const srcNodeObj = src === 'node' ? ((allNodes as unknown as FlowNode[]).find((n) => n.id === d.srcNode)) : undefined;
+
+  const allFlow = allNodes as unknown as FlowNode[];
+  const allNodeOpts = allFlow
+    .filter((n) => n.id !== id && !['trigger', 'linkview', 'linkview_all', 'pivot', 'timeout'].includes(n.kind))
+    .map((n) => {
+      const rd = n.data as Record<string, unknown>;
+      const rl = typeof rd?.resultLabel === 'string' && rd.resultLabel ? rd.resultLabel : '';
+      return { nodeId: n.id, kind: n.kind, label: rl ? `${KIND_LABEL[n.kind] ?? n.kind}·${rl}` : (KIND_LABEL[n.kind] ?? n.kind) };
+    });
+
+  const fieldsToOpts = (arr: Array<{ key: string; alias?: string } | string>): { key: string; label: string }[] =>
+    (arr || []).map((f) => (typeof f === 'string' ? { key: f, label: f } : { key: f.key, label: f.alias || f.key })).filter((f) => f.key);
+
+  // 来源字段候选
+  const srcCols: { key: string; label: string }[] = useMemo(() => {
+    if (src === 'table') {
+      return srcTable ? fieldsToOpts(srcTable.fields) : [];
+    }
+    if (srcNodeObj) {
+      const ev = (() => {
+        try { return evaluateFlow(allFlow, edges as unknown as FlowEdge[], tables)[srcNodeObj.id]; } catch { return undefined; }
+      })();
+      if (ev && Array.isArray(ev.columns) && (ev.columns as unknown[]).length) return fieldsToOpts(ev.columns as never);
+      return inferNodeCols(allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>, tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, srcNodeObj.id).map((c) => ({ key: c.key, label: c.label || c.key }));
+    }
+    return [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src, srcTable, srcNodeObj, allNodes, edges, tables]);
+
+  const colKey = srcCols.map((c) => c.key);
+  const rowFields = Array.isArray(d.rowFields) ? d.rowFields.filter((f) => colKey.includes(f)) : [];
+  const valueFields = Array.isArray(d.valueFields) ? d.valueFields.filter((v) => v && colKey.includes(v.field)) : [];
+  const colField = d.colField && colKey.includes(d.colField) ? d.colField : '';
+
+  // 内联求值出矩阵数据
+  const matrix = useMemo(() => {
+    if (!colField || !rowFields.length || !valueFields.length) return null;
+    try {
+      const ev = src === 'node' ? evaluateFlow(allFlow, edges as unknown as FlowEdge[], tables)[srcNodeObj!.id] : undefined;
+      const rawRows: Record<string, unknown>[] = src === 'node' ? (ev?.rows as Record<string, unknown>[] ?? []) : (srcTable?.rows as Record<string, unknown>[] ?? srcTable?.previewRows ?? []);
+      if (!rawRows.length) return null;
+      const str = (v: unknown) => (v === null || v === undefined || v === '') ? '' : String(v);
+      const aggFold = (agg: string, acc: number[], v: unknown) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return acc;
+        if (agg === 'count') { acc[0] = acc[0] + 1; return acc; }
+        acc[1] = acc[1] + n;
+        if (agg === 'min') acc[0] = acc.length ? Math.min(acc[0] === Number.MAX_SAFE_INTEGER ? n : acc[0], n) : n;
+        if (agg === 'max') acc[0] = Math.max(acc[0], n);
+        return acc;
+      };
+      const colValues: string[] = (Array.isArray(d.colOrder) && d.colOrder.length ? d.colOrder : []).concat(
+        Array.from(new Set(rawRows.map((r) => str(r[colField])))).filter((x) => x && !(d.colOrder || []).includes(x)),
+      );
+      const rowKeyAll: Record<string, string>[] = [];
+      const keyOf = (r: Record<string, unknown>) => rowFields.map((f) => str(r[f])).join('\u0001');
+      for (const r of rawRows) {
+        const k = keyOf(r);
+        if (!rowKeyAll.some((x) => keyOf(x) === k)) {
+          const rec: Record<string, string> = {};
+          rowFields.forEach((f) => { rec[f] = str(r[f]); });
+          rowKeyAll.push(rec as never);
+        }
+      }
+      const aggInit = () => { const acc: number[] = [0, 0, 1]; return acc; }; // [count, sum, n]
+      const map = new Map<string, Record<string, number[]>>();
+      for (const r of rawRows) {
+        const k = keyOf(r);
+        const cv = str(r[colField]);
+        if (!colValues.includes(cv)) continue;
+        if (!map.has(k)) map.set(k, {});
+        const rec = map.get(k)!;
+        valueFields.forEach((vf) => {
+          const key = `${vf.field}\u0001${cv}`;
+          if (!rec[key]) rec[key] = aggInit();
+          rec[key] = aggFold(vf.agg, rec[key], r[vf.field]);
+        });
+      }
+      const rows: Array<Record<string, string> & { cells: Record<string, string> }> = rowKeyAll.map((rowRec) => {
+        const rowOut: Record<string, string> = {};
+        rowFields.forEach((f) => { rowOut[f] = rowRec[f] ?? ''; });
+        const cells: Record<string, string> = {};
+        const m = map.get(keyOf(rowRec as never)) ?? {};
+        valueFields.forEach((vf) => {
+          colValues.forEach((cv) => {
+            const acc = m[`${vf.field}\u0001${cv}`];
+            let v = '';
+            if (acc) {
+              const [c, s, n] = acc;
+              if (vf.agg === 'count') v = String(c);
+              else if (n === 0) v = '—';
+              else if (vf.agg === 'avg') v = String(parseFloat((s / n).toFixed(2)));
+              else v = String(s);
+            } else {
+              v = '—';
+            }
+            cells[`${vf.field}\u0001${cv}`] = v;
+          });
+        });
+        const merged = { ...rowOut, cells } as Record<string, string> & { cells: Record<string, string> };
+        return merged;
+      });
+      return { rowFields, colValues, valueFields: valueFields.map((v) => v.field), aggMap: Object.fromEntries(valueFields.map((v) => [v.field, v.agg])), rows };
+    } catch {
+      return null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src, srcNodeObj, srcTable, colField, rowFields, valueFields, d.colOrder, allNodes, edges, tables]);
+
+  const initRef = useRef(false);
+  useEffect(() => {
+    if (initRef.current) return;
+    initRef.current = true;
+    if (!d.source) update({ source: 'table' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const patch = (p: Partial<PivotNodeData>) => update(p as never);
+
+  return (
+    <NodeShell fnode={fnode}>
+      <div className="space-y-1.5">
+        <div className="rounded-md bg-violet-50 px-2 py-1 text-[10px] leading-relaxed text-violet-700">
+          对来源数据按【行维度 + 列维度】交叉分组，对值字段聚合，输出多级表头矩阵（如 店仓/款号/颜色/断码判断 × S/M/L/XL/XXL 尺码 的断码分析表）。
+        </div>
+        <div className={rowLabel}>数据来源</div>
+        <div className="flex gap-1">
+          {(['table', 'node'] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => patch({ source: s, tableId: s === 'table' ? (d.tableId ?? tables[0]?.id ?? '') : d.tableId, srcNode: s === 'node' ? (d.srcNode ?? allNodeOpts[0]?.nodeId ?? '') : d.srcNode, srcNodeLabel: s === 'node' ? (d.srcNodeLabel ?? '') : d.srcNodeLabel })}
+              className={`rounded px-1.5 py-0.5 text-[10px] ring-1 ${src === s ? 'bg-violet-600 text-white ring-violet-600' : 'bg-white text-gray-600 ring-gray-200 hover:bg-gray-100'}`}
+            >
+              {s === 'table' ? '数据表' : '节点结果'}
+            </button>
+          ))}
+        </div>
+        {src === 'table' ? (
+          <select value={srcTable?.id ?? ''} onChange={(e) => { const t = tables.find((x) => x.id === e.target.value); patch({ tableId: e.target.value, tableName: t?.name }); }} className={inputCls}>
+            <option value="">选择数据表…</option>
+            {tables.map((t) => (<option key={t.id} value={t.id}>{t.name}</option>))}
+          </select>
+        ) : (
+          <select value={d.srcNode ?? ''} onChange={(e) => { const o = allNodeOpts.find((x) => x.nodeId === e.target.value); patch({ srcNode: e.target.value, srcNodeLabel: o?.label }); }} className={inputCls}>
+            <option value="">选择规则内节点结果…</option>
+            {allNodeOpts.map((o) => (<option key={o.nodeId} value={o.nodeId}>{o.label}</option>))}
+          </select>
+        )}
+
+        {srcCols.length > 0 && (
+          <>
+            <div className={rowLabel}>行维度字段</div>
+            <div className="flex flex-wrap gap-1">
+              {srcCols.map((c) => {
+                const on = rowFields.includes(c.key);
+                return (
+                  <button key={c.key} type="button" onClick={() => patch({ rowFields: on ? rowFields.filter((x) => x !== c.key) : [...rowFields, c.key] })} className={`rounded px-1.5 py-0.5 text-[10px] ring-1 ${on ? 'bg-violet-500 text-white ring-violet-500' : 'bg-white text-gray-600 ring-gray-200 hover:bg-gray-100'}`}>
+                    {on ? '✓ ' : ''}{c.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className={rowLabel}>列维度字段{colField && <span className="ml-1 text-gray-400">({srcCols.find((c) => c.key === colField)?.label})</span>}</div>
+            <select value={colField} onChange={(e) => patch({ colField: e.target.value })} className={inputCls}>
+              <option value="">选择列维度字段…</option>
+              {srcCols.map((c) => (<option key={c.key} value={c.key}>{c.label}</option>))}
+            </select>
+
+            <div className={rowLabel}>值字段（可多选，输出为分组列）</div>
+            {valueFields.map((vf, i) => {
+              const f = srcCols.find((c) => c.key === vf.field);
+              return (
+                <div key={i} className="mb-1 flex items-center gap-1">
+                  <select value={vf.field} onChange={(e) => { const arr = valueFields.slice(); arr[i] = { ...arr[i], field: e.target.value }; patch({ valueFields: arr }); }} className={`${inputCls} flex-1`}>
+                    <option value="">选择值字段…</option>
+                    {srcCols.map((c) => (<option key={c.key} value={c.key}>{c.label}</option>))}
+                  </select>
+                  <select value={vf.agg} onChange={(e) => { const arr = valueFields.slice(); arr[i] = { ...arr[i], agg: e.target.value as PivotValueField['agg'] }; patch({ valueFields: arr }); }} className={inputCls}>
+                    {(['sum', 'avg', 'count', 'min', 'max'] as const).map((a) => (<option key={a} value={a}>{({ sum: '求和', avg: '平均', count: '计数', min: '最小', max: '最大' } as const)[a]}</option>))}
+                  </select>
+                  <button type="button" onClick={() => patch({ valueFields: valueFields.filter((_, k) => k !== i) })} className="shrink-0 text-[10px] text-red-400 hover:text-red-600">删</button>
+                </div>
+              );
+            })}
+            <button type="button" onClick={() => patch({ valueFields: [...valueFields, { field: srcCols[0]?.key ?? '', agg: 'sum' }] })} className="w-full rounded-md border border-dashed border-violet-300 py-1 text-xs text-violet-600 hover:bg-violet-50">+ 添加值字段</button>
+
+            <div className={rowLabel}>列取值顺序（可留空，用逗号分隔，如 S,M,L,XL,XXL）</div>
+            <input value={(d.colOrder ?? []).join(',')} onChange={(e) => patch({ colOrder: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} placeholder="如 S,M,L,XL,XXL" className={inputCls} />
+          </>
+        )}
+
+        {matrix ? (
+          <div className="mt-2 overflow-x-auto rounded-md border border-gray-200">
+            <table className="min-w-max border-collapse text-[10px]">
+              <thead>
+                <tr className="bg-violet-50">
+                  {rowFields.map((f) => (<th key={f} className="whitespace-nowrap border border-gray-200 px-2 py-1 text-left font-semibold text-gray-600">{f}</th>))}
+                  {matrix.valueFields.map((vf) => (
+                    <th key={vf} colSpan={matrix.colValues.length} className="whitespace-nowrap border border-gray-200 px-2 py-1 text-center font-semibold text-violet-700">{vf}（{matrix.aggMap[vf]}）</th>
+                  ))}
+                </tr>
+                {matrix.colValues.length > 1 && (
+                  <tr>
+                    {rowFields.map((f) => (<th key={f} className="border border-gray-200"></th>))}
+                    {matrix.valueFields.flatMap((vf) => matrix.colValues.map((cv) => (
+                      <th key={`${vf}\u0001${cv}`} className="whitespace-nowrap border border-gray-200 px-2 py-1 font-medium text-gray-500">{cv}</th>
+                    )))}
+                  </tr>
+                )}
+              </thead>
+              <tbody>
+                {matrix.rows.slice(0, 50).map((r, ri) => (
+                  <tr key={ri} className={ri % 2 ? 'bg-gray-50/60' : 'bg-white'}>
+                    {rowFields.map((f) => (<td key={f} className="whitespace-nowrap border border-gray-100 px-2 py-1 text-gray-700">{String(r[f] ?? '')}</td>))}
+                    {matrix.valueFields.flatMap((vf) => matrix.colValues.map((cv) => (
+                      <td key={`${vf}\u0001${cv}`} className="whitespace-nowrap border border-gray-100 px-2 py-1 text-right tabular-nums text-gray-700">{r.cells?.[`${vf}\u0001${cv}`] ?? '—'}</td>
+                    )))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="mt-2 rounded-md bg-gray-50 px-2 py-1.5 text-[10px] text-gray-500">
+            {srcCols.length ? (rowFields.length && colField && valueFields.length ? '计算中…' : '请先选择行维度、列维度与值字段。') : '请先选择数据来源。'}
+          </div>
+        )}
+      </div>
+    </NodeShell>
+  );
+});
+
 export const nodeTypes = {
   trigger: TriggerNode,
   field: FieldNode,
@@ -6072,6 +6323,7 @@ export const nodeTypes = {
   linkjoin: LinkJoinNode,
   linkview: LinkViewNode,
   linkview_all: LinkViewAllNode,
+  pivot: PivotNode,
   timeout: TimeoutNode,
 };
 
@@ -6096,6 +6348,7 @@ RankNode.displayName = 'RankNode';
 
 LinkJoinNode.displayName = 'LinkJoinNode';
 LinkViewNode.displayName = 'LinkViewNode';
+PivotNode.displayName = 'PivotNode';
 LinkViewAllNode.displayName = 'LinkViewAllNode';
 
 /** 依据 kind 创建默认数据 */
@@ -6301,6 +6554,18 @@ export function createNodeData(
       return { tabs: [], resultLabel: '关联展示' };
     case 'linkview_all':
       return { tabs: [], resultLabel: '预警关联展示-全量' };
+    case 'pivot':
+      return {
+        source: 'table',
+        tableId: extra?.tableId ?? '',
+        tableName: extra?.tableName ?? '',
+        srcNode: '',
+        srcNodeLabel: '',
+        rowFields: [],
+        colField: '',
+        valueFields: [],
+        resultLabel: '透视表',
+      };
     case 'timeout':
       return {
         actionId: '',
