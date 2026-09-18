@@ -5358,21 +5358,30 @@ const LinkViewNode = memo(function LinkViewNode({ id, data }: NodeProps) {
     });
   const actionNode = allFlow.find((n) => n.kind === 'action');
   const baseNodeId = d.baseNode || (actionNode ? actionNode.id : '') || allNodeOpts[0]?.nodeId || '';
-  const baseCols: string[] = baseNodeId
-    ? Array.from(
-        new Set<string>(
-          inferNodeCols(allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>, tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, baseNodeId)
-            .map((c) => c.label || c.key)
-            .filter((x) => x)
-        )
-      )
-    : [];
+
   const uniqStr = (arr: string[]) => Array.from(new Set(arr.filter((x) => x)));
+  // 取上游列：优先静态推断，取不到则沿输入连线回溯到上游节点（适配动作节点以连线接入的场景）
+  const allEdges = useEdges() as unknown as FlowEdge[];
+  const inEdgesById: Record<string, { source: string }[]> = {};
+  allEdges.forEach((e) => { (inEdgesById[e.target] ??= []).push(e); });
+  const colsOf = (nodeId: string, seen = new Set<string>()): string[] => {
+    if (!nodeId || seen.has(nodeId)) return [];
+    seen.add(nodeId);
+    const direct = inferNodeCols(allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>, tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, nodeId).map((c) => c.label || c.key);
+    const d = uniqStr(direct);
+    if (d.length) return d;
+    for (const e of inEdgesById[nodeId] ?? []) {
+      const r = colsOf(e.source, seen);
+      if (r.length) return r;
+    }
+    return [];
+  };
+  const baseCols: string[] = baseNodeId ? colsOf(baseNodeId) : [];
   const relCand = (tab: LinkViewTab): string[] => {
     const srcFields =
       tab.source === 'node'
         ? tab.srcNode
-          ? inferNodeCols(allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>, tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, tab.srcNode).map((c) => c.label || c.key)
+          ? colsOf(tab.srcNode)
           : []
         : (() => {
             const t = tables.find((x) => x.id === tab.tableId);
