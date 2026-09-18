@@ -877,6 +877,7 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
       if (isBlankAlert(raw)) return state;
       const now = Date.now();
       const alert: AlertTask = {
+        ...raw,
         id: raw.id ?? `alert_${now}_${Math.random().toString(36).slice(2, 7)}`,
         createdAt: raw.createdAt ?? now,
         updatedAt: raw.updatedAt ?? now,
@@ -885,13 +886,9 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
         level: raw.level ?? 'warn',
         title: raw.title ?? '',
         content: raw.content ?? '',
-        reason: raw.reason,
-        conditionDesc: raw.conditionDesc,
-        preview: raw.preview,
         dept: raw.dept ?? '',
         assignee: raw.assignee ?? '',
         status: raw.status ?? 'new',
-        handoffTo: raw.handoffTo,
       };
       return { ...state, alerts: [alert, ...state.alerts] };
     }
