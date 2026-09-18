@@ -193,7 +193,8 @@
 
 ## 数据库（Supabase）
 
-- 凭证由平台注入：`COZE_SUPABASE_URL` / `COZE_SUPABASE_ANON_KEY` / `COZE_SUPABASE_SERVICE_ROLE_KEY`；`supabase-client.ts` 按 dotenv → `coze_workload_identity`（python3，向平台拉取项目环境变量）→ 抛错的顺序加载。
+- 凭证由平台注入：`COZE_SUPABASE_URL` / `COZE_SUPABASE_ANON_KEY` / `COZE_SUPABASE_SERVICE_ROLE_KEY`（另有 `PGDATABASE_URL` 直连串）；`supabase-client.ts` 按 dotenv → `coze_workload_identity`（python3，向平台拉取项目环境变量）→ 抛错的顺序加载。
+- **大表经 PostgREST upsert 会触发 `statement timeout`**（实测约 78MB/7.6万行×42字段 10.7s 被 cancel，SQL 报 `canceling statement due to statement timeout`；Supabase JS client 默认 `db.timeout=60s` 但要先传完 body 才会到执行，超大 payload 在连接/执行层即超时）。**修复**：`syncTables` 里用 `estimatedSize = Σ(rowCount×fieldCount)` 粗估，`>200000` 时改走 `upsertTablesDirect`——用 `pg` 的 `Client` 连 `PGDATABASE_URL` 逐表 `INSERT ... ON CONFLICT(id) DO UPDATE` 直写（实测 78MB 直连 24.5s 成功）。⚠️ 直连列类型：`created_at` 是 `bigint`（传 number），`updated_at` 是 `timestamptz`（传 ISO 字符串），不能共用同一参数；`data` 传 `::jsonb`。stale 删除逻辑在直连分支直接 return，维持既有语义。`loadEnv()` 后才能读 `PGDATABASE_URL`。
 - **运行环境里 shell 不一定预置这些变量**，必须通过 `coze_workload_identity` 取；本地验证 node 侧读取用 `./node_modules/.bin/tsx` 跑 client。
 - 业务表（`src/storage/database/shared/schema.ts` 定义）：`data_tables`、`alert_rules`、`alert_tasks`、`rule_groups`（`health_check` 为系统表勿动）。`rule_groups(id,name,created_at)` 存规则分组，`AlertRule.groupId` 引用其 id（`''`=未分组）；经 `/api/state` 的 `groups` 字段全量同步（`getAllRuleGroups`/`syncRuleGroups`，同样 upsert + stale 删除）。
 - 表结构迁移/建表：schema 改动用 `coze-coding-ai db upgrade`，或直接对 develop 库 exec_sql；已在线上建好三业务表并 `ENABLE ROW LEVEL SECURITY`。

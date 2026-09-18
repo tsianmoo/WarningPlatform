@@ -1,4 +1,5 @@
-import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { getSupabaseClient, loadEnv } from '@/storage/database/supabase-client';
+import { Client } from 'pg';
 import type { AlertRule, AlertStatus, AlertTask, AttrCategory, DataTable, DataTableGroup, Dealer, Employee, HomeConfig, HrAttribute, Organization, Person, RuleGroup, Store } from '@/lib/types';
 
 interface TableRow {
@@ -145,7 +146,6 @@ export async function getAllTables(): Promise<DataTable[]> {
 
 /** 全量覆盖式保存数据表（以入参为准，删除库中多余的表） */
 export async function syncTables(tables: DataTable[]): Promise<void> {
-  const client = getSupabaseClient();
   const rows = tables.map((t) => ({
     id: t.id,
     name: t.name,
@@ -155,6 +155,15 @@ export async function syncTables(tables: DataTable[]): Promise<void> {
     data: t,
   }));
 
+  // 大表（payload 超过阈值）经 PostgREST upsert 会触发 statement timeout，
+  // 改走数据库直连写入。
+  const estimatedSize = rows.reduce((acc, r) => acc + (r.data.rows?.length ?? 0) * (r.data.fields?.length ?? 1), 0);
+  if (estimatedSize > 200000) {
+    await upsertTablesDirect(rows);
+    return;
+  }
+
+  const client = getSupabaseClient();
   if (rows.length > 0) {
     const { error } = await client.from('data_tables').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存数据表失败: ${error.message}`);
@@ -170,6 +179,32 @@ export async function syncTables(tables: DataTable[]): Promise<void> {
   if (staleIds.length > 0) {
     const { error: delErr } = await client.from('data_tables').delete().in('id', staleIds);
     if (delErr) throw new Error(`删除数据表失败: ${delErr.message}`);
+  }
+}
+
+/** 通过数据库直连写入数据表，规避大表经 PostgREST 的 statement timeout */
+async function upsertTablesDirect(rows: TableRow[]): Promise<void> {
+  loadEnv();
+  const url = process.env.PGDATABASE_URL;
+  if (!url) throw new Error('PGDATABASE_URL 未配置，无法直连写入大表');
+  const client = new Client({ connectionString: url });
+  await client.connect();
+  try {
+    for (const r of rows) {
+      await client.query(
+        `INSERT INTO data_tables (id, name, file_name, row_count, created_at, updated_at, data)
+         VALUES ($1, $2, $3, $4, $5::bigint, $6::timestamptz, $7::jsonb)
+         ON CONFLICT (id) DO UPDATE SET
+           name = EXCLUDED.name,
+           file_name = EXCLUDED.file_name,
+           row_count = EXCLUDED.row_count,
+           updated_at = $6::timestamptz,
+           data = EXCLUDED.data`,
+        [r.id, r.name, r.file_name, r.row_count, r.created_at, new Date(r.created_at).toISOString(), JSON.stringify(r.data)]
+      );
+    }
+  } finally {
+    await client.end();
   }
 }
 
