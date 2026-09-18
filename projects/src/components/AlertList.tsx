@@ -65,6 +65,36 @@ function ElapsedCell({ createdAt }: { createdAt: number }) {
   return <span className="text-gray-400 tabular-nums">{now ? formatElapsed(createdAt, now) : '—'}</span>;
 }
 
+const IMG_EXT = /\.(png|jpe?g|gif|webp|svg|bmp|avif)([/?#]|$)/i;
+
+function isImgUrl(v: unknown): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  if (!s || s.length > 4000) return null;
+  if (/^data:image\/(?:png|jpe?g|gif|webp|svg\+xml|bmp);base64,/i.test(s)) return s;
+  if (/^(https?:)?\/\//i.test(s) && IMG_EXT.test(s)) return s;
+  return null;
+}
+
+function ImgCell({ value, onZoom }: { value: unknown; onZoom: (src: string) => void }) {
+  const src = isImgUrl(value);
+  if (!src) return <span className="whitespace-pre-wrap break-all text-gray-700">{String(value ?? '')}</span>;
+  return (
+    <span className="inline-block">
+      <img
+        src={src}
+        alt=""
+        loading="lazy"
+        onClick={(e) => {
+          e.stopPropagation();
+          onZoom(src);
+        }}
+        className="h-[100px] w-[100px] cursor-zoom-in rounded object-cover ring-1 ring-black/5 transition-transform hover:scale-105"
+      />
+    </span>
+  );
+}
+
 const emptyFilter = {
   kw: '',
   ruleKw: '',
@@ -167,6 +197,7 @@ export function AlertList() {
   const [planDraft, setPlanDraft] = useState('');
   const [replyTarget, setReplyTarget] = useState<string | null>(null);
   const [lvTab, setLvTab] = useState(0);
+  const [zoomSrc, setZoomSrc] = useState<string | null>(null);
   const [replyDraft, setReplyDraft] = useState('');
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -760,7 +791,7 @@ export function AlertList() {
                             {detailRows.slice(0, 100).map((r, ri) => (
                               <tr key={ri} className="border-t border-gray-50">
                                 {open.preview!.columns.map((c) => (
-                                  <td key={c} className="whitespace-nowrap px-2.5 py-2 text-gray-500">{String(r[c] ?? '')}</td>
+                                  <td key={c} className="whitespace-nowrap px-2.5 py-2 text-gray-500"><ImgCell value={r[c]} onZoom={setZoomSrc} /></td>
                                 ))}
                               </tr>
                             ))}
@@ -824,7 +855,7 @@ export function AlertList() {
                                   {rows.slice(0, 100).map((r, ri) => (
                                     <tr key={ri} className="border-t border-gray-50">
                                       {cols.map((c) => (
-                                        <td key={c} className="whitespace-nowrap px-2.5 py-2 text-gray-500">{String(r[c] ?? '')}</td>
+                                        <td key={c} className="whitespace-nowrap px-2.5 py-2 text-gray-500"><ImgCell value={r[c]} onZoom={setZoomSrc} /></td>
                                       ))}
                                     </tr>
                                   ))}
@@ -979,6 +1010,16 @@ export function AlertList() {
               </div>
               </div>
               </div>
+
+              {/* 图片放大预览 */}
+              {zoomSrc && (
+                <div
+                  className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-6"
+                  onClick={() => setZoomSrc(null)}
+                >
+                  <img src={zoomSrc} alt="" className="max-h-full max-w-full rounded-lg object-contain shadow-2xl" />
+                </div>
+              )}
             </div>
         );
       })()}
