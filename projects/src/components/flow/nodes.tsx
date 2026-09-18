@@ -5635,6 +5635,13 @@ const LinkViewAllNode = memo(function LinkViewAllNode({ id, data }: NodeProps) {
   const actionNode = allFlow.find((n) => n.kind === 'action');
   const baseNodeId = d.baseNode || (actionNode ? actionNode.id : '') || allNodeOpts[0]?.nodeId || '';
   const baseCols = baseNodeId ? colsOf(baseNodeId) : [];
+  const initRef = useRef(false);
+  useEffect(() => {
+    if (initRef.current) return;
+    initRef.current = true;
+    if (!d.baseNode && actionNode?.id) update({ baseNode: actionNode.id, baseNodeLabel: '预警动作' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setTab = (i: number, patch: Partial<LinkViewAllTab>) => {
     const arr = tabs.slice();
