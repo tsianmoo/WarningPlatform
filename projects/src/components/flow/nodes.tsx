@@ -876,6 +876,15 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
       }
       return [];
     }
+    case 'action': {
+      // 预警动作输出列 = 命中数据来源节点的列（透传上游 rowset）
+      const asn = data.sourceNode as { nodeId?: string } | undefined;
+      if (asn?.nodeId) {
+        const up = inferNodeCols(allNodes, tables, asn.nodeId);
+        if (up.length) return up;
+      }
+      return [];
+    }
     case 'rank': {
       const cols: ColOpt[] = [];
       // 基础列 = 数据源列（表或节点）
@@ -5336,8 +5345,25 @@ const LinkViewNode = memo(function LinkViewNode({ id, data }: NodeProps) {
   const allNodes = useNodes();
   const inputCls = 'w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-pink-400';
   const rowLabel = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
-  const nodeOutputs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'column');
   const tabs = Array.isArray(d.tabs) ? d.tabs : [];
+
+  // 来源候选：识别规则内所有产出数据集的节点（含判断、预警动作等），不只限上游
+  const allFlow = allNodes as unknown as FlowNode[];
+  const allNodeOpts = allFlow
+    .filter((n) => n.id !== id && !['trigger', 'time', 'elapsed', 'baseline', 'linkview'].includes(n.kind))
+    .map((n) => {
+      const rd = n.data as Record<string, unknown>;
+      const rl = typeof rd?.resultLabel === 'string' && rd.resultLabel ? rd.resultLabel : '';
+      return { nodeId: n.id, kind: n.kind, label: rl ? `${KIND_LABEL[n.kind] ?? n.kind}·${rl}` : (KIND_LABEL[n.kind] ?? n.kind) };
+    });
+  // 预警动作消息（预警通知）里的全部变量字段，作为默认关联候选
+  const actionVars: string[] = (() => {
+    const a = allFlow.find((n) => n.kind === 'action');
+    if (!a) return [];
+    const msg = (a.data as unknown as ActionNodeData).content || '';
+    return Array.from(new Set<string>([...msg.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]))).filter((x) => x);
+  })();
+  const uniqStr = (arr: string[]) => Array.from(new Set(arr.filter((x) => x)));
 
   const setTab = (i: number, patch: Partial<LinkViewTab>) => {
     const arr = tabs.slice();
@@ -5347,20 +5373,36 @@ const LinkViewNode = memo(function LinkViewNode({ id, data }: NodeProps) {
   const addTab = () => update({ tabs: [...tabs, { name: '', source: 'table', matchKeys: [] }] });
   const removeTab = (i: number) => update({ tabs: tabs.filter((_, k) => k !== i) });
   const tabCand = (tab: LinkViewTab): string[] => {
-    if (tab.source === 'node') {
-      if (!tab.srcNode) return [];
-      return inferNodeCols(allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>, tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, tab.srcNode).map((c) => c.label || c.key);
-    }
-    const t = tables.find((x) => x.id === tab.tableId);
-    return t ? t.fields.map((f) => f.alias || f.key) : [];
+    const srcFields =
+      tab.source === 'node'
+        ? tab.srcNode
+          ? inferNodeCols(allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>, tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, tab.srcNode).map((c) => c.label || c.key)
+          : []
+        : (() => {
+            const t = tables.find((x) => x.id === tab.tableId);
+            return t ? t.fields.map((f) => f.alias || f.key) : [];
+          })();
+    // 始终并入预警通知变量字段，保证默认可匹配
+    return uniqStr([...actionVars, ...srcFields]);
   };
+  const showVars = actionVars.length > 0;
 
   return (
     <NodeShell fnode={fnode}>
       <div className="space-y-1.5">
         <div className="mb-1 rounded-md bg-pink-50 px-2 py-1 text-[10px] leading-relaxed text-pink-700">
-          为命中数据配置关联标签（如 商品档案/库存/零售单）。「查看预警」弹窗内会以标签页展示各关联数据。
+          为命中数据配置关联标签（如 商品档案/库存/零售单）。「查看预警」弹窗内会以标签页展示各关联数据，来源可选规则内任意节点结果或数据表。
         </div>
+        {showVars && (
+          <div className="rounded-md border border-purple-100 bg-purple-50/60 p-1.5">
+            <div className="mb-1 text-[10px] font-medium text-purple-700">预警通知变量字段（默认可作为匹配键）</div>
+            <div className="flex flex-wrap gap-1">
+              {actionVars.map((v) => (
+                <span key={v} className="rounded bg-white px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 ring-1 ring-purple-200">{v}</span>
+              ))}
+            </div>
+          </div>
+        )}
         {tabs.length === 0 && (
           <button type="button" onClick={addTab} className="w-full rounded-md border border-dashed border-pink-300 py-1.5 text-xs text-pink-600 hover:bg-pink-50">+ 添加关联标签</button>
         )}
@@ -5380,7 +5422,7 @@ const LinkViewNode = memo(function LinkViewNode({ id, data }: NodeProps) {
                   <button
                     key={s}
                     type="button"
-                    onClick={() => setTab(i, { source: s, tableId: s === 'table' ? (tab.tableId ?? tables[0]?.id ?? '') : undefined, srcNode: s === 'node' ? (tab.srcNode ?? nodeOutputs[0]?.ref.nodeId ?? '') : undefined })}
+                    onClick={() => setTab(i, { source: s, tableId: s === 'table' ? (tab.tableId ?? tables[0]?.id ?? '') : undefined, srcNode: s === 'node' ? (tab.srcNode ?? allNodeOpts[0]?.nodeId ?? '') : undefined })}
                     className={`rounded px-1.5 py-0.5 text-[10px] ring-1 ${tab.source === s ? 'bg-pink-600 text-white ring-pink-600' : 'bg-white text-gray-600 ring-gray-200 hover:bg-gray-100'}`}
                   >
                     {s === 'table' ? '数据表' : '节点结果'}
@@ -5393,9 +5435,9 @@ const LinkViewNode = memo(function LinkViewNode({ id, data }: NodeProps) {
                   {tables.map((t) => (<option key={t.id} value={t.id}>{t.name}</option>))}
                 </select>
               ) : (
-                <select value={tab.srcNode ?? ''} onChange={(e) => { const o = nodeOutputs.find((x) => x.ref.nodeId === e.target.value); setTab(i, { srcNode: e.target.value, srcNodeLabel: o?.ref.label }); }} className={`mt-1 ${inputCls}`}>
-                  <option value="">选择节点结果…</option>
-                  {nodeOutputs.map((o) => (<option key={o.ref.nodeId} value={o.ref.nodeId}>{o.ref.label}</option>))}
+                <select value={tab.srcNode ?? ''} onChange={(e) => { const o = allNodeOpts.find((x) => x.nodeId === e.target.value); setTab(i, { srcNode: e.target.value, srcNodeLabel: o?.label }); }} className={`mt-1 ${inputCls}`}>
+                  <option value="">选择规则内节点结果…</option>
+                  {allNodeOpts.map((o) => (<option key={o.nodeId} value={o.nodeId}>{o.label}</option>))}
                 </select>
               )}
               <div className={rowLabel}>匹配字段（同名对同名）</div>
