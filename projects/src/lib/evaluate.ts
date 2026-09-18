@@ -2940,7 +2940,7 @@ function evalNode(
         if (!storeGroups.has(stKey)) storeGroups.set(stKey, []);
         storeGroups.get(stKey)!.push({ store, family, style, color, size, share, tier: t, broken, inv, qty: toNum(r[qtyF]) });
       }
-      // —— 横排输出：每个 店铺×款型组×款×色 一行，尺码横排（尺码[销量/占比/库存]三列一组）——
+      // —— 分组输出：按 款型组+款+色 分组。组头行展示该款色跨店汇总的尺码销量与全局占比；组内每店一行展示该店该款色各尺码销量与库存。——
       const sizeSet = new Set<string>();
       for (const rows of storeGroups.values()) for (const x of rows) sizeSet.add(String((x as Record<string, unknown>).size));
       const sizeRank = (s: string) => {
@@ -2952,46 +2952,84 @@ function evalNode(
         return (1000 + (up.codePointAt(0) ?? 0)) / 1e6;   // 其它字母尺码兜底
       };
       const allSizes = Array.from(sizeSet).sort((a, b) => sizeRank(a) - sizeRank(b));
-      const baseCols = ['店铺', '款型组', '款号', '颜色', '综合判断'];
+      const baseCols = ['店铺', '款号', '颜色', '综合判断'];
       const outCols = [...baseCols];
       for (const sz of allSizes) outCols.push(`${sz}·销量`, `${sz}·占比`, `${sz}·库存`);
-      const outRows: Record<string, string | number>[] = [];
-      let sCoreC = 0, sImpC = 0, sNormalC = 0, sFullC = 0;
+      // 组头行不渲染标记列（__gh / __gk），NodePreview 据此做视觉分组
+      type SoRow = Record<string, string | number>;
+      const groupMap = new Map<string, { family: string; style: string; color: string; storeRows: Map<string, SoRow[]> }>();
       for (const [stKey, rows] of storeGroups) {
         const [store, family, style, color] = stKey.split('|');
-        const row: Record<string, string | number> = { 店铺: store, 款型组: family, 款号: style, 颜色: color };
-        let hasCore = false;
-        let hasImp = false;
-        let hasNormal = false;
-        const isBroken = (rec: Record<string, unknown> | undefined) => {
-          if (!rec) return true;                         // 该店缺失该尺码 = 无货 = 断码
-          return (rec.inv as number) <= brokenMax;        // 库存 ≤ brokenMax 也断码
+        const gk = `${family}|${style}|${color}`;
+        if (!groupMap.has(gk)) groupMap.set(gk, { family, style, color, storeRows: new Map() });
+        const g = groupMap.get(gk)!;
+        if (!g.storeRows.has(store)) g.storeRows.set(store, []);
+        g.storeRows.get(store)!.push(...(rows as SoRow[]));
+      }
+      const outRows: SoRow[] = [];
+      let sCoreC = 0, sImpC = 0, sNormalC = 0, sFullC = 0;
+      const isBroken = (rec: Record<string, unknown> | undefined) => {
+        if (!rec) return true;                         // 该店缺失该尺码 = 无货 = 断码
+        return (rec.inv as number) <= brokenMax;        // 库存 ≤ brokenMax 也断码
+      };
+      let totalBroken = 0;
+      const groupsSorted = Array.from(groupMap.entries()).sort((a, b) =>
+        (a[1].family + a[1].style + a[1].color).localeCompare(b[1].family + b[1].style + b[1].color),
+      );
+      for (const [, g] of groupsSorted) {
+        // —— 组头行：跨店汇总销量 + 全局占比 ——
+        const head: SoRow = {
+          店铺: `∑ ${g.style} ${g.color}`,
+          款号: g.style,
+          颜色: g.color,
+          综合判断: '',
+          __gh: 1,
+          __gk: `${g.family}|${g.style}|${g.color}`,
         };
         for (const sz of allSizes) {
-          const rec = rows.find((x: Record<string, unknown>) => String(x.size) === sz);
-          // 全局口径：占比一律用 款型组+款+色 合并所有店铺后的尺码销售占比（该店是否缺码都不影响分级结论）
-          const share = shareOf(`${family}|${style}|${color}`, sz) || 0;
-          const tierV = rec ? ((rec as Record<string, unknown>).tier as '核心' | '重要' | '一般') : tier(share);
-          const broken = isBroken(rec as Record<string, unknown> | undefined);
-          if (broken) { if (tierV === '核心') hasCore = true; else if (tierV === '重要') hasImp = true; else hasNormal = true; }
-          const inv = rec ? (rec.inv as number) : undefined;
-          row[`${sz}·销量`] = rec ? ((rec as Record<string, unknown>).qty as number) : '—';
-          row[`${sz}·占比`] = share > 0 ? `${Math.round(share * 100)}%` : '—';
-          row[`${sz}·库存`] = broken ? (rec ? `${inv as number}⛔` : '0⛔') : ((inv as number) ?? 0);
+          const sk = `${g.family}|${g.style}|${g.color}`;
+          const share = shareOf(sk, sz) || 0;
+          let totQty = 0;
+          for (const rows of g.storeRows.values()) {
+            const rec = rows.find((x) => String((x as SoRow).size) === sz);
+            totQty += rec ? Number((rec as SoRow).qty ?? 0) : 0;
+          }
+          head[`${sz}·销量`] = totQty;
+          head[`${sz}·占比`] = share > 0 ? `${Math.round(share * 100)}%` : '—';
+          head[`${sz}·库存`] = '∑库存';
         }
-        const verdict = !hasCore && !hasImp && !hasNormal ? '齐码' : hasCore ? '核心断码' : hasImp ? '严重断码' : '普通断码';
-        row['综合判断'] = verdict;
-        if (verdict === '核心断码') sCoreC++; else if (verdict === '严重断码') sImpC++; else if (verdict === '普通断码') sNormalC++; else sFullC++;
-        outRows.push(row);
+        outRows.push(head);
+        // —— 组内店铺行：该店该款色各尺码销量与库存 ——
+        for (const [store, rows] of g.storeRows) {
+          const row: SoRow = { 店铺: store, 款号: g.style, 颜色: g.color };
+          let hasCore = false;
+          let hasImp = false;
+          let hasNormal = false;
+          for (const sz of allSizes) {
+            const rec = rows.find((x) => String((x as SoRow).size) === sz);
+            const share = shareOf(`${g.family}|${g.style}|${g.color}`, sz) || 0;
+            const tierV = rec ? ((rec as SoRow).tier as '核心' | '重要' | '一般') : tier(share);
+            const broken = isBroken(rec as Record<string, unknown> | undefined);
+            if (broken) { if (tierV === '核心') hasCore = true; else if (tierV === '重要') hasImp = true; else hasNormal = true; }
+            const inv = rec ? Number((rec as SoRow).inv ?? 0) : undefined;
+            row[`${sz}·销量`] = rec ? Number((rec as SoRow).qty ?? 0) : '—';
+            row[`${sz}·占比`] = '—';
+            row[`${sz}·库存`] = broken ? (rec ? `${inv as number}⛔` : '0⛔') : ((inv as number) ?? 0);
+            if (broken) totalBroken++;
+          }
+          const verdict = !hasCore && !hasImp && !hasNormal ? '齐码' : hasCore ? '核心断码' : hasImp ? '严重断码' : '普通断码';
+          row['综合判断'] = verdict;
+          if (verdict === '核心断码') sCoreC++; else if (verdict === '严重断码') sImpC++; else if (verdict === '普通断码') sNormalC++; else sFullC++;
+          outRows.push(row);
+        }
       }
-      const totalBroken = outRows.reduce((s, o) => s + allSizes.filter((sz) => { const c = `${sz}·库存`; return String(o[c]).includes('⛔'); }).length, 0);
       return {
         title: sd.resultLabel || '断码分析',
         columns: outCols,
         rows: cap(outRows),
         shape: 'table',
         allCols: outCols,
-        note: `来自「${rs?.from ?? '明细'}」共 ${src.length} 行 → 把所有店铺合并，按款型组+款+色聚合计销量得全局尺码占比并分级（核心≥${Math.round(corePct * 100)}%、重要≥${Math.round(impPct * 100)}%），某店缺失该尺码或库存≤${brokenMax} 均视为断码。共 ${storeGroups.size} 个 店铺×款色：核心断码 ${sCoreC}、严重断码 ${sImpC}、普通断码 ${sNormalC}、齐码 ${sFullC}；断码尺码合计 ${totalBroken} 个。`,
+        note: `来自「${rs?.from ?? '明细'}」共 ${src.length} 行 → 把所有店铺合并，按款型组+款+色聚合计销量得全局尺码占比并分级（核心≥${Math.round(corePct * 100)}%、重要≥${Math.round(impPct * 100)}%），某店缺失该尺码或库存≤${brokenMax} 均视为断码。按 款+色 分 ${groupMap.size} 组；店铺×款色 判定：核心断码 ${sCoreC}、严重断码 ${sImpC}、普通断码 ${sNormalC}、齐码 ${sFullC}；断码尺码合计 ${totalBroken} 个。`,
       };
     }
 

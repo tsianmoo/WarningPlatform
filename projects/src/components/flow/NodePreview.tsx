@@ -219,20 +219,36 @@ function PreviewModal({ state, onClose }: { state: PreviewState; onClose: () => 
                             </td>
                           </tr>
                         ) : (
-                          r.rows.map((row, i) => (
-                            <tr key={i} className={i % 2 ? 'bg-gray-50/50' : 'bg-white'}>
-                              {r.columns.map((c) => (
+                          r.rows.map((row, i) =>
+                            (row as Record<string, unknown>).__gh ? (
+                              <tr key={i} className="border-b border-gray-200 bg-blue-50/70">
                                 <td
-                                  key={c}
-                                  className="whitespace-nowrap border-b border-gray-100 px-3 py-1.5 text-gray-700"
+                                  colSpan={r.columns.length}
+                                  className="whitespace-nowrap px-3 py-1.5 text-[12px] font-semibold text-blue-700"
                                 >
-                                  <span className="block max-w-[420px] truncate" title={String(row[c] ?? '')}>
-                                    {String(row[c] ?? '')}
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="inline-block h-3 w-1 rounded-full bg-blue-400" />
+                                    <span className="font-semibold">
+                                      {String(row['店铺'] ?? '')}　（该款色所有店铺合并：上报销量与全局尺码占比，库存列见各店铺明细）
+                                    </span>
                                   </span>
                                 </td>
-                              ))}
-                            </tr>
-                          ))
+                              </tr>
+                            ) : (
+                              <tr key={i} className={i % 2 ? 'bg-gray-50/50' : 'bg-white'}>
+                                {r.columns.map((c) => (
+                                  <td
+                                    key={c}
+                                    className="whitespace-nowrap border-b border-gray-100 px-3 py-1.5 text-gray-700"
+                                  >
+                                    <span className="block max-w-[420px] truncate" title={String(row[c] ?? '')}>
+                                      {String(row[c] ?? '')}
+                                    </span>
+                                  </td>
+                                ))}
+                              </tr>
+                            ),
+                          )
                         )}
                       </tbody>
                     </table>
