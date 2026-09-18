@@ -2695,7 +2695,13 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
               <div className="text-[11px] font-medium text-gray-600">预警关联展示（随本预警在弹窗展示）</div>
               {lvs.map((n) => {
                 const rd = n.data as Record<string, unknown>;
-                const label = typeof rd?.resultLabel === 'string' && rd.resultLabel ? rd.resultLabel : '预警关联展示';
+                const lvD = n.data as unknown as LinkViewNodeData;
+                const tabNames = (Array.isArray(lvD?.tabs) ? lvD.tabs : []).map((t) => t?.name || '').filter(Boolean);
+                const label = tabNames.length
+                  ? tabNames.join('、')
+                  : typeof rd?.resultLabel === 'string' && rd.resultLabel
+                    ? rd.resultLabel
+                    : '预警关联展示';
                 const on = curMap.get(n.id) ?? true;
                 return (
                   <label key={n.id} className="mt-1 flex cursor-pointer items-center gap-1.5 text-[11px] text-gray-700">
