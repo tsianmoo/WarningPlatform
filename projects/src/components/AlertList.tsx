@@ -89,7 +89,7 @@ function ImgCell({ value, onZoom }: { value: unknown; onZoom: (src: string) => v
           e.stopPropagation();
           onZoom(src);
         }}
-        className="h-[100px] w-[100px] cursor-zoom-in rounded object-cover ring-1 ring-black/5 transition-transform hover:scale-105"
+        className="h-[50px] w-[50px] cursor-zoom-in rounded object-cover ring-1 ring-black/5 transition-transform hover:scale-105"
       />
     </span>
   );
