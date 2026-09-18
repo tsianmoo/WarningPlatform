@@ -1169,6 +1169,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [remotePersist, setRemotePersist] = useState(false);
   const loaded = useRef(false);
   const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 表变更（上传/更新/删除）等关键写操作后置为 true，调度立即落库，避免关页丢表
+  const immediateRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1240,13 +1242,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 状态变化：本地缓存兜底 + 防抖同步到服务端数据库
+  // 状态变化：本地缓存兜底 + 防抖同步到服务端数据库（表变更等关键操作立即同步）
   useEffect(() => {
     if (!loaded.current) return;
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(state));
     } catch {
       /* ignore */
+    }
+    if (immediateRef.current) {
+      immediateRef.current = false;
+      if (pushTimer.current) clearTimeout(pushTimer.current);
+      void pushRemoteState(state);
+      return;
     }
     if (pushTimer.current) clearTimeout(pushTimer.current);
     pushTimer.current = setTimeout(() => {
@@ -1257,21 +1265,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
   }, [state]);
 
-  // 页面关闭/刷新前强制兜底落库，避免防抖未触发导致本次改动丢失
+  // 页面关闭/刷新前强制兜底落库，避免防抖未触发导致本次改动丢失。
+  // 用 fetch({keepalive:true}) 替代 sendBeacon：后者约 64KB 大小限制，大表（数万行）会静默丢弃。
+  const latestRef = useRef(state);
+  latestRef.current = state;
   useEffect(() => {
     const flush = () => {
       if (pushTimer.current) clearTimeout(pushTimer.current);
       try {
+        const s = latestRef.current;
         const payload = JSON.stringify({
-          tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], tableGroups: state.tableGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] },
+          tables: s.tables, rules: s.rules, alerts: s.alerts, groups: s.ruleGroups ?? [], tableGroups: s.tableGroups ?? [], orgs: s.orgs ?? [], persons: s.persons ?? [], employees: s.employees ?? [], hrAttributes: s.hrAttributes ?? [], dealers: s.dealers ?? [], stores: s.stores ?? [], config: { ...s.config, permissions: s.permissions ?? [], permOverrides: s.permOverrides ?? [] },
         });
-        navigator.sendBeacon(STATE_API, new Blob([payload], { type: 'application/json' }));
+        void fetch(STATE_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(() => { /* keepalive 大表可能被浏览器拒绝，主落库路径在 [state] effect 的立即 POST */ });
       } catch { /* 忽略 */ }
     };
     window.addEventListener('beforeunload', flush);
     return () => window.removeEventListener('beforeunload', flush);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
+  }, []);
 
   const api = useMemo<StoreApi>(() => {
     const dispatch = (t: string, payload?: unknown) => setState((s) => reducer(s, { type: t, payload }));
@@ -1279,9 +1291,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       state,
       ready,
       remotePersist,
-      addTable: (t) => dispatch('ADD_TABLE', t),
-      updateTable: (id, patch) => dispatch('UPDATE_TABLE', { id, patch }),
-      removeTable: (id) => dispatch('REMOVE_TABLE', id),
+      addTable: (t) => { immediateRef.current = true; dispatch('ADD_TABLE', t); },
+      updateTable: (id, patch) => { immediateRef.current = true; dispatch('UPDATE_TABLE', { id, patch }); },
+      removeTable: (id) => { immediateRef.current = true; dispatch('REMOVE_TABLE', id); },
       setActiveTable: (id) => dispatch('SET_ACTIVE_TABLE', id),
       setBuilderTables: (ids) => dispatch('SET_BUILDER_TABLES', ids),
       renameField: (tableId, fieldKey, alias) => dispatch('RENAME_FIELD', { tableId, fieldKey, alias }),
@@ -1393,7 +1405,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setPermOverrides: (ovs) => dispatch('SET_PERM_OVERRIDES', ovs),
       flushNow: () => {
         if (pushTimer.current) clearTimeout(pushTimer.current);
-        void pushRemoteState(state);
+        void pushRemoteState(latestRef.current);
       },
       moveOrg: (id, dir) => {
         const target = state.orgs.find((o) => o.id === id);
