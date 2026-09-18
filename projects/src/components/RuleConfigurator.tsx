@@ -152,7 +152,7 @@ export function RuleConfigurator({
       // 同规则同级别已有“待处理/处理中”预警则刷新其标题/描述/判断/预览（保证旧数据也能补齐），否则新增；避免重复点击翻倍。
       if (final.status === 'active') {
         const existing = state.alerts ?? [];
-        buildAlertsForRule(final, state.tables, { stores: state.stores ?? [], employees: state.employees ?? [], persons: state.persons ?? [] }).forEach((a) => {
+        buildAlertsForRule(final, state.tables, { stores: state.stores ?? [], employees: state.employees ?? [], persons: state.persons ?? [], orgs: state.orgs ?? [] }).forEach((a) => {
           const hit = existing.find(
             (x) =>
               x.ruleId === a.ruleId &&
@@ -167,6 +167,12 @@ export function RuleConfigurator({
               conditionDesc: a.conditionDesc,
               preview: a.preview,
               ruleName: a.ruleName,
+              deadlineAt: a.deadlineAt,
+              deadlineLabel: a.deadlineLabel,
+              graceMinutes: a.graceMinutes,
+              graceUntil: a.graceUntil,
+              escalateTo: a.escalateTo,
+              escalated: a.escalated ?? false,
             });
           } else {
             addAlert(a);
