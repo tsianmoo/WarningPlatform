@@ -263,6 +263,48 @@ function resolveEscalateNames(t?: TargetSetting, ctx?: BuildAlertCtx): string[] 
 }
 
 /**
+ * 自动回填：对 active 规则，按其「超时动作」配置给「当日、且缺失 deadline」的预警补齐
+ * deadlineAt / deadlineLabel / graceMinutes / graceUntil / escalateTo（历史日与已带 deadline 的不动）。
+ * 幂等，仅用于迁移/兜底，避免老预警漏带时限字段导致列表不显示。
+ */
+function backfillDeadlines(rules: AlertRule[], alerts: AlertTask[], persons: Person[] = [], orgs: Organization[] = []): AlertTask[] {
+  const now = Date.now();
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const today = start.getTime();
+  const out = alerts.slice();
+  for (const r of rules) {
+    if (r.status !== 'active') continue;
+    const tNodes = (r.flow?.nodes ?? []).filter((n) => n.kind === 'timeout');
+    if (tNodes.length === 0) continue;
+    const map = new Map<string, { deadline?: DeadlineSetting; escalateTarget?: TargetSetting }>();
+    for (const tn of tNodes) {
+      const dd = tn.data as unknown as { actionId?: string; deadline?: DeadlineSetting; escalateTarget?: TargetSetting };
+      map.set((dd?.actionId || ''), { deadline: dd?.deadline, escalateTarget: dd?.escalateTarget });
+    }
+    for (let i = 0; i < out.length; i++) {
+      const a = out[i];
+      if (a.ruleId !== r.id || a.createdAt < today || a.deadlineAt) continue;
+      const tcfg = map.size === 1 ? Array.from(map.values())[0] : (map.get('') ?? Array.from(map.values())[0]);
+      const d = tcfg?.deadline;
+      if (!d || !d.enabled) continue;
+      const dl = calcDeadline(now, d);
+      if (dl === undefined) continue;
+      const gm = d.graceMinutes ?? 20;
+      out[i] = {
+        ...a,
+        deadlineAt: dl,
+        deadlineLabel: describeDeadlineText(d),
+        graceMinutes: gm,
+        graceUntil: dl + gm * 60000,
+        escalateTo: tcfg?.escalateTarget ? resolveEscalateNames(tcfg.escalateTarget, { persons, orgs }) : (d.escalateTo ?? []),
+      };
+    }
+  }
+  return out;
+}
+
+/**
  * 激活前置校验：预警规则必须包含「超时动作」节点；
  * 若该节点开关开启，则必须已配置规定用时 + 指定转派人员，否则不允许激活。
  * 返回错误提示；无错误时返回空串。
@@ -1162,13 +1204,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             });
           }
         }
+        const loadedAlerts = (remote.alerts ?? []).filter((a) => !isBlankAlert(a));
+        const alertsPatched = backfillDeadlines(rules, loadedAlerts, remote.persons ?? [], remote.orgs ?? []);
         setState((s) => ({
           ...s,
           tables: (tables ?? []).map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })),
           rules,
           ruleGroups: remote.ruleGroups ?? [],
           tableGroups: remote.tableGroups ?? [],
-          alerts: (remote.alerts ?? []).filter((a) => !isBlankAlert(a)),
+          alerts: alertsPatched,
           orgs: remote.orgs ?? [],
           persons: remote.persons ?? [],
           hrAttributes: normalizeHrAttrs((remote.hrAttributes ?? []).filter((a) => (a.category ?? 'person') !== ('org' as never))),
