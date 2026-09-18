@@ -891,6 +891,15 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
       if (state.ruleGroups.some((x) => x.id === g.id || x.name === g.name)) return state;
       return { ...state, ruleGroups: [g, ...state.ruleGroups] };
     }
+    case 'REMOVE_ALERTS': {
+      const cfg = action.payload as { ruleId?: string; since?: number };
+      const rid = cfg?.ruleId;
+      const since = cfg?.since;
+      return {
+        ...state,
+        alerts: state.alerts.filter((a) => !(rid && a.ruleId === rid && (since == null || a.createdAt >= since))),
+      };
+    }
     case 'REMOVE_RULE_GROUP': {
       const id = action.payload as string;
       return {
@@ -1231,20 +1240,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const rule = state.rules.find((r) => r.id === id);
         if (!rule) return;
         const alerts = buildAlertsForRule(rule, state.tables, { stores: state.stores ?? [], employees: state.employees ?? [], persons: state.persons ?? [] });
+        const today = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })();
+        // 覆盖当日已生成预警（重新生成以带上最新配置），保留历史日
+        dispatch('REMOVE_ALERTS', { ruleId: id, since: today });
         const seen = new Set<string>();
         for (const a of alerts) {
           const key = `${a.ruleId}|${a.level}|${a.title}|${a.dept ?? ''}|${a.assignee ?? ''}`;
           if (seen.has(key)) continue;
           seen.add(key);
-          const hit = state.alerts.find(
-            (x) => x.ruleId === a.ruleId && x.level === a.level && x.title === a.title && x.dept === a.dept && x.assignee === a.assignee
-          );
-          if (hit) {
-            // 重新构建的预警仅刷新可再生数据；保留已产生的处理状态与内容(状态/处理人/时间/方案/留言/计划)
-            const { status: _s, assignee: _as, acceptedAt: _ac, startedAt: _sa, handledAt: _ha, resolution: _rs, failedReason: _fr, comments: _cm, plan: _pl, ...fresh } = a;
-            dispatch('UPDATE_ALERT', { id: hit.id, patch: { ...fresh, updatedAt: Date.now() } });
-          }
-          else dispatch('ADD_ALERT', a);
+          dispatch('ADD_ALERT', a);
         }
         if (rule.status !== 'active') dispatch('UPDATE_RULE', { id, patch: { status: 'active' } });
       },
