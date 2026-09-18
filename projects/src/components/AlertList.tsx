@@ -815,7 +815,7 @@ export function AlertList() {
                   (open.preview?.linkview?.enabled && open.preview.linkview.tabs?.length && (canAllLv || !(open.preview.linkview.tabs ?? []).some((t) => t.all))
                     ? [{ label: '预警关联展示', linkview: open.preview.linkview }]
                     : []);
-                const flatTabs: { label: string; cols: string[]; rows: Record<string, unknown>[] }[] = [];
+                const flatTabs: { label: string; cols: string[]; rows: Record<string, unknown>[]; all: boolean }[] = [];
                 rawGroups.forEach((g, _gi) => {
                   (g.linkview.tabs ?? []).forEach((tb, ti) => {
                     if (tb.all && !canAllLv) return;
@@ -823,20 +823,25 @@ export function AlertList() {
                       label: tb.name || tb.tableName || tb.srcNodeLabel || `${g.label || '关联'}${rawGroups.length > 1 || (g.linkview.tabs?.length ?? 0) > 1 ? `·${ti + 1}` : ''}`,
                       cols: tb.columns ?? [],
                       rows: tb.rows ?? [],
+                      all: !!tb.all,
                     });
                   });
                 });
                 if (!flatTabs.length) return null;
+                const firstAllIdx = flatTabs.findIndex((t) => t.all);
                 const sel = lvGroup !== null ? Math.min(lvGroup, flatTabs.length - 1) : null;
                 const cur = sel !== null ? flatTabs[sel] : null;
                 return (
                   <div className="mt-4">
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-wrap items-center gap-1">
                       {flatTabs.map((f, fi) => {
                         const active = sel === fi;
                         return (
-                          <button
-                            key={fi}
+                          <span key={fi} className="inline-flex items-center">
+                            {firstAllIdx > 0 && fi === firstAllIdx ? (
+                              <span className="mx-1.5 my-0.5 flex h-4 w-px bg-gray-300" title="区分类型" />
+                            ) : null}
+                            <button
                             type="button"
                             onClick={() => { setLvGroup(active ? null : fi); setLvTab(0); }}
                             className={`whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${active ? 'border-pink-600 bg-pink-600 text-white' : 'border-gray-200 bg-white text-gray-500 hover:border-pink-300 hover:text-pink-600'}`}
@@ -844,6 +849,7 @@ export function AlertList() {
                             {f.label}
                             <span className={`ml-1.5 text-[10px] ${active ? 'text-pink-100' : 'text-gray-300'}`}>{f.rows.length}</span>
                           </button>
+                          </span>
                         );
                       })}
                     </div>
