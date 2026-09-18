@@ -5356,12 +5356,15 @@ const LinkViewNode = memo(function LinkViewNode({ id, data }: NodeProps) {
       const rl = typeof rd?.resultLabel === 'string' && rd.resultLabel ? rd.resultLabel : '';
       return { nodeId: n.id, kind: n.kind, label: rl ? `${KIND_LABEL[n.kind] ?? n.kind}·${rl}` : (KIND_LABEL[n.kind] ?? n.kind) };
     });
-  // 预警动作消息（预警通知）里的全部变量字段，作为默认关联候选
+  // 预警通知结果字段：取「预警动作」节点输出的结果字段（命中明细列），作为默认关联候选
   const actionVars: string[] = (() => {
     const a = allFlow.find((n) => n.kind === 'action');
     if (!a) return [];
-    const msg = (a.data as unknown as ActionNodeData).content || '';
-    return Array.from(new Set<string>([...msg.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]))).filter((x) => x);
+    return Array.from(
+      new Set<string>(
+        inferNodeCols(allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>, tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, a.id).map((c) => c.label || c.key).filter((x) => x)
+      )
+    );
   })();
   const uniqStr = (arr: string[]) => Array.from(new Set(arr.filter((x) => x)));
 

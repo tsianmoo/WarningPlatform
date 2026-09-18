@@ -22,6 +22,8 @@ import type {
   HomeConfig,
   RolePerm,
   PersonPermOverride,
+  LinkViewTab,
+  LinkViewNodeData,
 } from './types';
 import { uid, OPERATOR_OPTIONS, DEFAULT_HOME_CONFIG, normalizeHomeConfig } from './types';
 import { buildSampleTable, ensureFieldsComplete } from './parser';
@@ -244,12 +246,47 @@ export function buildAlertsForRule(
           };
         })
       : undefined;
-    // 预警关联展示：取规则中「预警关联展示」节点的已解析关联数据（标签页展示）
-    let linkviewData: NodePreview['linkviewData'] | undefined;
-    if (evalMap && rule.flow.nodes.some((n) => n.kind === 'linkview')) {
-      const lvNode = rule.flow.nodes.find((n) => n.kind === 'linkview');
-      if (lvNode && evalMap[lvNode.id]?.linkviewData) linkviewData = evalMap[lvNode.id].linkviewData;
-    }
+    // 预警关联展示：取「预警关联展示」节点的标签配置，关联数据按每条预警各自的命中行重算（只关联本预警对应结果的匹配数据）
+    const lvNode = rule.flow.nodes.find((n) => n.kind === 'linkview');
+    const lvTabs: LinkViewTab[] =
+      lvNode && Array.isArray((lvNode.data as LinkViewNodeData).tabs) ? ((lvNode.data as LinkViewNodeData).tabs ?? []) : [];
+    const tableRowsOf = (t?: DataTable): Array<Record<string, string | number>> =>
+      (t && t.rows && t.rows.length ? t.rows : (t?.previewRows ?? [])) as unknown as Array<Record<string, string | number>>;
+    const buildLinkview = (rows: Array<Record<string, string | number>>): NodePreview['linkviewData'] | undefined => {
+      if (!lvTabs.length) return undefined;
+      const tabs = lvTabs.map((tab) => {
+        const keys = (Array.isArray(tab.matchKeys) ? tab.matchKeys : []).map((k) => k.field).filter((x) => x && x.trim());
+        let srcRows: Array<Record<string, string | number>> = [];
+        let colNames: string[] = [];
+        if (tab.source === 'node' && tab.srcNode) {
+          const o = evalMap?.[tab.srcNode];
+          if (o && Array.isArray(o.rows) && o.rows.length) {
+            srcRows = o.rows as unknown as Array<Record<string, string | number>>;
+            colNames = o.columns ?? [];
+          }
+        } else {
+          const t = (tables ?? []).find((x) => x.id === tab.tableId);
+          if (t) {
+            srcRows = tableRowsOf(t);
+            colNames = t.fields.map((f) => f.key);
+          }
+        }
+        const filtered = srcRows.filter((sr) => {
+          if (!keys.length) return true;
+          return rows.some((mr) => keys.every((k) => String(sr[k] ?? '') === String(mr[k] ?? '')));
+        });
+        return {
+          name: tab.name || tab.tableName || tab.srcNodeLabel || '关联',
+          source: tab.source,
+          tableName: tab.source === 'table' ? tab.tableName : undefined,
+          srcNodeLabel: tab.source === 'node' ? tab.srcNodeLabel : undefined,
+          matchKeys: (Array.isArray(tab.matchKeys) ? tab.matchKeys : []).filter((k) => k && k.field),
+          columns: colNames,
+          rows: filtered.slice(0, 200),
+        };
+      });
+      return { enabled: true, tabs };
+    };
     const hit0Parts = hitRows[0] ? renderParts(hitRows[0] as Record<string, unknown>) : undefined;
     const preview = hit && hitRows.length
       ? {
@@ -257,7 +294,6 @@ export function buildAlertsForRule(
           rows: hitRows,
           ...(storeMessages ? { storeMessages } : {}),
           ...(hit0Parts ? { msgParts: hit0Parts } : {}),
-          ...(linkviewData ? { linkview: linkviewData } : {}),
         }
       : undefined;
     // 类型/重要等级 → 兼容 level；字段模板替换（列表预览取第一行）
@@ -314,6 +350,10 @@ export function buildAlertsForRule(
         m === 'store' && curStores.length
           ? Array.from(new Set(curStores.map((s) => s.store).filter(Boolean)))
           : (recipients?.[0]?.names ?? []);
+      const alertRows = (storeMsg?.store && storeCol
+        ? (preview?.rows ?? []).filter((r) => String(r[storeCol] ?? '') === storeMsg.store)
+        : (preview?.rows ?? [])) as Array<Record<string, string | number>>;
+      const alertLinkview = buildLinkview(alertRows);
       const obj = {
         ruleId: rule.id,
         ruleName: rule.name,
@@ -325,13 +365,11 @@ export function buildAlertsForRule(
         conditionDesc: conditionDesc || undefined,
         preview: {
           columns: preview?.columns ?? [],
-          rows: storeMsg?.store && storeCol
-            ? (preview?.rows ?? []).filter((r) => String(r[storeCol] ?? '') === storeMsg.store)
-            : (preview?.rows ?? []),
+          rows: alertRows,
           ...(curStores.length ? { storeMessages: curStores } : {}),
           ...(recipients ? { recipients: [{ mode: m, names: curNames }] } : {}),
           ...((storeMsg?.parts ?? hit0Parts) ? { msgParts: storeMsg?.parts ?? hit0Parts } : {}),
-          ...(linkviewData ? { linkview: linkviewData } : {}),
+          ...(alertLinkview ? { linkview: alertLinkview } : {}),
         },
         createdBy: '系统',
         dept: notify?.departments?.[0] ?? targets?.departments?.[0] ?? '',
