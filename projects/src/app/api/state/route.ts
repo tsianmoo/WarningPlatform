@@ -23,6 +23,9 @@ export async function POST(req: Request) {
       orgs?: Organization[]; persons?: Person[]; hrAttributes?: HrAttribute[]; dealers?: Dealer[]; stores?: Store[]; employees?: Employee[]; config?: HomeConfig | null;
     };
     const tables = Array.isArray(body.tables) ? body.tables : [];
+    try {
+      require('fs').appendFileSync('/tmp/state_post.log', JSON.stringify({ ts: Date.now(), n: tables.length, names: tables.map(t => t.name), alerts: Array.isArray(body.alerts) ? body.alerts.length : 0 }) + '\n');
+    } catch {}
     const rules = Array.isArray(body.rules) ? body.rules : [];
     const alerts = Array.isArray(body.alerts) ? body.alerts : [];
     const groups = Array.isArray(body.groups) ? body.groups : [];
