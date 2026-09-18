@@ -98,6 +98,7 @@ export interface BuildAlertCtx {
   stores?: Store[];
   employees?: Employee[];
   persons?: Person[];
+  orgs?: Organization[];
 }
 
 /** 门店档案 → 店仓各筛选维度的取值（同时兼容顶层字段与 attrs 字典中的中文字段） */
@@ -239,7 +240,7 @@ export function describeDeadlineText(d?: DeadlineSetting): string {
   return `每月${d.monthDay ?? 1} 号 ${clock}`;
 }
 
-/** 超时动作「转派对象」配置 → 具体人员名单（复用通知对象的选择方式：person 按职位/岗位；manual 手动选中人员） */
+/** 超时动作「转派对象」配置 → 具体人员名单（复用通知对象的选择方式：person 按职位/岗位；manual 手动选部门/人员） */
 function resolveEscalateNames(t?: TargetSetting, ctx?: BuildAlertCtx): string[] {
   const mode = t?.mode ?? 'manual';
   const persons = ctx?.persons ?? [];
@@ -250,7 +251,15 @@ function resolveEscalateNames(t?: TargetSetting, ctx?: BuildAlertCtx): string[] 
       .filter((p) => p.enabled !== false && (!posF.length || (p.title && posF.includes(p.title))) && (!postF.length || (p.post && postF.includes(p.post))))
       .map((p) => p.name);
   }
-  return (t?.personnel ?? []).slice();
+  const manual = (t?.personnel ?? []).slice();
+  if (manual.length) return manual;
+  // 仅选了部门（未逐个勾人）：默认转派给这些部门下的全部启用人员
+  const depts = t?.departments ?? [];
+  if (!depts.length) return [];
+  const orgName = new Map((ctx?.orgs ?? []).filter((o) => o.kind === '部门').map((o) => [o.id, o.name]));
+  return persons
+    .filter((p) => p.enabled !== false && orgName.get(p.orgId) != null && depts.includes(orgName.get(p.orgId) as string))
+    .map((p) => p.name);
 }
 
 /**
@@ -268,9 +277,10 @@ export function validateRuleTimeout(r: AlertRule): string {
     const okDeadline = d.kind === 'duration' ? (d.value ?? 0) > 0 && !!d.unit : !!d.clock;
     if (!okDeadline) return '已开启「超时动作」，请先配置规定用时';
     const esc = data?.escalateTarget;
+    const manualMode = (esc?.mode ?? 'manual') === 'manual';
     const okEsc =
       !!esc &&
-      (esc.mode === 'manual' ? (esc.personnel ?? []).length > 0 : (esc.personPositions ?? []).length > 0 || (esc.personPosts ?? []).length > 0);
+      (manualMode ? (esc.personnel ?? []).length > 0 || (esc.departments ?? []).length > 0 : true); // 按用户：职位/岗位均不选 = 全部用户，视为已指定
     if (!okEsc) return '已开启「超时动作」，超时后必须指定转派人员';
   }
   return '';
@@ -1239,7 +1249,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       activateRule: (id) => {
         const rule = state.rules.find((r) => r.id === id);
         if (!rule) return;
-        const alerts = buildAlertsForRule(rule, state.tables, { stores: state.stores ?? [], employees: state.employees ?? [], persons: state.persons ?? [] });
+        const alerts = buildAlertsForRule(rule, state.tables, { stores: state.stores ?? [], employees: state.employees ?? [], persons: state.persons ?? [], orgs: state.orgs ?? [] });
         const today = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })();
         // 覆盖当日已生成预警（重新生成以带上最新配置），保留历史日
         dispatch('REMOVE_ALERTS', { ruleId: id, since: today });
