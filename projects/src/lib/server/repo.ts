@@ -172,14 +172,34 @@ export async function syncTables(tables: DataTable[]): Promise<void> {
   // 删除已被前端移除的表
   const { data: existing, error: selErr } = await client.from('data_tables').select('id');
   if (selErr) throw new Error(`读取数据表ID失败: ${selErr.message}`);
+  const existingRows = (existing as { id: string }[] | null) ?? [];
   const keep = new Set(tables.map((t) => t.id));
-  const staleIds = ((existing as { id: string }[] | null) ?? [])
+  // 防误删保护：库中已有业务表，但本次提交不含任何业务表（为空或只剩示例表）时，跳过删除。
+  // 避免某个前端会话因远端加载失败回退到"仅示例表"状态后，全量覆盖把真实数据清空。
+  const hasBusinessTable = tables.some((t) => t.id !== 'tbl-sample');
+  const hasExistingBusiness = existingRows.some((r) => r.id !== 'tbl-sample');
+  const staleIds = existingRows
     .map((r) => r.id)
     .filter((id) => !keep.has(id));
-  if (staleIds.length > 0) {
+  if (staleIds.length > 0 && !(hasExistingBusiness && !hasBusinessTable)) {
     const { error: delErr } = await client.from('data_tables').delete().in('id', staleIds);
     if (delErr) throw new Error(`删除数据表失败: ${delErr.message}`);
   }
+}
+
+/** 判定库中是否已存在业务数据（有业务表 / 规则 / 员工 / 店仓 / 组织架构等），用于空覆盖防护 */
+export async function hasAnyBusinessData(): Promise<boolean> {
+  const client = getSupabaseClient();
+  const [{ data: tb }, { data: rules }, { data: emps }] = await Promise.all([
+    client.from('data_tables').select('id'),
+    client.from('alert_rules').select('id'),
+    client.from('employees').select('id'),
+  ]);
+  const businessTables = ((tb as { id: string }[] | null) ?? []).some((r) => r.id !== 'tbl-sample');
+  if (businessTables) return true;
+  if (((rules as unknown[] | null) ?? []).length > 0) return true;
+  if (((emps as unknown[] | null) ?? []).length > 0) return true;
+  return false;
 }
 
 /** 通过数据库直连写入数据表，规避大表经 PostgREST 的 statement timeout */
@@ -238,11 +258,13 @@ export async function syncRules(rules: AlertRule[]): Promise<void> {
 
   const { data: existing, error: selErr } = await client.from('alert_rules').select('id');
   if (selErr) throw new Error(`读取规则ID失败: ${selErr.message}`);
+  const existingRows = (existing as { id: string }[] | null) ?? [];
   const keep = new Set(rules.map((r) => r.id));
-  const staleIds = ((existing as { id: string }[] | null) ?? [])
+  // 防误删保护：库中已有规则但本次提交为空时，跳过删除（防空提交误删全部业务规则）。
+  const staleIds = existingRows
     .map((r) => r.id)
     .filter((id) => !keep.has(id));
-  if (staleIds.length > 0) {
+  if (staleIds.length > 0 && !(existingRows.length > 0 && rules.length === 0)) {
     const { error: delErr } = await client.from('alert_rules').delete().in('id', staleIds);
     if (delErr) throw new Error(`删除规则失败: ${delErr.message}`);
   }

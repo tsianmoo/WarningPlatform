@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAllTables, getAllRules, getAllAlerts, getAllRuleGroups, getAllTableGroups, getAllOrganizations, getAllPersons, getAllHrAttributes, getAllDealers, getAllStores, getAllEmployees, getHomeConfig, syncTables, syncRules, syncAlerts, syncRuleGroups, syncTableGroups, syncOrganizations, syncPersons, syncHrAttributes, syncDealers, syncStores, syncEmployees, saveHomeConfig } from '@/lib/server/repo';
+import { getAllTables, getAllRules, getAllAlerts, getAllRuleGroups, getAllTableGroups, getAllOrganizations, getAllPersons, getAllHrAttributes, getAllDealers, getAllStores, getAllEmployees, getHomeConfig, syncTables, syncRules, syncAlerts, syncRuleGroups, syncTableGroups, syncOrganizations, syncPersons, syncHrAttributes, syncDealers, syncStores, syncEmployees, saveHomeConfig, hasAnyBusinessData } from '@/lib/server/repo';
 import type { AlertRule, AlertTask, DataTable, DataTableGroup, Dealer, Employee, HrAttribute, HomeConfig, Organization, Person, RuleGroup, Store } from '@/lib/types';
 
 // 读取持久化的全部业务数据（数据表 + 规则 + 预警 + 规则分组 + 组织架构 + 人事架构 + 经销商/店仓 + 员工 + 首页配置）
@@ -36,6 +36,19 @@ export async function POST(req: Request) {
     const dealers = Array.isArray(body.dealers) ? body.dealers : [];
     const stores = Array.isArray(body.stores) ? body.stores : [];
     const employees = Array.isArray(body.employees) ? body.employees : [];
+
+    // 空覆盖防护：当本次提交的业务数据全空（无业务表、规则、员工、店仓、组织架构等），
+    // 但库中已有业务数据时，判定为异常回退状态，拒绝本次覆盖，避免把真实数据清空。
+    const businessCount =
+      tables.filter((t) => t.id !== 'tbl-sample').length + rules.length + alerts.length + groups.length + tableGroups.length +
+      orgs.length + persons.length + hrAttributes.length + dealers.length + stores.length + employees.length;
+    if (businessCount === 0) {
+      const existing = await hasAnyBusinessData();
+      if (existing) {
+        return NextResponse.json({ success: true, skipped: 'empty-overwrite-guard', tableCount: tables.length, ruleCount: rules.length });
+      }
+    }
+
     await Promise.all([syncTables(tables), syncRules(rules), syncAlerts(alerts), syncRuleGroups(groups), syncTableGroups(tableGroups), syncOrganizations(orgs), syncPersons(persons), syncHrAttributes(hrAttributes), syncDealers(dealers), syncStores(stores), syncEmployees(employees)]);
     if (body.config) await saveHomeConfig(body.config);
     return NextResponse.json({ success: true, tableCount: tables.length, ruleCount: rules.length, alertCount: alerts.length, groupCount: groups.length, tableGroupCount: tableGroups.length, orgCount: orgs.length, personCount: persons.length, attrCount: hrAttributes.length, dealerCount: dealers.length, storeCount: stores.length, employeeCount: employees.length });
