@@ -720,6 +720,16 @@ export interface MsgPart {
   isVar?: boolean;
 }
 
+/** 预警关联展示：查看预警弹窗按标签页展示的关联数据 */
+export interface LinkViewResolved {
+  /** 是否已配置关联展示 */
+  enabled: boolean;
+  /** 基础表字段（预警动作结果字段） */
+  baseCols?: string[];
+  /** 关联标签：每个标签已按命中行解析出关联数据 */
+  tabs?: Array<{ name: string; source: 'table' | 'node'; tableName?: string; srcNodeLabel?: string; matchKeys?: Array<{ baseField?: string; relField?: string }>; columns: string[]; rows: Record<string, string | number>[] }>;
+}
+
 /** 预警动作节点数据 */
 export interface ActionNodeData {
   /** 类型：提醒 / 预警（新结构，替代 level） */
@@ -737,6 +747,8 @@ export interface ActionNodeData {
   sourceNode?: NodeResultRef;
   /** 是否启用本动作：false 表示关闭，激活时不生成对应预警（默认 true） */
   enabled?: boolean;
+  /** 预警关联展示：规则内 linkview 节点在此动作弹窗中是否展示（默认全部展示） */
+  linkviews?: Array<{ id: string; enabled: boolean }>;
 }
 
 /** 时间窗口节点数据 */
@@ -1088,15 +1100,10 @@ export interface AlertTask {
     storeMessages?: { store: string; message: string }[];
     /** 预警消息分段（变量字段段 isVar=true，弹窗加粗紫色展示） */
     msgParts?: MsgPart[];
+    /** 预警关联展示（多个「预警关联展示」节点各自独立启用时的集合，弹窗分组展示） */
+    linkviews?: Array<{ label: string; linkview: LinkViewResolved }>;
     /** 预警关联展示（查看预警弹窗按标签页展示的关联数据，来自「预警关联展示」节点） */
-    linkview?: {
-      /** 是否已配置关联展示 */
-      enabled: boolean;
-      /** 基础表字段（预警动作结果字段） */
-      baseCols?: string[];
-      /** 关联标签：每个标签已按命中行解析出关联数据 */
-      tabs?: Array<{ name: string; source: 'table' | 'node'; tableName?: string; srcNodeLabel?: string; matchKeys?: Array<{ baseField?: string; relField?: string }>; columns: string[]; rows: Record<string, string | number>[] }>;
-    };
+    linkview?: LinkViewResolved;
     /** 解析出的通知对象（按 store/employee/person 模式展开的门店/员工/人员），供列表与详情展示 */
     recipients?: { mode: NotifyMode; names: string[] }[];
   };

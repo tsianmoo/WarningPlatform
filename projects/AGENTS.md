@@ -119,6 +119,7 @@
 - **店仓级预警消息（storeMessages）**：由 `buildAlertsForRule` 对每个 action 节点命中明细逐行渲染——列取 `storeMessages[].{store, message}`，`store` 取含「店/仓」的列（否则首列），`message` 用 action 消息模板 `{字段}` 替换该行值。`createdBy='系统'`（规则触发）。两者随 `preview` JSON 持久化（repo 白名单列无法新增，故塞进 preview JSON，零 schema 改动）。点击「查看」展开显示每个店铺的预警消息。
 
 - **预警消息变量加粗紫色 + 预警关联展示**：`buildAlertsForRule`（store.tsx）对 action 消息模板除 `content` 外，还生成 `preview.msgParts`（`MsgPart[]`，模板 `{字段}` 命中段 `isVar=true`，结构逐行一致），「查看预警」弹窗按 msgParts 渲染——变量段 `font-bold text-purple-600`，未配置则回退 `open.content` 纯文本。规则中若有「预警关联展示」（`linkview`）节点，evaluate 输出 `linkviewData{enabled,tabs[]}`（每个 tab 已按**同名匹配键**把来源行过滤到命中数据：tab.source table→allRows 或 node→byId 输出，无匹配键则展示来源全部行），store 把 `evalMap[linkviewId].linkviewData` 塞入 `preview.linkview`（随 preview JSON 持久化）；弹窗在该规则命中行下方渲染粉色「预警关联展示」标签页（`linkview.tabs`），点击标签切换展示对应表格（含行数角标）。⚠️ actions `mk` 的 storeMsg 增加 `parts?: MsgPart[]`，per-store 预警用对应行 parts、合并预警用 `hit0Parts`。
+  - **更新（多关联 + 动作勾选 + 字段对）**：linkview 匹配键已从单字段改为字段对 `{baseField,relField}`（基础表=预警动作结果，字段可经连线回溯取列）；支持**多个** linkview 节点。`ActionNodeData.linkviews?:{id,enabled}[]` 在「预警动作」面板列出规则内全部 linkview 并打勾是否在弹窗展示（未配置视为全部展示）。store 按 action 勾选结果对**每条预警自己的命中行**（`preview.rows`）重算各 linkview 的关联数据，写入 `preview.linkviews:{label,linkview}[]`（并兼容保留 `preview.linkview`=第一个）；弹窗按 `preview.linkviews` 分组渲染多个标签区（无则回退单 `linkview`）。
 
 ## 规则引擎节点（预警规则画布）
 

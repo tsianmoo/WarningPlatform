@@ -246,22 +246,21 @@ export function buildAlertsForRule(
           };
         })
       : undefined;
-    // 预警关联展示：取「预警关联展示」节点的标签配置，关联数据按每条预警各自的命中行重算（只关联本预警对应结果的匹配数据）
-    const lvNode = rule.flow.nodes.find((n) => n.kind === 'linkview');
-    const lvTabs: LinkViewTab[] =
-      lvNode && Array.isArray((lvNode.data as LinkViewNodeData).tabs) ? ((lvNode.data as LinkViewNodeData).tabs ?? []) : [];
+    // 预警关联展示：一个或多个「预警关联展示」节点，动作节点上可勾选是否在本弹窗展示；关联数据按每条预警自己的命中行重算
+    const lvNodes = rule.flow.nodes.filter((n) => n.kind === 'linkview');
     const tableRowsOf = (t?: DataTable): Array<Record<string, string | number>> =>
       (t && t.rows && t.rows.length ? t.rows : (t?.previewRows ?? [])) as unknown as Array<Record<string, string | number>>;
-    const buildLinkview = (rows: Array<Record<string, string | number>>): NodePreview['linkviewData'] | undefined => {
-      if (!lvTabs.length) return undefined;
-      const tabs = lvTabs.map((tab) => {
+    const resolveLv = (lv: FlowNode, rows: Array<Record<string, string | number>>): NodePreview['linkviewData'] | undefined => {
+      const tabsCfg: LinkViewTab[] = Array.isArray((lv.data as LinkViewNodeData).tabs) ? ((lv.data as LinkViewNodeData).tabs ?? []) : [];
+      if (!tabsCfg.length) return { enabled: false, tabs: [] };
+      const tabs = tabsCfg.map((tab) => {
         // 匹配键字段对：基础表字段(baseField) ↔ 关联表字段(relField)；基础表即本条预警自己的命中行
         const pairs = (Array.isArray(tab.matchKeys) ? tab.matchKeys : []).filter((k) => k && k.baseField && k.relField);
         let srcRows: Array<Record<string, string | number>> = [];
         let colNames: string[] = [];
         if (tab.source === 'node' && tab.srcNode) {
           const o = evalMap?.[tab.srcNode];
-          if (o && Array.isArray(o.rows) && o.rows.length) {
+          if (o && Array.isArray(o.rows)) {
             srcRows = o.rows as unknown as Array<Record<string, string | number>>;
             colNames = o.columns ?? [];
           }
@@ -288,6 +287,17 @@ export function buildAlertsForRule(
       });
       return { enabled: true, tabs };
     };
+    // 动作上勾选的展示集合：未配置时视为全部 linkview 均展示
+    const lvEnabled: Map<string, boolean> = new Map();
+    (Array.isArray(a.data.linkviews) ? a.data.linkviews : []).forEach((li) => lvEnabled.set(li.id, !!li.enabled));
+    const lvLabel = (n: FlowNode) => {
+      const rd = n.data as Record<string, unknown>;
+      return typeof rd?.resultLabel === 'string' && rd.resultLabel ? rd.resultLabel : '预警关联展示';
+    };
+    const buildLinkviews = (rows: Array<Record<string, string | number>>): Array<{ label: string; linkview: NonNullable<NodePreview['linkviewData']> }> =>
+      lvNodes
+        .filter((n) => (lvEnabled.size ? lvEnabled.get(n.id) !== false : true))
+        .map((n) => ({ label: lvLabel(n), linkview: resolveLv(n, rows) ?? { enabled: false, tabs: [] } }));
     const hit0Parts = hitRows[0] ? renderParts(hitRows[0] as Record<string, unknown>) : undefined;
     const preview = hit && hitRows.length
       ? {
@@ -354,7 +364,7 @@ export function buildAlertsForRule(
       const alertRows = (storeMsg?.store && storeCol
         ? (preview?.rows ?? []).filter((r) => String(r[storeCol] ?? '') === storeMsg.store)
         : (preview?.rows ?? [])) as Array<Record<string, string | number>>;
-      const alertLinkview = buildLinkview(alertRows);
+      const alertLinkviews = buildLinkviews(alertRows);
       const obj = {
         ruleId: rule.id,
         ruleName: rule.name,
@@ -370,7 +380,7 @@ export function buildAlertsForRule(
           ...(curStores.length ? { storeMessages: curStores } : {}),
           ...(recipients ? { recipients: [{ mode: m, names: curNames }] } : {}),
           ...((storeMsg?.parts ?? hit0Parts) ? { msgParts: storeMsg?.parts ?? hit0Parts } : {}),
-          ...(alertLinkview ? { linkview: alertLinkview } : {}),
+          ...(alertLinkviews.length ? { linkviews: alertLinkviews.map((x) => ({ label: x.label, linkview: x.linkview })), linkview: alertLinkviews[0].linkview } : {}),
         },
         createdBy: '系统',
         dept: notify?.departments?.[0] ?? targets?.departments?.[0] ?? '',

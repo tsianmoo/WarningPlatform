@@ -776,59 +776,70 @@ export function AlertList() {
                     ) : null}
                   </div>
                 ) : null}
-                {open.preview?.linkview?.enabled && open.preview.linkview.tabs?.length ? (
-                  <div className="mt-4">
-                    <h4 className="mb-2 text-sm font-semibold text-pink-600">预警关联展示</h4>
-                    <div className="mb-2 flex flex-wrap gap-1">
-                      {open.preview.linkview.tabs.map((tb, ti) => {
-                        const active = (lvTab ?? 0) === ti;
-                        const label = tb.name || tb.tableName || tb.srcNodeLabel || `关联${ti + 1}`;
-                        return (
-                          <button
-                            key={ti}
-                            type="button"
-                            onClick={() => setLvTab(ti)}
-                            className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${active ? 'bg-pink-600 text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}
-                          >
-                            {label}
-                            <span className={`ml-1 text-[10px] ${active ? 'text-pink-100' : 'text-gray-300'}`}>{tb.rows?.length ?? 0}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {(() => {
-                      const tb = open.preview!.linkview!.tabs![Math.min(lvTab ?? 0, open.preview!.linkview!.tabs!.length - 1)];
-                      const cols = tb.columns ?? [];
-                      const rows = tb.rows ?? [];
+                {(() => {
+                const groups =
+                  open.preview?.linkviews?.filter((g) => g.linkview?.enabled && g.linkview.tabs?.length) ??
+                  (open.preview?.linkview?.enabled && open.preview.linkview.tabs?.length
+                    ? [{ label: '预警关联展示', linkview: open.preview.linkview }]
+                    : []);
+                if (!groups.length) return null;
+                return (
+                  <div className="mt-4 space-y-4">
+                    {groups.map((g, gi) => {
+                      const tabs = g.linkview.tabs ?? [];
+                      const tb = tabs[Math.min(lvTab ?? 0, tabs.length - 1)];
+                      const cols = tb?.columns ?? [];
+                      const rows = tb?.rows ?? [];
                       return (
-                        <div className="overflow-auto rounded-lg border border-gray-100">
-                          {rows.length ? (
-                            <table className="w-full border-collapse text-[11px]">
-                              <thead>
-                                <tr className="bg-gray-50/40 text-left text-gray-400">
-                                  {cols.map((c) => (
-                                    <th key={c} className="whitespace-nowrap px-2.5 py-2 font-medium">{c}</th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {rows.slice(0, 100).map((r, ri) => (
-                                  <tr key={ri} className="border-t border-gray-50">
+                        <div key={gi}>
+                          <h4 className="mb-2 text-sm font-semibold text-pink-600">{g.label}</h4>
+                          <div className="mb-2 flex flex-wrap gap-1">
+                            {tabs.map((tb2, ti) => {
+                              const active = (lvTab ?? 0) === ti;
+                              const label = tb2.name || tb2.tableName || tb2.srcNodeLabel || `关联${ti + 1}`;
+                              return (
+                                <button
+                                  key={ti}
+                                  type="button"
+                                  onClick={() => setLvTab(ti)}
+                                  className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${active ? 'bg-pink-600 text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}
+                                >
+                                  {label}
+                                  <span className={`ml-1 text-[10px] ${active ? 'text-pink-100' : 'text-gray-300'}`}>{tb2.rows?.length ?? 0}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <div className="overflow-auto rounded-lg border border-gray-100">
+                            {rows.length ? (
+                              <table className="w-full border-collapse text-[11px]">
+                                <thead>
+                                  <tr className="bg-gray-50/40 text-left text-gray-400">
                                     {cols.map((c) => (
-                                      <td key={c} className="whitespace-nowrap px-2.5 py-2 text-gray-500">{String(r[c] ?? '')}</td>
+                                      <th key={c} className="whitespace-nowrap px-2.5 py-2 font-medium">{c}</th>
                                     ))}
                                   </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          ) : (
-                            <div className="px-3 py-3 text-xs text-gray-400">该标签暂无关联数据。</div>
-                          )}
+                                </thead>
+                                <tbody>
+                                  {rows.slice(0, 100).map((r, ri) => (
+                                    <tr key={ri} className="border-t border-gray-50">
+                                      {cols.map((c) => (
+                                        <td key={c} className="whitespace-nowrap px-2.5 py-2 text-gray-500">{String(r[c] ?? '')}</td>
+                                      ))}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            ) : (
+                              <div className="px-3 py-3 text-xs text-gray-400">该标签暂无关联数据。</div>
+                            )}
+                          </div>
                         </div>
                       );
-                    })()}
+                    })}
                   </div>
-                ) : null}
+                );
+              })()}
                 {(open.resolution || open.failedReason) ? (
                   <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50/40 px-3 py-2">
                     {open.failedReason ? (

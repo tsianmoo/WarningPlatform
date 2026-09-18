@@ -2679,6 +2679,34 @@ const ActionNode = memo(({ id, data }: NodeProps) => {
         <div className="mt-1 text-[10px] text-gray-400">
           规则终点：输入位置插入 {`{字段名}`}，触发时替换为命中行的实际值
         </div>
+        {(() => {
+          const lvs = (allNodes as unknown as FlowNode[]).filter((n) => n.kind === 'linkview' && n.id !== id);
+          if (!lvs.length) return null;
+          const cur = Array.isArray(d.linkviews) ? d.linkviews : [];
+          const curMap = new Map(cur.map((x) => [x.id, x.enabled] as const));
+          const toggle = (lvId: string) => {
+            const map = new Map(curMap);
+            lvs.forEach((n) => { if (!map.has(n.id)) map.set(n.id, true); });
+            map.set(lvId, !(map.get(lvId) ?? true));
+            update({ linkviews: Array.from(map, ([id2, enabled]) => ({ id: id2, enabled })) });
+          };
+          return (
+            <div className="mt-2 rounded-md border border-gray-100 bg-gray-50/60 p-1.5">
+              <div className="text-[11px] font-medium text-gray-600">预警关联展示（随本预警在弹窗展示）</div>
+              {lvs.map((n) => {
+                const rd = n.data as Record<string, unknown>;
+                const label = typeof rd?.resultLabel === 'string' && rd.resultLabel ? rd.resultLabel : '预警关联展示';
+                const on = curMap.get(n.id) ?? true;
+                return (
+                  <label key={n.id} className="mt-1 flex cursor-pointer items-center gap-1.5 text-[11px] text-gray-700">
+                    <input type="checkbox" checked={on} onChange={() => toggle(n.id)} className="accent-violet-600" />
+                    <span className={on ? 'text-violet-700' : 'text-gray-400'}>{label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          );
+        })()}
         <TargetPanel targets={notify} onChange={(next) => update({ notify: next })} />
       </div>
       <Handle type="target" position={Position.Left} style={{ background: '#F59E0B', width: 10, height: 10 }} />
