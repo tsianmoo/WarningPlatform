@@ -1248,6 +1248,14 @@ function evalNode(
     case 'linkview_all': {
       const lva = d as unknown as LinkViewAllNodeData;
       const tabsCfg = (Array.isArray(lva.tabs) ? lva.tabs : []).filter((t) => t && (t.tableId || t.srcNode || t.name));
+      const allBaseOut = lva.baseNode ? byId(lva.baseNode) : undefined;
+      const baseRows = (allBaseOut && Array.isArray(allBaseOut.rows) ? allBaseOut.rows : []) as Record<string, string | number>[];
+      // 全量：按匹配字段（基础表字段↔关联表字段）展示匹配的全部行；未配置匹配或基础表无行时展示来源全部行
+      const filteredSrc = (tab: LinkViewAllTab, rows: Record<string, string | number>[]): Record<string, string | number>[] => {
+        const pairs = (Array.isArray(tab.matchKeys) ? tab.matchKeys : []).filter((k) => k && k.baseField && k.relField);
+        if (!pairs.length || !baseRows.length) return rows.slice();
+        return rows.filter((sr) => baseRows.some((mr) => pairs.every((k) => String(sr[k.relField ?? ''] ?? '') === String(mr[k.baseField ?? ''] ?? ''))));
+      };
       const resolveSrc = (tab: LinkViewAllTab): { label: string; rows: Record<string, string | number>[]; cols: string[] } | null => {
         if (tab.source === 'node') {
           if (!tab.srcNode) return null;
@@ -1264,33 +1272,36 @@ function evalNode(
         const keepCols = src ? src.cols : [];
         const rcList = (Array.isArray(tab.returnCols) ? tab.returnCols : []).map((c) => String(c)).filter((c) => c && keepCols.includes(c));
         const projCols = Array.from(new Set(rcList.length ? rcList : keepCols));
-        const projRows = (src ? src.rows : []).map((sr) => {
+        const srcFiltered = filteredSrc(tab, src ? src.rows : []);
+        const projRows = srcFiltered.map((sr) => {
           const o: Record<string, string | number> = {};
           projCols.forEach((c) => {
             if (c in sr) o[c] = sr[c] as string | number;
           });
           return o;
         });
+        const pairs = (Array.isArray(tab.matchKeys) ? tab.matchKeys : []).filter((k) => k && k.baseField && k.relField);
         return {
           name: tab.name || tab.tableName || tab.srcNodeLabel || '全量数据',
           all: true,
           source: tab.source,
           tableName: tab.source === 'table' ? tab.tableName : undefined,
           srcNodeLabel: tab.source === 'node' ? tab.srcNodeLabel : undefined,
-          matchKeys: [],
+          matchKeys: pairs,
           columns: projCols,
           rows: projRows.slice(0, 200),
         };
       });
       const total = tabs.reduce((s, t) => s + t.rows.length, 0);
       const previewTab = tabs.find((t) => t.rows.length > 0) || tabs[0];
+      const hasPairs = tabsCfg.some((t) => (Array.isArray(t.matchKeys) ? t.matchKeys : []).some((k) => k && k.baseField && k.relField));
       return {
         title: lva.resultLabel || '预警关联展示-全量',
         columns: previewTab ? previewTab.columns : [],
         rows: previewTab ? previewTab.rows.slice(0, 100) : [],
         shape: 'table',
         note: tabsCfg.length
-          ? `全量展示来源全部数据，共 ${total} 行。来源：${tabsCfg.map((t) => t.name || t.tableName || t.srcNodeLabel || '全量数据').join('、')}`
+          ? `按匹配字段${hasPairs ? '（基础表字段↔关联表字段）' : ''}展示来源全部匹配行，共 ${total} 行。来源：${tabsCfg.map((t) => t.name || t.tableName || t.srcNodeLabel || '全量数据').join('、')}`
           : '请添加全量数据来源（数据表或节点结果）',
         linkviewData: { enabled: tabs.length > 0, all: true, tabs },
       };

@@ -272,9 +272,9 @@ export function buildAlertsForRule(
             colNames = t.fields.map((f) => f.key);
           }
         }
-        // 全量模式：展示来源全部行，不做基础表/命中行匹配
-        const filtered = isAll ? srcRows.slice() : srcRows.filter((sr) => {
-          if (!pairs.length) return true;
+        // 全量模式：按匹配字段过滤（基础表字段↔关联表字段），展示匹配来源的全部行；未配置匹配或基础无行时展示全部
+        const filtered = srcRows.filter((sr) => {
+          if (!pairs.length || !rows.length) return true;
           return rows.some((mr) => pairs.every((k) => String(sr[k.relField ?? ''] ?? '') === String(mr[k.baseField ?? ''] ?? '')));
         });
         // 返回列：勾选则只保留这些列；未勾选默认返回来源全部列
