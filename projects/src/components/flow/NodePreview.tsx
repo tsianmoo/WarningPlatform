@@ -14,6 +14,77 @@ import { X, Table2, AlertCircle, BellRing } from 'lucide-react';
 import type { DataTable, FlowEdge, FlowNode } from '@/lib/types';
 import { evaluateFlow, type NodePreview } from '@/lib/evaluate';
 
+/** 基础列（位于各分组之前、单列表头展示的列）。这些列在 columns 中按出现前缀划分：第一个 colGroups 之前的所有列都视为基础列 */
+function baseOf(r: NodePreview): string[] {
+  const g0 = r.colGroups?.[0];
+  if (!g0) return r.columns;
+  const idx = r.columns.indexOf(g0.cols[0]);
+  return idx <= 0 ? [] : r.columns.slice(0, idx);
+}
+
+/** 分组子列扁平集合（用于 tbody 循环），保持 columns 顺序排除基础列 */
+function dataColsOf(r: NodePreview): string[] {
+  if (!r.colGroups) return r.columns;
+  const base = baseOf(r);
+  const set = new Set<string>();
+  for (const g of r.colGroups) for (const c of g.cols) set.add(c);
+  return r.columns.filter((c) => !base.includes(c) && set.has(c));
+}
+
+function renderHeader(r: NodePreview): ReactNode {
+  if (r.colGroups && r.colGroups.length > 0) {
+    const base = baseOf(r);
+    return (
+      <>
+        <tr>
+          {base.map((c) => (
+            <th
+              key={c}
+              rowSpan={2}
+              className="sticky top-0 z-[1] whitespace-nowrap border-b border-gray-200 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-600"
+            >
+              {c}
+            </th>
+          ))}
+          {r.colGroups.map((g) => (
+            <th
+              key={g.label}
+              colSpan={g.cols.length}
+              className="sticky top-0 z-[1] whitespace-nowrap border-b border-b-gray-300 border-r border-gray-100 bg-gray-100 px-3 py-2 text-center font-semibold text-gray-600"
+            >
+              {g.label}
+            </th>
+          ))}
+        </tr>
+        <tr>
+          {r.colGroups.map((g) =>
+            g.cols.map((c) => (
+              <th
+                key={`${g.label}::${c}`}
+                className="sticky top-[30px] z-[1] whitespace-nowrap border-b border-gray-200 border-r border-gray-100 bg-gray-50 px-3 py-1.5 text-center font-medium text-gray-500"
+              >
+                {c.replace(`销量占比·`, '').replace(`销量·`, '').replace(`库存·`, '')}
+              </th>
+            )),
+          )}
+        </tr>
+      </>
+    );
+  }
+  return (
+    <tr className="bg-gray-50">
+      {r.columns.map((c) => (
+        <th
+          key={c}
+          className="sticky top-0 z-[1] whitespace-nowrap border-b border-gray-200 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-600"
+        >
+          {c}
+        </th>
+      ))}
+    </tr>
+  );
+}
+
 interface PreviewState {
   nodeId: string;
   loading: boolean;
@@ -199,18 +270,7 @@ function PreviewModal({ state, onClose }: { state: PreviewState; onClose: () => 
                     className="max-h-[70vh] w-full overflow-auto overscroll-x-contain"
                   >
                     <table className="min-w-max border-collapse text-[12px]">
-                      <thead>
-                        <tr className="bg-gray-50">
-                          {r.columns.map((c) => (
-                            <th
-                              key={c}
-                              className="sticky top-0 z-[1] whitespace-nowrap border-b border-gray-200 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-600"
-                            >
-                              {c}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
+                      <thead>{renderHeader(r)}</thead>
                       <tbody>
                         {r.rows.length === 0 ? (
                           <tr>

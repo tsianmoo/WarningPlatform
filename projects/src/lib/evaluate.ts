@@ -89,6 +89,8 @@ export interface NodePreview {
   unsupported?: boolean;
   /** 该结果可用的全部列名（含未在 columns 展示的列），供下游节点选择 */
   allCols?: string[];
+  /** 列分组表头：大分组 + 分组内子列（columns 中的列按分组展示为两级表头）。每个分组 cols 里元素与 columns 里的列名一致 */
+  colGroups?: { label: string; cols: string[] }[];
   /** 结果形态：scalar=单值（其 rows 只是"统计项/数值"展示），table=逐行明细表 */
   shape?: 'scalar' | 'table';
   /** 预警动作：将通知消息模板对每个命中行渲染后的实际消息（用于预览通知内容） */
@@ -2952,11 +2954,18 @@ function evalNode(
         return (1000 + (up.codePointAt(0) ?? 0)) / 1e6;   // 其它字母尺码兜底
       };
       const allSizes = Array.from(sizeSet).sort((a, b) => sizeRank(a) - sizeRank(b));
-      const baseCols = ['店铺', '款号', '颜色', '综合判断'];
-      const outCols = [...baseCols];
-      for (const sz of allSizes) outCols.push(`${sz}·销量`, `${sz}·占比`, `${sz}·库存`);
-      // 组头行不渲染标记列（__gh / __gk），NodePreview 据此做视觉分组
       type SoRow = Record<string, string | number>;
+      const baseCols = ['店铺', '款号', '颜色', '断码判断'];
+      const saleCols = allSizes.map((sz) => `销量·${sz}`);
+      const pctCols = allSizes.map((sz) => `销量占比·${sz}`);
+      const invCols = allSizes.map((sz) => `库存·${sz}`);
+      const outCols = [...baseCols, ...saleCols, ...pctCols, ...invCols];
+      // 三级表头：基础列 + 三个量度分组，每组按尺码横排
+      const colGroups = [
+        { label: '销量', cols: saleCols },
+        { label: '销量占比', cols: pctCols },
+        { label: '库存', cols: invCols },
+      ];
       const groupMap = new Map<string, { family: string; style: string; color: string; storeRows: Map<string, SoRow[]> }>();
       for (const [stKey, rows] of storeGroups) {
         const [store, family, style, color] = stKey.split('|');
@@ -2976,30 +2985,31 @@ function evalNode(
       const groupsSorted = Array.from(groupMap.entries()).sort((a, b) =>
         (a[1].family + a[1].style + a[1].color).localeCompare(b[1].family + b[1].style + b[1].color),
       );
+      const fillSale = (row: SoRow, g: { family: string; style: string; color: string }, sz: string) => {
+        const sk = `${g.family}|${g.style}|${g.color}`;
+        const share = shareOf(sk, sz) || 0;
+        row[`销量占比·${sz}`] = share > 0 ? `${Math.round(share * 100)}%` : '—';
+        return share;
+      };
       for (const [, g] of groupsSorted) {
-        // —— 组头行：跨店汇总销量 + 全局占比 ——
-        const head: SoRow = {
-          店铺: `∑ ${g.style} ${g.color}`,
-          款号: g.style,
-          颜色: g.color,
-          综合判断: '',
-          __gh: 1,
-          __gk: `${g.family}|${g.style}|${g.color}`,
-        };
+        // —— 汇总行：店仓=「汇总」，展示该款色跨店合并的尺码销量 / 全局占比 / 库存合计 ——
+        const total: SoRow = { 店铺: '汇总', 款号: g.style, 颜色: g.color, 断码判断: '' };
         for (const sz of allSizes) {
           const sk = `${g.family}|${g.style}|${g.color}`;
           const share = shareOf(sk, sz) || 0;
           let totQty = 0;
+          let totInv = 0;
           for (const rows of g.storeRows.values()) {
             const rec = rows.find((x) => String((x as SoRow).size) === sz);
             totQty += rec ? Number((rec as SoRow).qty ?? 0) : 0;
+            totInv += rec && share > 0 && Number((rec as SoRow).inv ?? 0) > brokenMax ? Number((rec as SoRow).inv ?? 0) : 0;
           }
-          head[`${sz}·销量`] = totQty;
-          head[`${sz}·占比`] = share > 0 ? `${Math.round(share * 100)}%` : '—';
-          head[`${sz}·库存`] = '∑库存';
+          if (share <= 0) { total[`销量·${sz}`] = '—'; total[`库存·${sz}`] = '—'; }
+          else { total[`销量·${sz}`] = totQty; total[`库存·${sz}`] = totInv; }
+          total[`销量占比·${sz}`] = share > 0 ? `${Math.round(share * 100)}%` : '—';
         }
-        outRows.push(head);
-        // —— 组内店铺行：该店该款色各尺码销量与库存 ——
+        outRows.push(total);
+        // —— 门店明细行：该店该款色各尺码销量与库存，含断码判断 ——
         for (const [store, rows] of g.storeRows) {
           const row: SoRow = { 店铺: store, 款号: g.style, 颜色: g.color };
           let hasCore = false;
@@ -3008,17 +3018,18 @@ function evalNode(
           for (const sz of allSizes) {
             const rec = rows.find((x) => String((x as SoRow).size) === sz);
             const share = shareOf(`${g.family}|${g.style}|${g.color}`, sz) || 0;
+            const belongs = share > 0;              // 该款+色全局有这个尺码才参与断码判定
             const tierV = rec ? ((rec as SoRow).tier as '核心' | '重要' | '一般') : tier(share);
-            const broken = isBroken(rec as Record<string, unknown> | undefined);
+            const broken = belongs && isBroken(rec as Record<string, unknown> | undefined);
             if (broken) { if (tierV === '核心') hasCore = true; else if (tierV === '重要') hasImp = true; else hasNormal = true; }
-            const inv = rec ? Number((rec as SoRow).inv ?? 0) : undefined;
-            row[`${sz}·销量`] = rec ? Number((rec as SoRow).qty ?? 0) : '—';
-            row[`${sz}·占比`] = '—';
-            row[`${sz}·库存`] = broken ? (rec ? `${inv as number}⛔` : '0⛔') : ((inv as number) ?? 0);
+            const inv = belongs ? (rec ? Number((rec as SoRow).inv ?? 0) : undefined) : undefined;
+            row[`销量·${sz}`] = belongs ? (rec ? Number((rec as SoRow).qty ?? 0) : '—') : '—';
+            row[`销量占比·${sz}`] = share > 0 ? `${Math.round(share * 100)}%` : '—';
+            row[`库存·${sz}`] = broken ? (rec ? `${inv as number}⛔` : '0⛔') : (belongs ? ((inv as number) ?? 0) : '—');
             if (broken) totalBroken++;
           }
           const verdict = !hasCore && !hasImp && !hasNormal ? '齐码' : hasCore ? '核心断码' : hasImp ? '严重断码' : '普通断码';
-          row['综合判断'] = verdict;
+          row['断码判断'] = verdict;
           if (verdict === '核心断码') sCoreC++; else if (verdict === '严重断码') sImpC++; else if (verdict === '普通断码') sNormalC++; else sFullC++;
           outRows.push(row);
         }
@@ -3029,7 +3040,8 @@ function evalNode(
         rows: cap(outRows),
         shape: 'table',
         allCols: outCols,
-        note: `来自「${rs?.from ?? '明细'}」共 ${src.length} 行 → 把所有店铺合并，按款型组+款+色聚合计销量得全局尺码占比并分级（核心≥${Math.round(corePct * 100)}%、重要≥${Math.round(impPct * 100)}%），某店缺失该尺码或库存≤${brokenMax} 均视为断码。按 款+色 分 ${groupMap.size} 组；店铺×款色 判定：核心断码 ${sCoreC}、严重断码 ${sImpC}、普通断码 ${sNormalC}、齐码 ${sFullC}；断码尺码合计 ${totalBroken} 个。`,
+        colGroups,
+        note: `来自「${rs?.from ?? '明细'}」共 ${src.length} 行 → 把所有店铺合并，按款型组+款+色聚合计销量得全局尺码占比并分级（核心≥${Math.round(corePct * 100)}%、重要≥${Math.round(impPct * 100)}%），某店缺失该尺码或库存≤${brokenMax} 均视为断码。按 款+色 分 ${groupMap.size} 组：每组首行为「汇总」，以下为各门店明细。店铺×款色 判定：核心断码 ${sCoreC}、严重断码 ${sImpC}、普通断码 ${sNormalC}、齐码 ${sFullC}；断码尺码合计 ${totalBroken} 个。`,
       };
     }
 
