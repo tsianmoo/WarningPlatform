@@ -2923,7 +2923,6 @@ function evalNode(
       const tier = (share: number): '核心' | '重要' | '一般' =>
         share >= corePct ? '核心' : share >= impPct ? '重要' : '一般';
       // 按 店铺×款型组×款×色 聚合并输出断码分组
-      const outRows: Record<string, string | number>[] = [];
       const storeGroups = new Map<string, Record<string, unknown>[]>();
       for (const r of src) {
         const store = String(r[storeF] ?? '');
@@ -2939,48 +2938,60 @@ function evalNode(
         const broken = Number.isFinite(inv) && inv <= brokenMax;
         const stKey = `${store}|${family}|${style}|${color}`;
         if (!storeGroups.has(stKey)) storeGroups.set(stKey, []);
-        storeGroups.get(stKey)!.push({ store, family, style, color, size, share, tier: t, broken, inv });
+        storeGroups.get(stKey)!.push({ store, family, style, color, size, share, tier: t, broken, inv, qty: toNum(r[qtyF]) });
       }
+      // —— 横排输出：每个 店铺×款型组×款×色 一行，尺码横排（尺码[销量/占比/库存]三列一组）——
+      const sizeSet = new Set<string>();
+      for (const rows of storeGroups.values()) for (const x of rows) sizeSet.add(String((x as Record<string, unknown>).size));
+      const sizeRank = (s: string) => {
+        const up = String(s).trim().toUpperCase();
+        const n = parseFloat(up);
+        if (Number.isFinite(n)) return n / 1e6;           // 数字尺码（34/36/38…）放在最前，按数值升序
+        const map: Record<string, number> = { XXXS: 1, XXS: 2, XS: 3, S: 4, M: 5, L: 6, XL: 7, XXL: 8, XXXL: 9, XXXXL: 10 };
+        if (map[up] != null) return (map[up] + 100) / 1e6;
+        return (1000 + (up.codePointAt(0) ?? 0)) / 1e6;   // 其它字母尺码兜底
+      };
+      const allSizes = Array.from(sizeSet).sort((a, b) => sizeRank(a) - sizeRank(b));
+      const baseCols = ['店铺', '款型组', '款号', '颜色', '综合判断'];
+      const outCols = [...baseCols];
+      for (const sz of allSizes) outCols.push(`${sz}·销量`, `${sz}·占比`, `${sz}·库存`);
+      const outRows: Record<string, string | number>[] = [];
+      let sCoreC = 0, sImpC = 0, sNormalC = 0, sFullC = 0;
       for (const [stKey, rows] of storeGroups) {
         const [store, family, style, color] = stKey.split('|');
-        const broken = rows.filter((x: Record<string, unknown>) => x.broken);
-        const fmtSize = (xs: Record<string, unknown>[]) => {
-          return xs
-            .sort((a, b) => (b.share as number) - (a.share as number))
-            .map((x) => `${x.size}${Math.round((x.share as number) * 100)}%`)
-            .join('、');
+        const row: Record<string, string | number> = { 店铺: store, 款型组: family, 款号: style, 颜色: color };
+        let hasCore = false;
+        let hasImp = false;
+        let hasNormal = false;
+        const isBroken = (rec: Record<string, unknown> | undefined) => {
+          if (!rec) return true;                         // 该店缺失该尺码 = 无货 = 断码
+          return (rec.inv as number) <= brokenMax;        // 库存 ≤ brokenMax 也断码
         };
-        const coreB = broken.filter((x: Record<string, unknown>) => x.tier === '核心');
-        const impB = broken.filter((x: Record<string, unknown>) => x.tier === '重要');
-        const normalB = broken.filter((x: Record<string, unknown>) => x.tier === '一般');
-        const allSizes = rows
-          .sort((a, b) => (b.share as number) - (a.share as number))
-          .map((x) => `${x.size}${Math.round((x.share as number) * 100)}%`)
-          .join('、');
-        const corePctText = rows
-          .filter((x: Record<string, unknown>) => x.tier === '核心')
-          .reduce((s, x) => s + (x.share as number), 0);
-        outRows.push({
-          店铺: store,
-          款型组: family,
-          款号: style,
-          颜色: color,
-          尺码占比: allSizes,
-          核心断码: fmtSize(coreB),
-          重要断码: fmtSize(impB),
-          一般断码: fmtSize(normalB),
-          断码数: broken.length,
-          核心占比: `${Math.round(corePctText * 100)}%`,
-        });
+        for (const sz of allSizes) {
+          const rec = rows.find((x: Record<string, unknown>) => String(x.size) === sz);
+          // 全局口径：占比一律用 款型组+款+色 合并所有店铺后的尺码销售占比（该店是否缺码都不影响分级结论）
+          const share = shareOf(`${family}|${style}|${color}`, sz) || 0;
+          const tierV = rec ? ((rec as Record<string, unknown>).tier as '核心' | '重要' | '一般') : tier(share);
+          const broken = isBroken(rec as Record<string, unknown> | undefined);
+          if (broken) { if (tierV === '核心') hasCore = true; else if (tierV === '重要') hasImp = true; else hasNormal = true; }
+          const inv = rec ? (rec.inv as number) : undefined;
+          row[`${sz}·销量`] = rec ? ((rec as Record<string, unknown>).qty as number) : '—';
+          row[`${sz}·占比`] = share > 0 ? `${Math.round(share * 100)}%` : '—';
+          row[`${sz}·库存`] = broken ? (rec ? `${inv as number}⛔` : '0⛔') : ((inv as number) ?? 0);
+        }
+        const verdict = !hasCore && !hasImp && !hasNormal ? '齐码' : hasCore ? '核心断码' : hasImp ? '严重断码' : '普通断码';
+        row['综合判断'] = verdict;
+        if (verdict === '核心断码') sCoreC++; else if (verdict === '严重断码') sImpC++; else if (verdict === '普通断码') sNormalC++; else sFullC++;
+        outRows.push(row);
       }
-      const totalBroken = outRows.reduce((s, o) => s + (o['断码数'] as number), 0);
+      const totalBroken = outRows.reduce((s, o) => s + allSizes.filter((sz) => { const c = `${sz}·库存`; return String(o[c]).includes('⛔'); }).length, 0);
       return {
         title: sd.resultLabel || '断码分析',
-        columns: ['店铺', '款型组', '款号', '颜色', '尺码占比', '核心断码', '重要断码', '一般断码', '断码数', '核心占比'],
+        columns: outCols,
         rows: cap(outRows),
         shape: 'table',
-        allCols: ['店铺', '款型组', '款号', '颜色', '尺码占比', '核心断码', '重要断码', '一般断码', '断码数', '核心占比'],
-        note: `来自「${rs?.from ?? '明细'}」共 ${src.length} 行 → 把所有店铺合并，按款型组+款+色聚合计销量得全局尺码占比并分级（核心≥${Math.round(corePct * 100)}%、重要≥${Math.round(impPct * 100)}%），库存≤${brokenMax} 视为断码。断码分组 ${outRows.length} 组，共断码尺码 ${totalBroken} 个。`,
+        allCols: outCols,
+        note: `来自「${rs?.from ?? '明细'}」共 ${src.length} 行 → 把所有店铺合并，按款型组+款+色聚合计销量得全局尺码占比并分级（核心≥${Math.round(corePct * 100)}%、重要≥${Math.round(impPct * 100)}%），某店缺失该尺码或库存≤${brokenMax} 均视为断码。共 ${storeGroups.size} 个 店铺×款色：核心断码 ${sCoreC}、严重断码 ${sImpC}、普通断码 ${sNormalC}、齐码 ${sFullC}；断码尺码合计 ${totalBroken} 个。`,
       };
     }
 

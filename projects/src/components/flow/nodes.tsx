@@ -1108,8 +1108,8 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
   const s = (v: unknown): string => (typeof v === 'string' && v ? v : '');
   switch (kind) {
     case 'stockout':
-      // 输出列与 evaluate stockout case 对齐
-      return ['店铺', '款型组', '款号', '颜色', '尺码占比', '核心断码', '重要断码', '一般断码', '断码数', '核心占比'].map((c) => ({ key: c, label: c }));
+      // 输出列与 evaluate stockout 对齐：基础列 + 综合判断 + 每个尺码 销量/占比/库存（尺码为动态集，仅返回基础列；真实列以 evaluate 输出为准）
+      return ['店铺', '款型组', '款号', '颜色', '综合判断'].map((c) => ({ key: c, label: c }));
     case 'topn':
       // 输出列名 = 分组列展示名 + 结果命名(resultLabel)；key 必须对齐真实输出列
       return [
