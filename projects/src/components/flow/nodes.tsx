@@ -1073,7 +1073,7 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
         pushUniq({ key: uf, label: s(k.universeFieldLabel) || uf });
       }
       // 3) 全集来源其余业务列（与 evaluate filljoin 输出对齐：默认带回全集全部非键列，供下游选字段）
-      if (s(data.universeSource) === 'node') {
+      if (s(data.universeSource) === 'node' || (!s(data.universeSource) && s(data.universeNodeId))) {
         const uniNode = s(data.universeNodeId);
         if (uniNode) for (const c of inferNodeCols(allNodes, tables, uniNode)) if (!uniKeySet.has(c.key)) pushUniq(c);
       } else {
@@ -1104,7 +1104,7 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
         if (factRet && key !== factRet && key !== s(data.factReturnLabel)) return false;
         return true;
       };
-      if (factSrc === 'node' && factNode) {
+      if (factSrc === 'node' || (!factSrc && factNode)) {
         for (const c of inferNodeCols(allNodes, tables, factNode)) {
           if (allowFact(c.key)) pushUniq(c);
         }
@@ -3928,6 +3928,31 @@ const FilterNode = memo(({ id, data }: NodeProps) => {
   const allNodes = useNodes();
   const source = d.source ?? 'table';
   const nodeOutputs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'column');
+  // 节点结果模式：按"其它节点配置+边结构"签名缓存 evaluateFlow 结果，取上游输出行做字段候选值（避免大表每次敲键都全量重算）
+  const ____edges = useEdges() as unknown as FlowEdge[];
+  const evalCache = useRef<{ signature: string; value?: Record<string, any> }>({ signature: '', value: undefined });
+  const evalSignature =
+    source === 'node'
+      ? JSON.stringify(
+          (allNodes as unknown as FlowNode[])
+            .filter((n) => n.id !== id)
+            .map((n) => n.data ?? {}),
+        ) + '|' + JSON.stringify(____edges.map((e) => [e.source, e.target]))
+      : '';
+  const evalOuts = useMemo<Record<string, any> | undefined>(() => {
+    if (source !== 'node') return undefined;
+    if (evalSignature === evalCache.current.signature) return evalCache.current.value;
+    let v: Record<string, any> | undefined;
+    try {
+      const flowNodes = allNodes as unknown as FlowNode[];
+      const flowEdges = ____edges as unknown as FlowEdge[];
+      v = evaluateFlow(flowNodes, flowEdges, tables);
+    } catch {
+      v = undefined;
+    }
+    evalCache.current = { signature: evalSignature, value: v };
+    return v;
+  }, [evalSignature]);
 
   const table = tables.find((t) => t.id === d.tableId) ?? tables[0];
   // 数据表字段
@@ -3961,9 +3986,19 @@ const FilterNode = memo(({ id, data }: NodeProps) => {
     update({ conditions: conds.filter((_, j) => j !== i) });
   };
 
-  // 取某字段的去重候选值：数据表用全量行；节点结果无前端行数据时给空（运行时按上游结果）
+  // 取某字段的去重候选值：数据表用全量行；节点结果从上游运行时输出行提取（限量扫描防卡顿）
   const distinctValues = (fieldKey: string): string[] => {
-    if (source === 'node') return [];
+    if (source === 'node') {
+      if (!d.sourceNode) return [];
+      const up = evalOuts?.[d.sourceNode];
+      const rows: Array<Record<string, unknown>> = up && Array.isArray(up.rows) ? (up.rows as Array<Record<string, unknown>>) : [];
+      const set = new Set<string>();
+      const sliced = rows.length > 5000 ? rows.slice(0, 5000) : rows;
+      for (const r of sliced) {
+        if (r && r[fieldKey] != null && r[fieldKey] !== '') set.add(String(r[fieldKey]));
+      }
+      return [...set];
+    }
     if (!table) return [];
     const set = new Set<string>();
     const src = table.rows && table.rows.length ? table.rows : table.previewRows;
