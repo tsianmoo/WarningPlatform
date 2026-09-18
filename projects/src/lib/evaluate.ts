@@ -2887,6 +2887,7 @@ function collectNodeDataRefs(node: FlowNode): string[] {
     for (const t of tabs) if (t && typeof t.srcNode === 'string' && t.srcNode) refs.push(t.srcNode);
   }
   if (node.kind === 'linkview_all') {
+    push(d.baseNode as unknown);
     const tabs = (d.tabs as Array<{ srcNode?: string }> | null | undefined) ?? [];
     for (const t of tabs) if (t && typeof t.srcNode === 'string' && t.srcNode) refs.push(t.srcNode);
   }
