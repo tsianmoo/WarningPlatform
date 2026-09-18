@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Plus, BellRing, ArrowLeft, Trash2, Users, CalendarClock, Table2, Pencil, PlayCircle, PauseCircle, Copy, Search, Zap, User, ChevronDown } from 'lucide-react';
 import type { AlertRule, RuleGroup } from '@/lib/types';
-import { useStore, formatDateTime, validateRuleTimeout } from '@/lib/store';
+import { useStore, formatDateTime } from '@/lib/store';
 import { resolvePerm, canOper } from '@/lib/perm';
 import { toast } from 'sonner';
 import {
@@ -184,11 +184,7 @@ export function RuleList({
                         <button
                           onClick={() => {
                             const next = r.status === 'active' ? 'paused' : 'active';
-                            if (next === 'active') {
-                              const tErr = validateRuleTimeout(r);
-                              if (tErr) { toast.error(tErr); return; }
-                              activateRule(r.id);
-                            }
+                            if (next === 'active') activateRule(r.id);
                             else updateRule(r.id, { status: next });
                             toast.success(next === 'paused' ? '已停用，不再生成新预警（已有预警保留）' : '已启用');
                           }}
@@ -476,11 +472,7 @@ function RuleDetail({ rule, onBack, onEdit }: { rule: AlertRule; onBack: () => v
             <button
               onClick={() => {
                 const next = rule.status === 'active' ? 'paused' : 'active';
-                if (next === 'active') {
-                  const tErr = validateRuleTimeout(rule);
-                  if (tErr) { toast.error(tErr); return; }
-                  activateRule(rule.id);
-                }
+                if (next === 'active') activateRule(rule.id);
                 else updateRule(rule.id, { status: next });
                 toast.success(next === 'paused' ? '已停用，不再自动生成新预警（已有预警保留）' : '已启用');
               }}

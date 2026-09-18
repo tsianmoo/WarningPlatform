@@ -67,24 +67,6 @@ function ElapsedCell({ createdAt }: { createdAt: number }) {
 
 const IMG_EXT = /\.(png|jpe?g|gif|webp|svg|bmp|avif)([/?#]|$)/i;
 
-function formatRemain(ms: number): string {
-  if (ms <= 0) return '';
-  const d = Math.floor(ms / 86400000);
-  const h = Math.floor((ms % 86400000) / 3600000);
-  const m = Math.max(1, Math.floor((ms % 3600000) / 60000));
-  if (d > 0) return `${d} 天 ${h} 小时`;
-  if (h > 0) return `${h} 小时 ${m} 分`;
-  return `${m} 分钟`;
-}
-
-function DeadlineCell({ deadlineAt, now }: { deadlineAt?: number; now: number }) {
-  const dlAt = deadlineAt ?? 0;
-  if (!dlAt) return <span className="text-gray-300">—</span>;
-  const remain = dlAt - now;
-  if (remain >= 0) return <span className="tabular-nums text-gray-500">{formatRemain(remain)}</span>;
-  return <span className="tabular-nums font-medium text-red-500">已超期</span>;
-}
-
 function isImgUrl(v: unknown): string | null {
   if (v == null) return null;
   const s = String(v).trim();
@@ -228,17 +210,6 @@ export function AlertList() {
   useEffect(() => {
     if (openForSync) setPlanDraft(openForSync.plan || '');
   }, [openForSync?.id]);
-  // 规定用时超宽限期 → 标记转派（一次性），转给指定人员
-  useEffect(() => {
-    const t = openForSync;
-    if (!t) return;
-    const dlAt = t.deadlineAt ?? 0;
-    const grace = t.graceUntil ?? 0;
-    const escTo = t.escalateTo ?? [];
-    if (dlAt > 0 && Date.now() > grace && !t.escalated && escTo.length) {
-      updateAlertStatus(t.id, { escalated: true, handoffTo: escTo.join('、'), updatedAt: Date.now() });
-    }
-  }, [openId, openForSync?.escalated]);
   const activeRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     if (showHist) activeRef.current?.scrollIntoView({ block: 'nearest' });
@@ -507,8 +478,6 @@ export function AlertList() {
                 <th className="whitespace-nowrap px-4 py-3 font-medium">接收人</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">已过时间</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">处理耗时</th>
-                <th className="whitespace-nowrap px-4 py-3 font-medium">规定用时</th>
-                <th className="whitespace-nowrap px-4 py-3 font-medium">剩余时长</th>
                 <th className="whitespace-nowrap px-4 py-3 font-medium">状态</th>
                 <th className="whitespace-nowrap px-4 py-3 pr-6 font-medium">操作</th>
               </tr>
@@ -520,10 +489,9 @@ export function AlertList() {
                 const count = a.preview?.storeMessages?.length ?? a.preview?.rows?.length ?? 0;
                 const stores = a.preview?.storeMessages ?? [];
                 const dur = a.startedAt ? formatDur(a.startedAt, a.handledAt ?? now) : null;
-                const overdue = (a.deadlineAt ?? 0) > 0 && (a.deadlineAt ?? 0) < now;
                 return (
                   <Fragment key={a.id}>
-                    <tr className={`align-middle transition-colors last:border-0 ${overdue ? 'bg-red-50/60 hover:bg-red-100/50' : 'hover:bg-gray-50/70'}`}>
+                    <tr className="align-middle transition-colors last:border-0 hover:bg-gray-50/70">
                       <td className="whitespace-nowrap px-4 py-3 pl-6 align-middle text-[13px] tabular-nums text-gray-400">{idx + 1}</td>
                       <td className="min-w-44 whitespace-nowrap px-4 py-3 align-middle">
                         <div className="text-[13px] font-medium text-gray-800">{a.title || '—'}</div>
@@ -551,12 +519,6 @@ export function AlertList() {
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs tabular-nums text-gray-600">
                         {dur ? <span className={a.status === 'processing' ? 'text-violet-500' : ''}>{dur}</span> : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-600">
-                        {a.deadlineLabel ? <span>{a.deadlineLabel}</span> : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-xs">
-                        <DeadlineCell deadlineAt={a.deadlineAt} now={now} />
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
                         <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[13px] font-medium">
@@ -591,15 +553,6 @@ export function AlertList() {
         if (!open) return null;
         const lv = LEVEL_META[(open.level ?? 'warn') as keyof typeof LEVEL_META] ?? LEVEL_META.warn;
         const st = STATUS_META[open.status];
-        const dlAt = open.deadlineAt ?? 0;
-        const graceUntil = open.graceUntil ?? 0;
-        const dlActive = dlAt > 0;
-        const overdue = dlActive && now > dlAt;
-        const locked = dlActive && now > graceUntil;
-        const escNames: string[] = open.escalateTo ?? [];
-        const lockedForMe = locked && !(meName && escNames.includes(meName));
-        const fmtClock = (t: number) =>
-          new Date(t).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
         const stores = open.preview?.storeMessages ?? [];
         const scopeNames = [...new Set(stores.map((s) => s.store).filter(Boolean))] as string[];
         let detailRows = open.preview?.rows ?? [];
@@ -623,7 +576,6 @@ export function AlertList() {
         const sendMsg = () => {
           const text = (chatDraft || '').trim();
           if (!text) return;
-          if (lockedForMe) { toast.error('此条预警已超时，你已没有操作权限，无法发送留言'); return; }
           updateAlertStatus(open.id, {
             comments: [...comments, { id: `c${Date.now()}`, by: meName || '当前用户', text, at: Date.now() }],
             updatedAt: Date.now(),
@@ -633,7 +585,6 @@ export function AlertList() {
         const sendReply = (cid: string) => {
           const text = (replyDraft || '').trim();
           if (!text) return;
-          if (lockedForMe) { toast.error('此条预警已超时，你已没有操作权限，无法回复'); return; }
           updateAlertStatus(open.id, {
             comments: comments.map((c) =>
               c.id === cid ? { ...c, replies: [...(c.replies ?? []), { id: `r${Date.now()}`, by: meName || '当前用户', text, at: Date.now() }] } : c
@@ -769,7 +720,7 @@ export function AlertList() {
                   {open.ruleName ? <p className="mt-0.5 truncate text-xs text-gray-400">{open.ruleName}</p> : null}
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                  {buildActions(open, updateAlertStatus, setHandoffId, openConfirm, meName, lockedForMe).map((x) => (
+                  {buildActions(open, updateAlertStatus, setHandoffId, openConfirm, meName).map((x) => (
                     <button
                       key={x.label}
                       onClick={x.fn}
@@ -786,15 +737,6 @@ export function AlertList() {
                   </button>
                 </div>
               </div>
-              {dlActive ? (
-                <div className={`mx-6 mt-3 rounded-md border px-3 py-2 text-xs leading-relaxed ${locked ? 'border-red-100 bg-red-50 text-red-600' : overdue ? 'border-amber-100 bg-amber-50 text-amber-600' : 'border-gray-100 bg-gray-50 text-gray-500'}`}>
-                  {locked
-                    ? (escNames.length ? `此条预警已超时，你已没有操作权限，已转派给 ${escNames.join('、')} 处理。` : '此条预警已超时，你已没有操作权限。')
-                    : overdue
-                    ? `已超过规定用时（${fmtClock(graceUntil)} 前未完成将锁定并转派），请在宽限期内完成操作。`
-                    : `须在 ${fmtClock(dlAt)} 前完成；超时后进入宽限期（${fmtClock(graceUntil)} 截止），超宽限期将锁定并转派给${escNames.length ? escNames.join('、') : '指定人员'}处理。`}
-                </div>
-              ) : null}
               {/* 元信息 */}
               <div className="grid grid-cols-2 gap-x-6 gap-y-2 border-y border-gray-100 bg-gray-50/40 px-6 py-3 text-xs sm:grid-cols-5">
                 <div><dt className="text-gray-400">接收人</dt><dd className="mt-0.5 truncate text-gray-700">{recipient}</dd></div>
@@ -873,7 +815,7 @@ export function AlertList() {
                   (open.preview?.linkview?.enabled && open.preview.linkview.tabs?.length && (canAllLv || !(open.preview.linkview.tabs ?? []).some((t) => t.all))
                     ? [{ label: '预警关联展示', linkview: open.preview.linkview }]
                     : []);
-                const flatTabs: { label: string; cols: string[]; rows: Record<string, unknown>[]; all: boolean }[] = [];
+                const flatTabs: { label: string; cols: string[]; rows: Record<string, unknown>[] }[] = [];
                 rawGroups.forEach((g, _gi) => {
                   (g.linkview.tabs ?? []).forEach((tb, ti) => {
                     if (tb.all && !canAllLv) return;
@@ -881,25 +823,20 @@ export function AlertList() {
                       label: tb.name || tb.tableName || tb.srcNodeLabel || `${g.label || '关联'}${rawGroups.length > 1 || (g.linkview.tabs?.length ?? 0) > 1 ? `·${ti + 1}` : ''}`,
                       cols: tb.columns ?? [],
                       rows: tb.rows ?? [],
-                      all: !!tb.all,
                     });
                   });
                 });
                 if (!flatTabs.length) return null;
-                const firstAllIdx = flatTabs.findIndex((t) => t.all);
                 const sel = lvGroup !== null ? Math.min(lvGroup, flatTabs.length - 1) : null;
                 const cur = sel !== null ? flatTabs[sel] : null;
                 return (
                   <div className="mt-4">
-                    <div className="flex flex-wrap items-center gap-1">
+                    <div className="flex flex-wrap gap-1">
                       {flatTabs.map((f, fi) => {
                         const active = sel === fi;
                         return (
-                          <span key={fi} className="inline-flex items-center">
-                            {firstAllIdx > 0 && fi === firstAllIdx ? (
-                              <span className="mx-1.5 my-0.5 flex h-4 w-px bg-gray-300" title="区分类型" />
-                            ) : null}
-                            <button
+                          <button
+                            key={fi}
                             type="button"
                             onClick={() => { setLvGroup(active ? null : fi); setLvTab(0); }}
                             className={`whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${active ? 'border-pink-600 bg-pink-600 text-white' : 'border-gray-200 bg-white text-gray-500 hover:border-pink-300 hover:text-pink-600'}`}
@@ -907,7 +844,6 @@ export function AlertList() {
                             {f.label}
                             <span className={`ml-1.5 text-[10px] ${active ? 'text-pink-100' : 'text-gray-300'}`}>{f.rows.length}</span>
                           </button>
-                          </span>
                         );
                       })}
                     </div>
@@ -964,7 +900,7 @@ export function AlertList() {
                   <textarea
                     value={planDraft}
                     onChange={(e) => setPlanDraft(e.target.value)}
-                    onBlur={() => { if (lockedForMe) return; if (planDraft !== (openForSync?.plan || '')) updateAlertStatus(open.id, { plan: planDraft }); }}
+                    onBlur={() => { if (planDraft !== (openForSync?.plan || '')) updateAlertStatus(open.id, { plan: planDraft }); }}
                     rows={3}
                     placeholder="请填写此条预警你的处理方式，你准备如何解决这条预警，写出可行方案，立刻执行，问题解决多了，就可以得到你心里想要的结果了"
                     className="mt-2.5 w-full resize-none rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5 text-[13px] leading-relaxed text-gray-700 outline-none transition placeholder:text-gray-300 focus:border-gray-300 focus:bg-white"
@@ -1218,20 +1154,10 @@ function buildActions(
   update: (id: string, patch: Partial<AlertTask>) => void,
   handoff: (id: string) => void,
   ask: (c: ConfirmReq) => void,
-  who = '当前用户',
-  lockedForMe = false
+  who = '当前用户'
 ): AlertAction[] {
   const N = Date.now();
   const upd = (patch: Partial<AlertTask>) => update(a.id, { ...patch, updatedAt: N });
-  const guard = () => toast.error('此条预警已超时，你已没有操作权限，操作已被禁用');
-  if (lockedForMe) {
-    return [
-      { label: '开始处理', cls: 'cursor-default bg-gray-100 text-gray-400', fn: guard },
-      { label: '完成', cls: 'cursor-default bg-gray-100 text-gray-400', fn: guard },
-      { label: '转交', cls: 'cursor-default bg-gray-100 text-gray-400', fn: guard },
-      { label: '无法完成', cls: 'cursor-default bg-gray-100 text-gray-400', fn: guard },
-    ];
-  }
   // 已完成/不可用 → 灰色；未完成且可操作 → 蓝色
   const blue = 'bg-blue-600 text-white shadow-sm hover:bg-blue-600/90';
   const gray = 'cursor-default bg-gray-100 text-gray-400';

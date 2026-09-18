@@ -2,7 +2,7 @@
 
 import React, { memo, useEffect, useState, useMemo, useRef, createContext, useContext } from 'react';
 import { Handle, Position, useReactFlow, useEdges, useNodes, type NodeProps } from '@xyflow/react';
-import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, SearchCheck, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus, ChevronDown, LayoutList, Timer, LayoutGrid } from 'lucide-react';
+import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, SearchCheck, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus, ChevronDown, LayoutList } from 'lucide-react';
 import CalcExprEditor, { type CalcExprEditorHandle } from './CalcExprEditor';
 import {
   KIND_COLOR,
@@ -54,12 +54,7 @@ import {
   type LinkViewTab,
   type LinkViewAllNodeData,
   type LinkViewAllTab,
-  type DeadlineSetting,
-  type TimeoutNodeData,
-  type PivotNodeData,
-  type PivotValueField,
 } from '@/lib/types';
-import { DEFAULT_DEADLINE } from '@/lib/types';
 import { useStore } from '@/lib/store';
 import TimeComponent from './TimeComponent';
 import { useNodePreview } from './NodePreview';
@@ -86,9 +81,7 @@ type AnyData =
   | CalcNodeData
   | LinkJoinNodeData
   | LinkViewNodeData
-  | LinkViewAllNodeData
-  | TimeoutNodeData
-  | PivotNodeData;
+  | LinkViewAllNodeData;
 
 const KIND_ICON: Record<FlowNode['kind'], React.ReactNode> = {
   trigger: <Play size={13} strokeWidth={2.5} />,
@@ -113,8 +106,6 @@ const KIND_ICON: Record<FlowNode['kind'], React.ReactNode> = {
   linkjoin: <Link2 size={13} strokeWidth={2.5} />,
   linkview: <Search size={13} strokeWidth={2.5} />,
   linkview_all: <SearchCheck size={13} strokeWidth={2.5} />,
-  timeout: <Timer size={13} strokeWidth={2.5} />,
-  pivot: <LayoutGrid size={13} strokeWidth={2.5} />,
 };
 
 function useNodeUpdater(id: string) {
@@ -260,8 +251,6 @@ function nodeKindCn(kind: FlowNode['kind']) {
     linkjoin: '其他表添加列',
     linkview: '预警关联展示',
     linkview_all: '预警关联展示-全量',
-    timeout: '超时动作',
-    pivot: '透视表',
   };
   return map[kind];
 }
@@ -489,285 +478,6 @@ function SchedulePanel({ schedule }: { schedule: Schedule }) {
     </div>
   );
 }
-
-const DEADLINE_UNITS: { value: DeadlineSetting['unit']; label: string; ms: number }[] = [
-  { value: 'minute', label: '分钟', ms: 60_000 },
-  { value: 'hour', label: '小时', ms: 3_600_000 },
-  { value: 'day', label: '天', ms: 86_400_000 },
-  { value: 'week', label: '周', ms: 604_800_000 },
-  { value: 'month', label: '月', ms: 30 * 86_400_000 },
-];
-
-function DeadlineFields({ d, set }: { d: DeadlineSetting; set: (p: Partial<DeadlineSetting>) => void }) {
-  const row = 'mb-1.5';
-  const label = 'mb-1 text-[10px] text-gray-400';
-  const chip = (active: boolean) =>
-    `rounded px-1.5 py-0.5 text-[10px] transition ${
-      active ? 'bg-rose-600 text-white' : 'bg-white text-gray-500 hover:bg-rose-100'
-    }`;
-  const input = 'rounded-md border bg-white px-1.5 py-0.5 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-rose-300';
-  return (
-    <div className="mt-1 rounded-lg border border-rose-100 bg-rose-50/40 p-1.5">
-      <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold text-rose-700">
-        <Timer size={11} /> 规定用时（处理时限）
-        <button
-          type="button"
-          onClick={() => set({ enabled: !d.enabled })}
-          className={`ml-auto rounded-md px-1.5 py-0.5 text-[10px] transition ${
-            d.enabled ? 'bg-rose-600 text-white' : 'bg-gray-200 text-gray-500'
-          }`}
-        >
-          {d.enabled ? '已启用' : '未启用'}
-        </button>
-      </div>
-      {d.enabled && (
-        <>
-          <div className={`${row} flex flex-wrap gap-1`}>
-            {(
-              [
-                { value: 'duration', label: '相对时长' },
-                { value: 'weekly', label: '每周' },
-                { value: 'monthly', label: '每月' },
-              ] as const
-            ).map((o) => (
-              <button key={o.value} type="button" onClick={() => set({ kind: o.value })} className={chip(d.kind === o.value)}>
-                {o.label}
-              </button>
-            ))}
-          </div>
-          {d.kind === 'duration' ? (
-            <div className={row}>
-              <div className={label}>须在预警生成后的</div>
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  min={1}
-                  value={String(d.value || 30)}
-                  onChange={(e) => set({ value: Math.max(1, Number(e.target.value) || 30) })}
-                  className={`w-16 ${input}`}
-                />
-                <select value={d.unit} onChange={(e) => set({ unit: e.target.value as DeadlineSetting['unit'] })} className={input}>
-                  {DEADLINE_UNITS.map((u) => (
-                    <option key={u.value} value={u.value}>
-                      {u.label}
-                    </option>
-                  ))}
-                </select>
-                内完成
-              </div>
-            </div>
-          ) : (
-            <div className={row}>
-              <div className={label}>到期时点（取下一个到达时刻）</div>
-              <div className="flex items-center gap-1">
-                {d.kind === 'weekly' ? (
-                  <div className="flex gap-1">
-                    {WEEKDAYS.map((w) => (
-                      <button
-                        key={w.n}
-                        type="button"
-                        onClick={() => set({ weekday: w.n })}
-                        className={`h-6 w-6 rounded text-[10px] transition ${
-                          d.weekday === w.n ? 'bg-rose-600 text-white' : 'bg-white text-gray-500 hover:bg-rose-100'
-                        }`}
-                      >
-                        {w.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <input
-                    type="number"
-                    min={1}
-                    max={31}
-                    value={String(d.monthDay || 1)}
-                    onChange={(e) => set({ monthDay: Math.min(31, Math.max(1, Number(e.target.value) || 1)) })}
-                    className={`w-16 ${input}`}
-                  />
-                )}
-                <input type="time" value={d.clock || '18:00'} onChange={(e) => set({ clock: e.target.value })} className={input} />
-              </div>
-            </div>
-          )}
-          <div className={row}>
-            <div className={label}>超时后宽限期（分钟，宽限内仍可操作）</div>
-            <input
-              type="number"
-              min={0}
-              value={String(d.graceMinutes ?? 20)}
-              onChange={(e) => set({ graceMinutes: Math.max(0, Number(e.target.value) || 0) })}
-              className={`w-16 ${input}`}
-            />
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/** 超时转派对象：复用「通知对象」的选择方式（person 按用户-职位/岗位；manual 手动选部门+其下人员） */
-function EscalateTargetPanel({ target, onChange }: { target: TargetSetting; onChange: (t: TargetSetting) => void }) {
-  const { state } = useStore();
-  const [selDept, setSelDept] = useState<string>('');
-  const mode: NotifyMode = target.mode === 'person' ? 'person' : 'manual';
-  const setMode = (m: NotifyMode) => onChange({ ...target, mode: m });
-  const orgs = state.orgs ?? [];
-  const persons = state.persons ?? [];
-  const deptOrgs = orgs.filter((o) => o.kind === '部门');
-  const deptPersons = persons.filter((p) => p.orgId === selDept && p.enabled !== false);
-  const positions = Array.from(new Set(persons.map((p) => p.title).filter(Boolean) as string[])).sort();
-  const posts = Array.from(new Set(persons.map((p) => p.post).filter(Boolean) as string[])).sort();
-  const groupLabel = 'mb-1 text-[10px] text-gray-400';
-  const chipBtn = (on: boolean) =>
-    `rounded px-1.5 py-0.5 text-[10px] transition ${on ? 'bg-rose-600 text-white' : 'bg-white text-gray-500 hover:bg-rose-100'}`;
-  const toggle = (k: 'personnel' | 'personPositions' | 'personPosts', v: string) => {
-    const arr: string[] = target[k] ?? [];
-    onChange({ ...target, [k]: arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v] });
-  };
-  return (
-    <div className="mt-1.5 rounded-lg border border-rose-100 bg-rose-50/40 p-1.5">
-      <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-rose-700">
-        <Users size={11} /> 超时后人转由谁处理（转派对象）
-      </div>
-      <div className="mb-1 flex flex-wrap gap-1">
-        {(
-          [
-            { value: 'manual' as const, label: '手动' },
-            { value: 'person' as const, label: '按用户' },
-          ]
-        ).map((m) => (
-          <button
-            key={m.value}
-            type="button"
-            onClick={() => setMode(m.value)}
-            className={`rounded px-1.5 py-0.5 text-[10px] transition ${
-              mode === m.value ? 'bg-rose-600 text-white' : 'bg-white text-gray-500 hover:bg-rose-100'
-            }`}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
-      {mode === 'person' && (
-        <div className="space-y-1.5">
-          <div className="rounded bg-white/60 p-1.5 text-[10px] leading-relaxed text-gray-500">
-            选择超过宽限期后转派给哪些用户处理。<span className="text-gray-700">当前用户 {persons.length} 人</span>
-          </div>
-          <div>
-            <div className={groupLabel}>按职位筛选转派人（可不选，主管/专员等）</div>
-            <div className="flex flex-wrap gap-1">
-              {positions.length === 0 && <span className="text-[10px] text-gray-400">暂无职位</span>}
-              {positions.map((pos) => (
-                <button key={pos} type="button" onClick={() => toggle('personPositions', pos)} className={chipBtn((target.personPositions ?? []).includes(pos))}>
-                  {pos}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="mt-1.5">
-            <div className={groupLabel}>按岗位筛选转派人（可不选，如商品督导）</div>
-            <div className="flex flex-wrap gap-1">
-              {posts.length === 0 && <span className="text-[10px] text-gray-400">暂无岗位</span>}
-              {posts.map((post) => (
-                <button key={post} type="button" onClick={() => toggle('personPosts', post)} className={chipBtn((target.personPosts ?? []).includes(post))}>
-                  {post}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="text-[10px] text-gray-400">职位、岗位可不选；均不选 = 转派给全部用户，选中则仅转派给匹配的用户。</div>
-        </div>
-      )}
-      {mode === 'manual' && (
-        <>
-          <div className="mb-1.5">
-            <div className={groupLabel}>适用部门</div>
-            <div className="flex flex-wrap gap-1">
-              {deptOrgs.length === 0 && <span className="text-[10px] text-gray-400">暂无部门</span>}
-              {deptOrgs.map((o) => {
-                const on = o.id === selDept;
-                return (
-                  <button
-                    key={o.id}
-                    type="button"
-                    onClick={() => {
-                      setSelDept(o.id);
-                      onChange({
-                        ...target,
-                        departments: target.departments.includes(o.name) ? target.departments.filter((x) => x !== o.name) : [...target.departments, o.name],
-                      });
-                    }}
-                    className={chipBtn(on)}
-                  >
-                    {o.name}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div>
-            <div className={groupLabel}>选择转派给该部门的人</div>
-            {!selDept ? (
-              <div className="text-[10px] text-gray-400">请先在上方选择一个部门</div>
-            ) : deptPersons.length === 0 ? (
-              <div className="text-[10px] text-gray-400">该部门暂无人员</div>
-            ) : (
-              <div className="flex flex-wrap gap-1">
-                {deptPersons.map((p) => (
-                  <button key={p.id} type="button" onClick={() => toggle('personnel', p.name)} className={chipBtn((target.personnel ?? []).includes(p.name))}>
-                    {p.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-// ---------- 超时动作节点 ----------
-const TimeoutNode = memo(function TimeoutNode({ id, data }: NodeProps) {
-  const fnode = { id, kind: 'timeout' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as TimeoutNodeData;
-  const update = useNodeUpdater(id);
-  const allNodes = useNodes() as unknown as FlowNode[];
-  const dl = d.deadline ?? DEFAULT_DEADLINE;
-  const actionOpts = allNodes.filter((n) => n.kind === 'action' && n.id !== id).map((n) => {
-    const ad = n.data as unknown as ActionNodeData;
-    return { nodeId: n.id, label: ad.title?.trim() || '预警动作' };
-  });
-  const selAction = d.actionId || actionOpts[0]?.nodeId || '';
-  return (
-    <NodeShell fnode={fnode} width={400}>
-      <div className="space-y-1.5">
-        <div className="rounded-md bg-rose-50 px-2 py-1 text-[10px] leading-relaxed text-rose-700">
-          为某个预警动作设定处理时限与超时转派：到「预警动作」这一步才知道超期应转交给谁。请先在上方选择要关联的预警动作。
-        </div>
-        <div className="rounded-md border border-gray-100 bg-gray-50/60 p-1.5">
-          <div className="mb-1 text-[11px] font-medium text-gray-600">关联预警动作</div>
-          <select
-            value={selAction}
-            onChange={(e) => {
-              const o = actionOpts.find((x) => x.nodeId === e.target.value);
-              update({ actionId: e.target.value, actionLabel: o?.label });
-            }}
-            className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-rose-400"
-          >
-            {actionOpts.length === 0 && <option value="">当前画布没有预警动作节点</option>}
-            {actionOpts.map((o) => (
-              <option key={o.nodeId} value={o.nodeId}>{o.label}</option>
-            ))}
-          </select>
-        </div>
-        <DeadlineFields d={dl} set={(p) => update({ deadline: { ...dl, ...p } })} />
-        <EscalateTargetPanel target={d.escalateTarget ?? { departments: [], personnel: [] }} onChange={(t) => update({ escalateTarget: t })} />
-      </div>
-    </NodeShell>
-  );
-});
-TimeoutNode.displayName = 'TimeoutNode';
 const TriggerNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'trigger' as const, data, position: { x: 0, y: 0 } } as FlowNode;
   const meta = useRuleMeta();
@@ -1073,7 +783,7 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
         pushUniq({ key: uf, label: s(k.universeFieldLabel) || uf });
       }
       // 3) 全集来源其余业务列（与 evaluate filljoin 输出对齐：默认带回全集全部非键列，供下游选字段）
-      if (s(data.universeSource) === 'node' || (!s(data.universeSource) && s(data.universeNodeId))) {
+      if (s(data.universeSource) === 'node') {
         const uniNode = s(data.universeNodeId);
         if (uniNode) for (const c of inferNodeCols(allNodes, tables, uniNode)) if (!uniKeySet.has(c.key)) pushUniq(c);
       } else {
@@ -1104,7 +814,7 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
         if (factRet && key !== factRet && key !== s(data.factReturnLabel)) return false;
         return true;
       };
-      if (factSrc === 'node' || (!factSrc && factNode)) {
+      if (factSrc === 'node' && factNode) {
         for (const c of inferNodeCols(allNodes, tables, factNode)) {
           if (allowFact(c.key)) pushUniq(c);
         }
@@ -3928,31 +3638,6 @@ const FilterNode = memo(({ id, data }: NodeProps) => {
   const allNodes = useNodes();
   const source = d.source ?? 'table';
   const nodeOutputs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'column');
-  // 节点结果模式：按"其它节点配置+边结构"签名缓存 evaluateFlow 结果，取上游输出行做字段候选值（避免大表每次敲键都全量重算）
-  const ____edges = useEdges() as unknown as FlowEdge[];
-  const evalCache = useRef<{ signature: string; value?: Record<string, any> }>({ signature: '', value: undefined });
-  const evalSignature =
-    source === 'node'
-      ? JSON.stringify(
-          (allNodes as unknown as FlowNode[])
-            .filter((n) => n.id !== id)
-            .map((n) => n.data ?? {}),
-        ) + '|' + JSON.stringify(____edges.map((e) => [e.source, e.target]))
-      : '';
-  const evalOuts = useMemo<Record<string, any> | undefined>(() => {
-    if (source !== 'node') return undefined;
-    if (evalSignature === evalCache.current.signature) return evalCache.current.value;
-    let v: Record<string, any> | undefined;
-    try {
-      const flowNodes = allNodes as unknown as FlowNode[];
-      const flowEdges = ____edges as unknown as FlowEdge[];
-      v = evaluateFlow(flowNodes, flowEdges, tables);
-    } catch {
-      v = undefined;
-    }
-    evalCache.current = { signature: evalSignature, value: v };
-    return v;
-  }, [evalSignature]);
 
   const table = tables.find((t) => t.id === d.tableId) ?? tables[0];
   // 数据表字段
@@ -3986,19 +3671,9 @@ const FilterNode = memo(({ id, data }: NodeProps) => {
     update({ conditions: conds.filter((_, j) => j !== i) });
   };
 
-  // 取某字段的去重候选值：数据表用全量行；节点结果从上游运行时输出行提取（限量扫描防卡顿）
+  // 取某字段的去重候选值：数据表用全量行；节点结果无前端行数据时给空（运行时按上游结果）
   const distinctValues = (fieldKey: string): string[] => {
-    if (source === 'node') {
-      if (!d.sourceNode) return [];
-      const up = evalOuts?.[d.sourceNode];
-      const rows: Array<Record<string, unknown>> = up && Array.isArray(up.rows) ? (up.rows as Array<Record<string, unknown>>) : [];
-      const set = new Set<string>();
-      const sliced = rows.length > 5000 ? rows.slice(0, 5000) : rows;
-      for (const r of sliced) {
-        if (r && r[fieldKey] != null && r[fieldKey] !== '') set.add(String(r[fieldKey]));
-      }
-      return [...set];
-    }
+    if (source === 'node') return [];
     if (!table) return [];
     const set = new Set<string>();
     const src = table.rows && table.rows.length ? table.rows : table.previewRows;
@@ -6089,150 +5764,6 @@ const LinkViewAllNode = memo(function LinkViewAllNode({ id, data }: NodeProps) {
   );
 });
 
-const PivotNode = memo(function PivotNode({ id, data }: NodeProps) {
-  const fnode = { id, kind: 'pivot' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as PivotNodeData;
-  const update = useNodeUpdater(id);
-  const tables = useRuleTables();
-  const allNodes = useNodes();
-  const edges = useEdges();
-  const inputCls = 'w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400';
-  const rowLabel = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
-  const src = d.source ?? 'table';
-  const srcTable = src === 'table' ? (d.tableId ? tables.find((t) => t.id === d.tableId) : tables[0]) : undefined;
-  const srcNodeObj = src === 'node' ? ((allNodes as unknown as FlowNode[]).find((n) => n.id === d.srcNode)) : undefined;
-
-  const allFlow = allNodes as unknown as FlowNode[];
-  const allNodeOpts = allFlow
-    .filter((n) => n.id !== id && !['trigger', 'linkview', 'linkview_all', 'pivot', 'timeout'].includes(n.kind))
-    .map((n) => {
-      const rd = n.data as Record<string, unknown>;
-      const rl = typeof rd?.resultLabel === 'string' && rd.resultLabel ? rd.resultLabel : '';
-      return { nodeId: n.id, kind: n.kind, label: rl ? `${KIND_LABEL[n.kind] ?? n.kind}·${rl}` : (KIND_LABEL[n.kind] ?? n.kind) };
-    });
-
-  const fieldsToOpts = (arr: Array<{ key: string; alias?: string } | string>): { key: string; label: string }[] =>
-    (arr || []).map((f) => (typeof f === 'string' ? { key: f, label: f } : { key: f.key, label: f.alias || f.key })).filter((f) => f.key);
-
-  // 来源字段候选
-  const srcCols: { key: string; label: string }[] = useMemo(() => {
-    if (src === 'table') {
-      return srcTable ? fieldsToOpts(srcTable.fields) : [];
-    }
-    if (srcNodeObj) {
-      const ev = (() => {
-        try { return evaluateFlow(allFlow, edges as unknown as FlowEdge[], tables)[srcNodeObj.id]; } catch { return undefined; }
-      })();
-      if (ev && Array.isArray(ev.columns) && (ev.columns as unknown[]).length) return fieldsToOpts(ev.columns as never);
-      return inferNodeCols(allNodes as unknown as ReadonlyArray<{ id: string; data: unknown }>, tables as unknown as Array<{ id: string; fields: Array<{ key: string; alias?: string }> }>, srcNodeObj.id).map((c) => ({ key: c.key, label: c.label || c.key }));
-    }
-    return [];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src, srcTable, srcNodeObj, allNodes, edges, tables]);
-
-  const colKey = srcCols.map((c) => c.key);
-  const rowFields = Array.isArray(d.rowFields) ? d.rowFields.filter((f) => colKey.includes(f)) : [];
-  const valueFields = Array.isArray(d.valueFields) ? d.valueFields.filter((v) => v && colKey.includes(v.field)) : [];
-  const colField = d.colField && colKey.includes(d.colField) ? d.colField : '';
-
-  const initRef = useRef(false);
-  useEffect(() => {
-    if (initRef.current) return;
-    initRef.current = true;
-    if (!d.source) update({ source: 'table' });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const patch = (p: Partial<PivotNodeData>) => update(p as never);
-
-  return (
-    <NodeShell fnode={fnode}>
-      <div className="space-y-1.5">
-        <div className="rounded-md bg-violet-50 px-2 py-1 text-[10px] leading-relaxed text-violet-700">
-          对来源数据按【行维度 + 列维度】交叉分组，对值字段聚合，输出多级表头矩阵（如 店仓/款号/颜色/断码判断 × S/M/L/XL/XXL 尺码 的断码分析表）。
-        </div>
-        <div className={rowLabel}>数据来源</div>
-        <div className="flex gap-1">
-          {(['table', 'node'] as const).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => patch({ source: s, tableId: s === 'table' ? (d.tableId ?? tables[0]?.id ?? '') : d.tableId, srcNode: s === 'node' ? (d.srcNode ?? allNodeOpts[0]?.nodeId ?? '') : d.srcNode, srcNodeLabel: s === 'node' ? (d.srcNodeLabel ?? '') : d.srcNodeLabel })}
-              className={`rounded px-1.5 py-0.5 text-[10px] ring-1 ${src === s ? 'bg-violet-600 text-white ring-violet-600' : 'bg-white text-gray-600 ring-gray-200 hover:bg-gray-100'}`}
-            >
-              {s === 'table' ? '数据表' : '节点结果'}
-            </button>
-          ))}
-        </div>
-        {src === 'table' ? (
-          <select value={srcTable?.id ?? ''} onChange={(e) => { const t = tables.find((x) => x.id === e.target.value); patch({ tableId: e.target.value, tableName: t?.name }); }} className={inputCls}>
-            <option value="">选择数据表…</option>
-            {tables.map((t) => (<option key={t.id} value={t.id}>{t.name}</option>))}
-          </select>
-        ) : (
-          <select value={d.srcNode ?? ''} onChange={(e) => { const o = allNodeOpts.find((x) => x.nodeId === e.target.value); patch({ srcNode: e.target.value, srcNodeLabel: o?.label }); }} className={inputCls}>
-            <option value="">选择规则内节点结果…</option>
-            {allNodeOpts.map((o) => (<option key={o.nodeId} value={o.nodeId}>{o.label}</option>))}
-          </select>
-        )}
-
-        {srcCols.length > 0 && (
-          <>
-            <div className={rowLabel}>行维度字段</div>
-            <div className="flex flex-wrap gap-1">
-              {srcCols.map((c) => {
-                const on = rowFields.includes(c.key);
-                return (
-                  <button key={c.key} type="button" onClick={() => patch({ rowFields: on ? rowFields.filter((x) => x !== c.key) : [...rowFields, c.key] })} className={`rounded px-1.5 py-0.5 text-[10px] ring-1 ${on ? 'bg-violet-500 text-white ring-violet-500' : 'bg-white text-gray-600 ring-gray-200 hover:bg-gray-100'}`}>
-                    {on ? '✓ ' : ''}{c.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className={rowLabel}>列维度字段{colField && <span className="ml-1 text-gray-400">({srcCols.find((c) => c.key === colField)?.label})</span>}</div>
-            <select value={colField} onChange={(e) => patch({ colField: e.target.value })} className={inputCls}>
-              <option value="">选择列维度字段…</option>
-              {srcCols.map((c) => (<option key={c.key} value={c.key}>{c.label}</option>))}
-            </select>
-
-            <div className={rowLabel}>列分组（值字段，可多选）——每个值字段是一组横排列，例如「销量」一组、「库存」一组</div>
-            {valueFields.map((vf, i) => {
-              const f = srcCols.find((c) => c.key === vf.field);
-              return (
-                <div key={i} className="mb-1 flex items-center gap-1">
-                  <select value={vf.field} onChange={(e) => { const arr = valueFields.slice(); arr[i] = { ...arr[i], field: e.target.value }; patch({ valueFields: arr }); }} className={`${inputCls} flex-1`}>
-                    <option value="">选择值字段…</option>
-                    {srcCols.map((c) => (<option key={c.key} value={c.key}>{c.label}</option>))}
-                  </select>
-                  <select value={vf.agg} onChange={(e) => { const arr = valueFields.slice(); arr[i] = { ...arr[i], agg: e.target.value as PivotValueField['agg'] }; patch({ valueFields: arr }); }} className={inputCls}>
-                    {(['sum', 'avg', 'count', 'min', 'max'] as const).map((a) => (<option key={a} value={a}>{({ sum: '求和', avg: '平均', count: '计数', min: '最小', max: '最大' } as const)[a]}</option>))}
-                  </select>
-                  <button type="button" onClick={() => patch({ valueFields: valueFields.filter((_, k) => k !== i) })} className="shrink-0 text-[10px] text-red-400 hover:text-red-600">删</button>
-                </div>
-              );
-            })}
-            <button type="button" onClick={() => patch({ valueFields: [...valueFields, { field: srcCols[0]?.key ?? '', agg: 'sum' }] })} className="w-full rounded-md border border-dashed border-violet-300 py-1 text-xs text-violet-600 hover:bg-violet-50">+ 添加值字段</button>
-
-            <div className={rowLabel}>列取值顺序（可留空，用逗号分隔，如 S,M,L,XL,XXL）</div>
-            <input value={(d.colOrder ?? []).join(',')} onChange={(e) => patch({ colOrder: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} placeholder="如 S,M,L,XL,XXL" className={inputCls} />
-          </>
-        )}
-
-        {rowFields.length && colField && valueFields.length ? (
-          <div className="mt-2 rounded-md bg-violet-50 px-2 py-1.5 text-[10px] leading-relaxed text-violet-700">
-            配置完成。点击节点右上角「预览」按钮查看透视结果表格（按行维度×列维度分组，值字段为列分组，列值尺码横排）。
-          </div>
-        ) : (
-          <div className="mt-2 rounded-md bg-gray-50 px-2 py-1.5 text-[10px] text-gray-500">
-            {srcCols.length ? '请先选择行维度、列维度与值字段。' : '请先选择数据来源。'}
-          </div>
-        )}
-      </div>
-    </NodeShell>
-  );
-});
-
 export const nodeTypes = {
   trigger: TriggerNode,
   field: FieldNode,
@@ -6256,8 +5787,6 @@ export const nodeTypes = {
   linkjoin: LinkJoinNode,
   linkview: LinkViewNode,
   linkview_all: LinkViewAllNode,
-  pivot: PivotNode,
-  timeout: TimeoutNode,
 };
 
 TopNNode.displayName = 'TopNNode';
@@ -6281,7 +5810,6 @@ RankNode.displayName = 'RankNode';
 
 LinkJoinNode.displayName = 'LinkJoinNode';
 LinkViewNode.displayName = 'LinkViewNode';
-PivotNode.displayName = 'PivotNode';
 LinkViewAllNode.displayName = 'LinkViewAllNode';
 
 /** 依据 kind 创建默认数据 */
@@ -6487,25 +6015,6 @@ export function createNodeData(
       return { tabs: [], resultLabel: '关联展示' };
     case 'linkview_all':
       return { tabs: [], resultLabel: '预警关联展示-全量' };
-    case 'pivot':
-      return {
-        source: 'table',
-        tableId: extra?.tableId ?? '',
-        tableName: extra?.tableName ?? '',
-        srcNode: '',
-        srcNodeLabel: '',
-        rowFields: [],
-        colField: '',
-        valueFields: [],
-        resultLabel: '透视表',
-      };
-    case 'timeout':
-      return {
-        actionId: '',
-        actionLabel: '',
-        deadline: { ...DEFAULT_DEADLINE },
-        escalateTarget: { departments: [], personnel: [] },
-      };
     default:
       return {};
   }

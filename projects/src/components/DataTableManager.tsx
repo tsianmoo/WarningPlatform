@@ -123,8 +123,7 @@ export function DataTableManager() {
     const { t, next } = openUpdate;
     const mergedFields = next.fields.map((f) => {
       const old = t.fields.find((o) => o.key === f.key);
-      // 更新只按字段名匹配：同名列沿用已配置的类型与标签，字段格式类型留待上传后再人工修改
-      return old ? { ...f, type: old.type ?? f.type, alias: f.alias || old.alias } : f;
+      return old ? { ...f, alias: f.alias || old.alias } : f;
     });
     updateTable(t.id, {
       name: next.name,
@@ -692,7 +691,7 @@ export function DataTableManager() {
       </AlertDialog>
 
       <AlertDialog open={!!openUpdate} onOpenChange={(v) => !v && setOpenUpdate(null)}>
-        <AlertDialogContent className="max-h-[85vh] overflow-y-auto">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>更新数据表「{openUpdate?.t.name}」</AlertDialogTitle>
             <AlertDialogDescription>

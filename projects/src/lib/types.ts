@@ -75,8 +75,6 @@ export type NodeKind =
   | 'linkjoin' // 其他表添加列（把另一张表/节点结果按匹配键对齐后，取列附加到当前表）
   | 'linkview' // 预警关联展示（把相关的其他表/节点结果，用同名匹配键关联到命中数据，供查看预警弹窗以标签页展示）
   | 'linkview_all' // 预警关联展示-全量（展示来源数据表/节点的全部行，不受基础表过滤；独立组件，按权限控制使用与数据可见）
-  | 'timeout' // 超时动作（挂在预警动作后：规定用时+宽限期+超时转派对象，到预警动作这一步才知道超期转交谁）
-  | 'pivot' // 透视表（对来源数据/节点结果按 行维度+列维度 交叉透视，值字段聚合，输出多级表头矩阵表）
 
 /** 比较运算符 */
 export type Operator =
@@ -754,37 +752,6 @@ export interface MsgPart {
   isVar?: boolean;
 }
 
-/** 透视表数值字段聚合方式 */
-export type PivotAgg = 'sum' | 'avg' | 'count' | 'min' | 'max';
-
-/** 透视表值字段：选一个数值/文本字段 + 聚合方式 */
-export interface PivotValueField {
-  /** 来源字段名 */
-  field: string;
-  /** 聚合方式 */
-  agg: PivotAgg;
-}
-
-/** 透视表（交叉矩阵）展示节点数据：对来源行按 行维度字段组合 × 列维度字段值 交叉分组，值字段聚合；输出多级表头矩阵 */
-export interface PivotNodeData {
-  /** 数据来源：table=数据表 / node=节点结果 */
-  source: 'table' | 'node';
-  tableId?: string;
-  tableName?: string;
-  srcNode?: string;
-  srcNodeLabel?: string;
-  /** 行维度字段（如 店仓/款号/颜色/断码判断），按组合去重作为每行 */
-  rowFields?: string[];
-  /** 列维度字段（如 尺码），其取值作为列的二级表头（配合 值字段 分组成一级表头） */
-  colField?: string;
-  /** 列维度取值顺序（如 S/M/L/XL/XXL），不填则按出现顺序 */
-  colOrder?: string[];
-  /** 值字段（如 销量/销量占比/库存） + 聚合方式 */
-  valueFields?: PivotValueField[];
-  /** 结果命名（可选备注） */
-  resultLabel?: string;
-}
-
 /** 预警关联展示：查看预警弹窗按标签页展示的关联数据 */
 export interface LinkViewResolved {
   /** 是否已配置关联展示 */
@@ -816,18 +783,6 @@ export interface ActionNodeData {
   enabled?: boolean;
   /** 预警关联展示：规则内 linkview 节点在此动作弹窗中是否展示（默认全部展示） */
   linkviews?: Array<{ id: string; enabled: boolean }>;
-}
-
-/** 超时动作节点数据：挂在「预警动作」之后，配置规定用时、宽限期与超时转派对象（到动作这一步才知道超期转交谁） */
-export interface TimeoutNodeData {
-  /** 关联的预警动作节点 id（动作节点为该超时动作的服务对象） */
-  actionId: string;
-  /** 关联动作显示名（展示用） */
-  actionLabel?: string;
-  /** 处理时限（规定用时 + 宽限期；escalateTo 字段废弃，转派对象见 escalateTarget） */
-  deadline: DeadlineSetting;
-  /** 超时转派对象：复用「通知对象」的选择方式（manual 手动选部门+人 / person 按用户-职位/岗位） */
-  escalateTarget: TargetSetting;
 }
 
 /** 时间窗口节点数据 */
@@ -906,7 +861,6 @@ export interface FlowNode {
     | LinkJoinNodeData
     | LinkViewNodeData
     | LinkViewAllNodeData
-    | TimeoutNodeData
     | Record<string, unknown>;
   position: { x: number; y: number };
 }
@@ -939,40 +893,6 @@ export interface Schedule {
   /** 下次触发时间（ISO） */
   nextTriggerAt: string;
 }
-
-/** 处理时限（开始组件「规定用时」）：预警生成后须在该时限内处理，超时则提示/锁定/转派 */
-export interface DeadlineSetting {
-  /** 是否启用处理时限 */
-  enabled: boolean;
-  /** 到期计算方式：duration=相对时长；weekly=每周几几点；monthly=每月几号几点 */
-  kind: 'duration' | 'weekly' | 'monthly';
-  /** 相对时长单位 */
-  unit: 'minute' | 'hour' | 'day' | 'week' | 'month';
-  /** 相对时长数值 */
-  value: number;
-  /** 每周几（1-7，周一=1） */
-  weekday: number;
-  /** 每月几号（1-31） */
-  monthDay: number;
-  /** 到期时点 HH:mm（weekly/monthly 使用） */
-  clock: string;
-  /** 宽限期（分钟）：超时后仍可操作的缓冲时长，默认 20 */
-  graceMinutes: number;
-  /** 超过宽限期后转派处理的人员（可多选） */
-  escalateTo: string[];
-}
-
-export const DEFAULT_DEADLINE: DeadlineSetting = {
-  enabled: false,
-  kind: 'duration',
-  unit: 'minute',
-  value: 30,
-  weekday: 5,
-  monthDay: 1,
-  clock: '18:00',
-  graceMinutes: 20,
-  escalateTo: [],
-};
 
 // ============ 通知对象 ============
 
@@ -1051,8 +971,6 @@ export interface AlertRule {
   flow: { nodes: FlowNode[]; edges: FlowEdge[] };
   schedule: Schedule;
   targets: TargetSetting;
-  /** 处理时限（旧的"开始组件规定用时"，已废弃——现由「超时动作」节点挂在预警动作上配置，保留字段兼容旧数据） */
-  deadline?: DeadlineSetting;
   executions: ExecutionRecord[];
 }
 
@@ -1112,8 +1030,6 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   linkjoin: '其他表添加列',
   linkview: '预警关联展示',
   linkview_all: '预警关联展示-全量',
-  pivot: '透视表',
-  timeout: '超时动作',
 };
 
 /** 节点分类色 */
@@ -1143,8 +1059,6 @@ export const KIND_COLOR: Record<
   linkjoin: { bg: '#FAF5FF', border: '#9333EA', text: '#6B21A8', dot: '#9333EA' },
   linkview: { bg: '#FDF2F8', border: '#EC4899', text: '#BE185D', dot: '#EC4899' },
   linkview_all: { bg: '#FDF4FF', border: '#A855F7', text: '#7E22CE', dot: '#A855F7' },
-  pivot: { bg: '#F5F3FF', border: '#7C3AED', text: '#5B21B6', dot: '#7C3AED' },
-  timeout: { bg: '#FFF1F2', border: '#F43F5E', text: '#BE123C', dot: '#F43F5E' },
 };
 
 /** 预警类型（级别→类型：提醒/预警） */
@@ -1230,17 +1144,6 @@ export interface AlertTask {
     /** 解析出的通知对象（按 store/employee/person 模式展开的门店/员工/人员），供列表与详情展示 */
     recipients?: { mode: NotifyMode; names: string[] }[];
   };
-  /** 处理时限到期（时间戳，来自开始组件「规定用时」） */
-  deadlineAt?: number;
-  deadlineLabel?: string;
-  /** 宽限期（分钟） */
-  graceMinutes?: number;
-  /** 宽限期截止（= deadlineAt + graceMinutes），超过则锁定并转派 */
-  graceUntil?: number;
-  /** 超时转派对象（可多选） */
-  escalateTo?: string[];
-  /** 是否已超时转派 */
-  escalated?: boolean;
   /** 创建人（展示用，持久化于 preview.createdBy） */
   createdBy?: string;
   dept: string;

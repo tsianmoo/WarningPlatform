@@ -24,7 +24,6 @@ import type {
   PersonPermOverride,
   LinkViewTab,
   LinkViewNodeData,
-  DeadlineSetting,
 } from './types';
 import { uid, OPERATOR_OPTIONS, DEFAULT_HOME_CONFIG, normalizeHomeConfig } from './types';
 import { buildSampleTable, ensureFieldsComplete } from './parser';
@@ -49,22 +48,6 @@ export function normalizeHrAttrs(attrs: unknown[]): HrAttribute[] {
       return { id: o.id ?? `itm_${idx}_${a.id}`, name: o.name ?? String(o) };
     });
     return { ...a, items };
-  });
-}
-
-/** 归一化数据表：兜底缺失的 fields/previewRows/rows/rowCount，避免渲染期读取 undefined.length 崩溃（如恢复的表缺 previewRows/rows） */
-function normalizeTables(tables: unknown[]): DataTable[] {
-  return (tables ?? []).map((t) => {
-    const table = t as DataTable;
-    const rows = Array.isArray(table.rows) ? table.rows : [];
-    const fields = ensureFieldsComplete(Array.isArray(table.fields) ? table.fields : [], rows);
-    return {
-      ...table,
-      fields,
-      previewRows: Array.isArray(table.previewRows) ? table.previewRows : [],
-      rows,
-      rowCount: typeof table.rowCount === 'number' ? table.rowCount : rows.length,
-    };
   });
 }
 
@@ -114,7 +97,6 @@ export interface BuildAlertCtx {
   stores?: Store[];
   employees?: Employee[];
   persons?: Person[];
-  orgs?: Organization[];
 }
 
 /** 门店档案 → 店仓各筛选维度的取值（同时兼容顶层字段与 attrs 字典中的中文字段） */
@@ -198,152 +180,6 @@ export function computeAlertDims(
   return Object.keys(dims).length ? dims : undefined;
 }
 
-const DEADLINE_UNIT_MS: Record<DeadlineSetting['unit'], number> = {
-  minute: 60_000,
-  hour: 3_600_000,
-  day: 86_400_000,
-  week: 604_800_000,
-  month: 30 * 86_400_000,
-};
-
-/** 依据开始组件「规定用时」计算某次预警的到期时刻（时间戳，未启用返回 undefined） */
-export function calcDeadline(from: number, d?: DeadlineSetting): number | undefined {
-  if (!d || !d.enabled) return undefined;
-  const [hh, mm] = (d.clock || '18:00').split(':').map((x) => Number(x) || 0);
-  const dayClock = hh * 3_600_000 + mm * 60_000;
-  if (d.kind === 'duration') {
-    const v = Math.max(0, Number(d.value) || 0);
-    return from + v * (DEADLINE_UNIT_MS[d.unit ?? 'minute'] ?? DEADLINE_UNIT_MS.minute);
-  }
-  if (d.kind === 'weekly') {
-    const target = (((d.weekday ?? 1) % 7) + 7) % 7 || 7; // 1-7 → JS 周日=0
-    let date = new Date(from);
-    let weekdayJS = date.getDay(); // 0=周日
-    if (weekdayJS === 0) weekdayJS = 7;
-    let diff = target - weekdayJS;
-    if (diff < 0 || (diff === 0 && from % 86_400_000 >= dayClock)) diff += 7;
-    const at = new Date((from - (from % 86_400_000)) + diff * 86_400_000 + dayClock);
-    return at.getTime();
-  }
-  // monthly：下一个月指定的「号」+ 时点
-  const md = Math.min(31, Math.max(1, Number(d.monthDay) || 1));
-  let base = new Date(from);
-  let year = base.getFullYear();
-  let month = base.getMonth();
-  const clamp = (y: number, mo: number) => Math.min(md, new Date(y, mo + 1, 0).getDate());
-  let cand = new Date(year, month, clamp(year, month));
-  if (cand.getTime() < from || (cand.getTime() <= from - (from % 86_400_000) + dayClock - 1 && cand.getDate() === base.getDate() && cand.getMonth() === base.getMonth())) {
-    // 本次已过 → 下月
-    year = month === 11 ? year + 1 : year;
-    month = (month + 1) % 12;
-    cand = new Date(year, month, clamp(year, month));
-  }
-  return new Date(year, month, cand.getDate(), hh, mm, 0, 0).getTime();
-}
-
-const DEADLINE_UNIT_LABEL: Record<string, string> = { minute: '分钟', hour: '小时', day: '天', week: '周', month: '个月' };
-const WEEKDAY_LABEL: Record<string, string> = { '1': '周一', '2': '周二', '3': '周三', '4': '周四', '5': '周五', '6': '周六', '7': '周日' };
-
-/** 把「规定用时」配置渲染为可读文案（如 30 分钟 / 每周五 18:00 / 每月 3 号 09:00），未启用返回空 */
-export function describeDeadlineText(d?: DeadlineSetting): string {
-  if (!d || !d.enabled) return '';
-  if (d.kind === 'duration') {
-    const v = Math.max(0, Number(d.value) || 0);
-    return `${v || 0} ${DEADLINE_UNIT_LABEL[d.unit ?? 'minute'] ?? d.unit ?? ''}`;
-  }
-  const clock = d.clock || '18:00';
-  if (d.kind === 'weekly') return `每周${WEEKDAY_LABEL[String(d.weekday ?? 5) ] ?? ''} ${clock}`;
-  return `每月${d.monthDay ?? 1} 号 ${clock}`;
-}
-
-/** 超时动作「转派对象」配置 → 具体人员名单（复用通知对象的选择方式：person 按职位/岗位；manual 手动选部门/人员） */
-function resolveEscalateNames(t?: TargetSetting, ctx?: BuildAlertCtx): string[] {
-  const mode = t?.mode ?? 'manual';
-  const persons = ctx?.persons ?? [];
-  if (mode === 'person') {
-    const posF = t?.personPositions ?? [];
-    const postF = t?.personPosts ?? [];
-    return persons
-      .filter((p) => p.enabled !== false && (!posF.length || (p.title && posF.includes(p.title))) && (!postF.length || (p.post && postF.includes(p.post))))
-      .map((p) => p.name);
-  }
-  const manual = (t?.personnel ?? []).slice();
-  if (manual.length) return manual;
-  // 仅选了部门（未逐个勾人）：默认转派给这些部门下的全部启用人员
-  const depts = t?.departments ?? [];
-  if (!depts.length) return [];
-  const orgName = new Map((ctx?.orgs ?? []).filter((o) => o.kind === '部门').map((o) => [o.id, o.name]));
-  return persons
-    .filter((p) => p.enabled !== false && orgName.get(p.orgId) != null && depts.includes(orgName.get(p.orgId) as string))
-    .map((p) => p.name);
-}
-
-/**
- * 自动回填：对 active 规则，按其「超时动作」配置给「当日、且缺失 deadline」的预警补齐
- * deadlineAt / deadlineLabel / graceMinutes / graceUntil / escalateTo（历史日与已带 deadline 的不动）。
- * 幂等，仅用于迁移/兜底，避免老预警漏带时限字段导致列表不显示。
- */
-function backfillDeadlines(rules: AlertRule[], alerts: AlertTask[], persons: Person[] = [], orgs: Organization[] = []): AlertTask[] {
-  const now = Date.now();
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const today = start.getTime();
-  const out = alerts.slice();
-  for (const r of rules) {
-    if (r.status !== 'active') continue;
-    const tNodes = (r.flow?.nodes ?? []).filter((n) => n.kind === 'timeout');
-    if (tNodes.length === 0) continue;
-    const map = new Map<string, { deadline?: DeadlineSetting; escalateTarget?: TargetSetting }>();
-    for (const tn of tNodes) {
-      const dd = tn.data as unknown as { actionId?: string; deadline?: DeadlineSetting; escalateTarget?: TargetSetting };
-      map.set((dd?.actionId || ''), { deadline: dd?.deadline, escalateTarget: dd?.escalateTarget });
-    }
-    for (let i = 0; i < out.length; i++) {
-      const a = out[i];
-      if (a.ruleId !== r.id || a.createdAt < today || a.deadlineAt) continue;
-      const tcfg = map.size === 1 ? Array.from(map.values())[0] : (map.get('') ?? Array.from(map.values())[0]);
-      const d = tcfg?.deadline;
-      if (!d || !d.enabled) continue;
-      const dl = calcDeadline(now, d);
-      if (dl === undefined) continue;
-      const gm = d.graceMinutes ?? 20;
-      out[i] = {
-        ...a,
-        deadlineAt: dl,
-        deadlineLabel: describeDeadlineText(d),
-        graceMinutes: gm,
-        graceUntil: dl + gm * 60000,
-        escalateTo: tcfg?.escalateTarget ? resolveEscalateNames(tcfg.escalateTarget, { persons, orgs }) : (d.escalateTo ?? []),
-      };
-    }
-  }
-  return out;
-}
-
-/**
- * 激活前置校验：预警规则必须包含「超时动作」节点；
- * 若该节点开关开启，则必须已配置规定用时 + 指定转派人员，否则不允许激活。
- * 返回错误提示；无错误时返回空串。
- */
-export function validateRuleTimeout(r: AlertRule): string {
-  const tNodes = r.flow.nodes.filter((n) => n.kind === 'timeout');
-  if (tNodes.length === 0) return '请至少添加一个「超时动作」节点，配置完成后才能激活';
-  for (const tn of tNodes) {
-    const data = tn.data as unknown as { deadline?: DeadlineSetting; escalateTarget?: TargetSetting };
-    const d = data?.deadline;
-    if (!d || !d.enabled) continue; // 开关关闭：允许直接激活
-    const okDeadline = d.kind === 'duration' ? (d.value ?? 0) > 0 && !!d.unit : !!d.clock;
-    if (!okDeadline) return '已开启「超时动作」，请先配置规定用时';
-    const esc = data?.escalateTarget;
-    const manualMode = (esc?.mode ?? 'manual') === 'manual';
-    const okEsc =
-      !!esc &&
-      (manualMode ? (esc.personnel ?? []).length > 0 || (esc.departments ?? []).length > 0 : true); // 按用户：职位/岗位均不选 = 全部用户，视为已指定
-    if (!okEsc) return '已开启「超时动作」，超时后必须指定转派人员';
-  }
-  return '';
-}
-
 export function buildAlertsForRule(
   rule: AlertRule,
   tables?: DataTable[],
@@ -357,13 +193,6 @@ export function buildAlertsForRule(
   }
   if (base.length === 0) base.push({ id: '', data: { level: 'warn' as const, title: rule.name } });
   const targets = rule.targets;
-  // 超时动作：按「关联的预警动作」把处理时限与转派对象挂到对应动作上（动作知道了才知超期转交谁）
-  const dlTimeout = new Map<string, { deadline?: DeadlineSetting; escalateTarget?: TargetSetting }>();
-  for (const tn of rule.flow.nodes) {
-    if (tn.kind !== 'timeout' || !tn.data) continue;
-    const td = tn.data as unknown as { actionId?: string; deadline?: DeadlineSetting; escalateTarget?: TargetSetting };
-    dlTimeout.set(td.actionId || '', { deadline: td.deadline, escalateTarget: td.escalateTarget });
-  }
   // 触发时对规则求值，取每个预警动作的命中明细作为“预览数据”
   let evalMap: Record<string, NodePreview> | undefined;
   if (tables && tables.length) {
@@ -538,19 +367,6 @@ export function buildAlertsForRule(
       recipients = [{ mode: m, names: pers.map((p) => p.name) }];
     }
     const mk = (title: string, storeMsg?: { store?: string; message?: string; parts?: MsgPart[] }) => {
-      const tcfg = dlTimeout.get(a.id) ?? dlTimeout.get('');
-      const dl = calcDeadline(Date.now(), tcfg?.deadline);
-      const escNames = tcfg?.escalateTarget ? resolveEscalateNames(tcfg.escalateTarget, ctx) : (tcfg?.deadline?.escalateTo ?? []);
-      const deadlineFields = dl === undefined
-        ? {}
-        : {
-            deadlineAt: dl,
-            deadlineLabel: describeDeadlineText(tcfg?.deadline),
-            graceMinutes: tcfg?.deadline?.graceMinutes ?? 20,
-            graceUntil: dl + ((tcfg?.deadline?.graceMinutes ?? 20) * 60_000),
-            escalateTo: escNames,
-            escalated: false,
-          };
       const curStores = storeMsg
         ? [{ store: storeMsg.store || actionTitle, message: storeMsg.message || content || `${rule.name} · ${actionTitle} 已触发，请及时处理` }]
         : (storeMessages ?? []);
@@ -587,7 +403,6 @@ export function buildAlertsForRule(
         storeIds: Array.from(new Set(curStores.map((s) => storesList.find((x) => x.name === s.store)?.id).filter(Boolean) as string[])),
         dealerIds: Array.from(new Set(storesList.filter((x) => curStores.some((s) => s.store === x.name)).map((x) => x.dealerId).filter(Boolean) as string[])),
         notified: curNames.slice(),
-        ...deadlineFields,
         status: 'new' as const,
       };
       return { ...obj, dims: computeAlertDims(obj, storesList) };
@@ -712,7 +527,6 @@ type StoreApi = {
   // alerts
   addAlert: (a: Omit<AlertTask, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateAlertStatus: (id: string, patch: Partial<AlertTask>) => void;
-  removeRuleAlertsToday: (ruleId: string) => void;
   // groups
   addRuleGroup: (name: string) => RuleGroup;
   updateRuleGroup: (id: string, name: string) => void;
@@ -775,7 +589,7 @@ function migrateState(raw: AppState | null): AppState {
     return { ...r, tableIds };
   });
   const cfg = normalizeHomeConfig(raw.config);
-  return { ...raw, tables: normalizeTables(raw.tables), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [], hrAttributes: normalizeHrAttrs((Array.isArray(raw.hrAttributes) ? raw.hrAttributes : []).filter((a) => (a.category ?? 'person') !== ('org' as never))), dealers: Array.isArray(raw.dealers) ? raw.dealers : [], stores: Array.isArray(raw.stores) ? raw.stores : [], employees: Array.isArray(raw.employees) ? raw.employees : [], config: cfg, permissions: Array.isArray(cfg.permissions) ? cfg.permissions : (Array.isArray(raw.permissions) ? raw.permissions : []), permOverrides: Array.isArray(cfg.permOverrides) ? cfg.permOverrides : (Array.isArray(raw.permOverrides) ? raw.permOverrides : []) };
+  return { ...raw, tables: raw.tables.map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })), rules, builderTableIds: Array.isArray(raw.builderTableIds) ? raw.builderTableIds : [], alerts: Array.isArray(raw.alerts) ? raw.alerts : [], orgs: Array.isArray(raw.orgs) ? raw.orgs : [], persons: Array.isArray(raw.persons) ? raw.persons : [], hrAttributes: normalizeHrAttrs((Array.isArray(raw.hrAttributes) ? raw.hrAttributes : []).filter((a) => (a.category ?? 'person') !== ('org' as never))), dealers: Array.isArray(raw.dealers) ? raw.dealers : [], stores: Array.isArray(raw.stores) ? raw.stores : [], employees: Array.isArray(raw.employees) ? raw.employees : [], config: cfg, permissions: Array.isArray(cfg.permissions) ? cfg.permissions : (Array.isArray(raw.permissions) ? raw.permissions : []), permOverrides: Array.isArray(cfg.permOverrides) ? cfg.permOverrides : (Array.isArray(raw.permOverrides) ? raw.permOverrides : []) };
 }
 
 function loadInitial(): AppState {
@@ -936,7 +750,6 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
       if (isBlankAlert(raw)) return state;
       const now = Date.now();
       const alert: AlertTask = {
-        ...raw,
         id: raw.id ?? `alert_${now}_${Math.random().toString(36).slice(2, 7)}`,
         createdAt: raw.createdAt ?? now,
         updatedAt: raw.updatedAt ?? now,
@@ -945,9 +758,13 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
         level: raw.level ?? 'warn',
         title: raw.title ?? '',
         content: raw.content ?? '',
+        reason: raw.reason,
+        conditionDesc: raw.conditionDesc,
+        preview: raw.preview,
         dept: raw.dept ?? '',
         assignee: raw.assignee ?? '',
         status: raw.status ?? 'new',
+        handoffTo: raw.handoffTo,
       };
       return { ...state, alerts: [alert, ...state.alerts] };
     }
@@ -956,15 +773,6 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
       if (!g || !g.id || !String(g.name ?? '').trim()) return state;
       if (state.ruleGroups.some((x) => x.id === g.id || x.name === g.name)) return state;
       return { ...state, ruleGroups: [g, ...state.ruleGroups] };
-    }
-    case 'REMOVE_ALERTS': {
-      const cfg = action.payload as { ruleId?: string; since?: number };
-      const rid = cfg?.ruleId;
-      const since = cfg?.since;
-      return {
-        ...state,
-        alerts: state.alerts.filter((a) => !(rid && a.ruleId === rid && (since == null || a.createdAt >= since))),
-      };
     }
     case 'REMOVE_RULE_GROUP': {
       const id = action.payload as string;
@@ -1185,8 +993,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [remotePersist, setRemotePersist] = useState(false);
   const loaded = useRef(false);
   const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // 表变更（上传/更新/删除）等关键写操作后置为 true，调度立即落库，避免关页丢表
-  const immediateRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1222,15 +1028,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             });
           }
         }
-        const loadedAlerts = (remote.alerts ?? []).filter((a) => !isBlankAlert(a));
-        const alertsPatched = backfillDeadlines(rules, loadedAlerts, remote.persons ?? [], remote.orgs ?? []);
         setState((s) => ({
           ...s,
-          tables: normalizeTables(tables),
+          tables: (tables ?? []).map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })),
           rules,
           ruleGroups: remote.ruleGroups ?? [],
           tableGroups: remote.tableGroups ?? [],
-          alerts: alertsPatched,
+          alerts: (remote.alerts ?? []).filter((a) => !isBlankAlert(a)),
           orgs: remote.orgs ?? [],
           persons: remote.persons ?? [],
           hrAttributes: normalizeHrAttrs((remote.hrAttributes ?? []).filter((a) => (a.category ?? 'person') !== ('org' as never))),
@@ -1258,19 +1062,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 状态变化：本地缓存兜底 + 防抖同步到服务端数据库（表变更等关键操作立即同步）
+  // 状态变化：本地缓存兜底 + 防抖同步到服务端数据库
   useEffect(() => {
     if (!loaded.current) return;
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(state));
     } catch {
       /* ignore */
-    }
-    if (immediateRef.current) {
-      immediateRef.current = false;
-      if (pushTimer.current) clearTimeout(pushTimer.current);
-      void pushRemoteState(state);
-      return;
     }
     if (pushTimer.current) clearTimeout(pushTimer.current);
     pushTimer.current = setTimeout(() => {
@@ -1281,25 +1079,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
   }, [state]);
 
-  // 页面关闭/刷新前强制兜底落库，避免防抖未触发导致本次改动丢失。
-  // 用 fetch({keepalive:true}) 替代 sendBeacon：后者约 64KB 大小限制，大表（数万行）会静默丢弃。
-  const latestRef = useRef(state);
-  latestRef.current = state;
+  // 页面关闭/刷新前强制兜底落库，避免防抖未触发导致本次改动丢失
   useEffect(() => {
     const flush = () => {
       if (pushTimer.current) clearTimeout(pushTimer.current);
       try {
-        const s = latestRef.current;
         const payload = JSON.stringify({
-          tables: s.tables, rules: s.rules, alerts: s.alerts, groups: s.ruleGroups ?? [], tableGroups: s.tableGroups ?? [], orgs: s.orgs ?? [], persons: s.persons ?? [], employees: s.employees ?? [], hrAttributes: s.hrAttributes ?? [], dealers: s.dealers ?? [], stores: s.stores ?? [], config: { ...s.config, permissions: s.permissions ?? [], permOverrides: s.permOverrides ?? [] },
+          tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], tableGroups: state.tableGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] },
         });
-        void fetch(STATE_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(() => { /* keepalive 大表可能被浏览器拒绝，主落库路径在 [state] effect 的立即 POST */ });
+        navigator.sendBeacon(STATE_API, new Blob([payload], { type: 'application/json' }));
       } catch { /* 忽略 */ }
     };
     window.addEventListener('beforeunload', flush);
     return () => window.removeEventListener('beforeunload', flush);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [state]);
 
   const api = useMemo<StoreApi>(() => {
     const dispatch = (t: string, payload?: unknown) => setState((s) => reducer(s, { type: t, payload }));
@@ -1307,9 +1101,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       state,
       ready,
       remotePersist,
-      addTable: (t) => { immediateRef.current = true; dispatch('ADD_TABLE', t); },
-      updateTable: (id, patch) => { immediateRef.current = true; dispatch('UPDATE_TABLE', { id, patch }); },
-      removeTable: (id) => { immediateRef.current = true; dispatch('REMOVE_TABLE', id); },
+      addTable: (t) => dispatch('ADD_TABLE', t),
+      updateTable: (id, patch) => dispatch('UPDATE_TABLE', { id, patch }),
+      removeTable: (id) => dispatch('REMOVE_TABLE', id),
       setActiveTable: (id) => dispatch('SET_ACTIVE_TABLE', id),
       setBuilderTables: (ids) => dispatch('SET_BUILDER_TABLES', ids),
       renameField: (tableId, fieldKey, alias) => dispatch('RENAME_FIELD', { tableId, fieldKey, alias }),
@@ -1319,16 +1113,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       activateRule: (id) => {
         const rule = state.rules.find((r) => r.id === id);
         if (!rule) return;
-        const alerts = buildAlertsForRule(rule, state.tables, { stores: state.stores ?? [], employees: state.employees ?? [], persons: state.persons ?? [], orgs: state.orgs ?? [] });
-        const today = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })();
-        // 覆盖当日已生成预警（重新生成以带上最新配置），保留历史日
-        dispatch('REMOVE_ALERTS', { ruleId: id, since: today });
+        const alerts = buildAlertsForRule(rule, state.tables, { stores: state.stores ?? [], employees: state.employees ?? [], persons: state.persons ?? [] });
         const seen = new Set<string>();
         for (const a of alerts) {
           const key = `${a.ruleId}|${a.level}|${a.title}|${a.dept ?? ''}|${a.assignee ?? ''}`;
           if (seen.has(key)) continue;
           seen.add(key);
-          dispatch('ADD_ALERT', a);
+          const hit = state.alerts.find(
+            (x) => x.ruleId === a.ruleId && x.level === a.level && x.title === a.title && x.dept === a.dept && x.assignee === a.assignee
+          );
+          if (hit) {
+            // 重新构建的预警仅刷新可再生数据；保留已产生的处理状态与内容(状态/处理人/时间/方案/留言/计划)
+            const { status: _s, assignee: _as, acceptedAt: _ac, startedAt: _sa, handledAt: _ha, resolution: _rs, failedReason: _fr, comments: _cm, plan: _pl, ...fresh } = a;
+            dispatch('UPDATE_ALERT', { id: hit.id, patch: { ...fresh, updatedAt: Date.now() } });
+          }
+          else dispatch('ADD_ALERT', a);
         }
         if (rule.status !== 'active') dispatch('UPDATE_RULE', { id, patch: { status: 'active' } });
       },
@@ -1352,11 +1151,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       updateTableGroup: (id, name) => dispatch('UPDATE_TABLE_GROUP', { id, name }),
       addAlert: (alert) => dispatch('ADD_ALERT', alert),
       updateAlertStatus: (alertId, patch) => dispatch('UPDATE_ALERT', { alertId, patch }),
-      removeRuleAlertsToday: (ruleId) => {
-        const d = new Date();
-        d.setHours(0, 0, 0, 0);
-        dispatch('REMOVE_ALERTS', { ruleId, since: d.getTime() });
-      },
       addOrg: (o) => {
         const org: Organization = { ...o, id: uid('org'), createdAt: Date.now() };
         dispatch('ADD_ORG', org);
@@ -1421,7 +1215,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setPermOverrides: (ovs) => dispatch('SET_PERM_OVERRIDES', ovs),
       flushNow: () => {
         if (pushTimer.current) clearTimeout(pushTimer.current);
-        void pushRemoteState(latestRef.current);
+        void pushRemoteState(state);
       },
       moveOrg: (id, dir) => {
         const target = state.orgs.find((o) => o.id === id);

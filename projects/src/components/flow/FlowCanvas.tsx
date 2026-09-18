@@ -35,8 +35,6 @@ import {
   Waypoints,
   Bell,
   SearchCheck,
-  Timer,
-  LayoutGrid,
 } from 'lucide-react';
 import type { FlowEdge, FlowNode, Schedule, TargetSetting } from '@/lib/types';
 import { KIND_COLOR, uid } from '@/lib/types';
@@ -343,12 +341,7 @@ export function FlowEditor({
   onTargets: (t: TargetSetting) => void;
 }) {
   const ctx = useMemo(
-    () => ({
-      schedule,
-      targets,
-      setSchedule: onSchedule,
-      setTargets: onTargets,
-    }),
+    () => ({ schedule, targets, setSchedule: onSchedule, setTargets: onTargets }),
     [schedule, targets, onSchedule, onTargets]
   );
 
@@ -428,9 +421,7 @@ export function PalettePanel({
     { kind: 'linkjoin', label: '其他表添加列', desc: '跨表/节点按匹配键取列追加', payload: { kind: 'linkjoin' }, color: KIND_COLOR.linkjoin.border, dot: KIND_COLOR.linkjoin.dot },
     { kind: 'linkview', label: '预警关联展示', desc: '关联商品档案/库存/零售单·弹窗标签展示', payload: { kind: 'linkview' }, color: KIND_COLOR.linkview.border, dot: KIND_COLOR.linkview.dot },
     { kind: 'linkview_all', label: '预警关联展示-全量', desc: '展示来源全部行·需权限', payload: { kind: 'linkview_all' }, color: KIND_COLOR.linkview_all.border, dot: KIND_COLOR.linkview_all.dot },
-    { kind: 'pivot', label: '透视表', desc: '行/列交叉矩阵·值聚合', payload: { kind: 'pivot' }, color: KIND_COLOR.pivot.border, dot: KIND_COLOR.pivot.dot },
     { kind: 'action', label: '预警动作', desc: '终点·通知', payload: { kind: 'action' }, color: KIND_COLOR.action.border, dot: KIND_COLOR.action.dot },
-    { kind: 'timeout', label: '超时动作', desc: '处理时限·超时转派', payload: { kind: 'timeout' }, color: KIND_COLOR.timeout.border, dot: KIND_COLOR.timeout.dot },
   ];
 
   // 按功能分组（kinds 引用 flowItems），便于直观选择
@@ -438,7 +429,7 @@ export function PalettePanel({
     { title: '数据与窗口', kinds: ['trigger', 'base', 'relation', 'lookup', 'time', 'elapsed'] },
     { title: '筛选与排名', kinds: ['topn', 'rank', 'filter', 'diff', 'filljoin'] },
     { title: '计算与统计', kinds: ['compute', 'groupby', 'baseline', 'calc', 'linkjoin'] },
-    { title: '条件与输出', kinds: ['condition', 'logic', 'linkview', 'linkview_all', 'pivot', 'action', 'timeout'] },
+    { title: '条件与输出', kinds: ['condition', 'logic', 'linkview', 'linkview_all', 'action'] },
   ];
 
   const NODE_ICON: Record<string, ComponentType<{ size?: number; className?: string; style?: CSSProperties }>> = {
@@ -459,11 +450,9 @@ export function PalettePanel({
     linkjoin: Combine,
     linkview: SearchCheck,
     linkview_all: SearchCheck,
-    pivot: LayoutGrid,
     condition: GitBranch,
     logic: Waypoints,
     action: Bell,
-    timeout: Timer,
   };
   const flowByKind = new Map(flowItems.map((it) => [it.kind, it]));
   if (!canLinkviewAll) flowByKind.delete('linkview_all');

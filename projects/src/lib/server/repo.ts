@@ -1,5 +1,4 @@
-import { getSupabaseClient, loadEnv } from '@/storage/database/supabase-client';
-import { Client } from 'pg';
+import { getSupabaseClient } from '@/storage/database/supabase-client';
 import type { AlertRule, AlertStatus, AlertTask, AttrCategory, DataTable, DataTableGroup, Dealer, Employee, HomeConfig, HrAttribute, Organization, Person, RuleGroup, Store } from '@/lib/types';
 
 interface TableRow {
@@ -146,6 +145,7 @@ export async function getAllTables(): Promise<DataTable[]> {
 
 /** 全量覆盖式保存数据表（以入参为准，删除库中多余的表） */
 export async function syncTables(tables: DataTable[]): Promise<void> {
+  const client = getSupabaseClient();
   const rows = tables.map((t) => ({
     id: t.id,
     name: t.name,
@@ -155,15 +155,6 @@ export async function syncTables(tables: DataTable[]): Promise<void> {
     data: t,
   }));
 
-  // 大表（payload 超过阈值）经 PostgREST upsert 会触发 statement timeout，
-  // 改走数据库直连写入。
-  const estimatedSize = rows.reduce((acc, r) => acc + (r.data.rows?.length ?? 0) * (r.data.fields?.length ?? 1), 0);
-  if (estimatedSize > 200000) {
-    await upsertTablesDirect(rows);
-    return;
-  }
-
-  const client = getSupabaseClient();
   if (rows.length > 0) {
     const { error } = await client.from('data_tables').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存数据表失败: ${error.message}`);
@@ -172,59 +163,13 @@ export async function syncTables(tables: DataTable[]): Promise<void> {
   // 删除已被前端移除的表
   const { data: existing, error: selErr } = await client.from('data_tables').select('id');
   if (selErr) throw new Error(`读取数据表ID失败: ${selErr.message}`);
-  const existingRows = (existing as { id: string }[] | null) ?? [];
   const keep = new Set(tables.map((t) => t.id));
-  // 防误删保护：库中已有业务表，但本次提交不含任何业务表（为空或只剩示例表）时，跳过删除。
-  // 避免某个前端会话因远端加载失败回退到"仅示例表"状态后，全量覆盖把真实数据清空。
-  const hasBusinessTable = tables.some((t) => t.id !== 'tbl-sample');
-  const hasExistingBusiness = existingRows.some((r) => r.id !== 'tbl-sample');
-  const staleIds = existingRows
+  const staleIds = ((existing as { id: string }[] | null) ?? [])
     .map((r) => r.id)
     .filter((id) => !keep.has(id));
-  if (staleIds.length > 0 && !(hasExistingBusiness && !hasBusinessTable)) {
+  if (staleIds.length > 0) {
     const { error: delErr } = await client.from('data_tables').delete().in('id', staleIds);
     if (delErr) throw new Error(`删除数据表失败: ${delErr.message}`);
-  }
-}
-
-/** 判定库中是否已存在业务数据（有业务表 / 规则 / 员工 / 店仓 / 组织架构等），用于空覆盖防护 */
-export async function hasAnyBusinessData(): Promise<boolean> {
-  const client = getSupabaseClient();
-  const [{ data: tb }, { data: rules }, { data: emps }] = await Promise.all([
-    client.from('data_tables').select('id'),
-    client.from('alert_rules').select('id'),
-    client.from('employees').select('id'),
-  ]);
-  const businessTables = ((tb as { id: string }[] | null) ?? []).some((r) => r.id !== 'tbl-sample');
-  if (businessTables) return true;
-  if (((rules as unknown[] | null) ?? []).length > 0) return true;
-  if (((emps as unknown[] | null) ?? []).length > 0) return true;
-  return false;
-}
-
-/** 通过数据库直连写入数据表，规避大表经 PostgREST 的 statement timeout */
-async function upsertTablesDirect(rows: TableRow[]): Promise<void> {
-  loadEnv();
-  const url = process.env.PGDATABASE_URL;
-  if (!url) throw new Error('PGDATABASE_URL 未配置，无法直连写入大表');
-  const client = new Client({ connectionString: url });
-  await client.connect();
-  try {
-    for (const r of rows) {
-      await client.query(
-        `INSERT INTO data_tables (id, name, file_name, row_count, created_at, updated_at, data)
-         VALUES ($1, $2, $3, $4, $5::bigint, $6::timestamptz, $7::jsonb)
-         ON CONFLICT (id) DO UPDATE SET
-           name = EXCLUDED.name,
-           file_name = EXCLUDED.file_name,
-           row_count = EXCLUDED.row_count,
-           updated_at = $6::timestamptz,
-           data = EXCLUDED.data`,
-        [r.id, r.name, r.file_name, r.row_count, r.created_at, new Date(r.created_at).toISOString(), JSON.stringify(r.data)]
-      );
-    }
-  } finally {
-    await client.end();
   }
 }
 
@@ -258,13 +203,11 @@ export async function syncRules(rules: AlertRule[]): Promise<void> {
 
   const { data: existing, error: selErr } = await client.from('alert_rules').select('id');
   if (selErr) throw new Error(`读取规则ID失败: ${selErr.message}`);
-  const existingRows = (existing as { id: string }[] | null) ?? [];
   const keep = new Set(rules.map((r) => r.id));
-  // 防误删保护：库中已有规则但本次提交为空时，跳过删除（防空提交误删全部业务规则）。
-  const staleIds = existingRows
+  const staleIds = ((existing as { id: string }[] | null) ?? [])
     .map((r) => r.id)
     .filter((id) => !keep.has(id));
-  if (staleIds.length > 0 && !(existingRows.length > 0 && rules.length === 0)) {
+  if (staleIds.length > 0) {
     const { error: delErr } = await client.from('alert_rules').delete().in('id', staleIds);
     if (delErr) throw new Error(`删除规则失败: ${delErr.message}`);
   }
