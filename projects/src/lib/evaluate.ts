@@ -1221,12 +1221,16 @@ function evalNode(
           rows: projRows.slice(0, 200),
         };
       });
+      const matchedTotal = tabs.reduce((s, t) => s + t.rows.length, 0);
+      const previewTab = tabs.find((t) => t.rows.length > 0) || tabs[0];
       return {
         title: '预警关联展示',
-        columns: baseCols,
-        rows: mainRows.slice(0, 100),
+        columns: previewTab ? previewTab.columns : baseCols,
+        rows: previewTab ? previewTab.rows.slice(0, 100) : mainRows.slice(0, 100),
         shape: 'table',
-        note: tabsCfg.length ? `关联 ${tabsCfg.length} 个数据源（${tabsCfg.map((t) => t.name || t.tableName || t.srcNodeLabel || '关联').join('、')}），随预警弹窗标签页展示` : '请添加关联标签（选择数据表或节点结果 + 基础表/关联表匹配字段）',
+        note: tabsCfg.length
+          ? `按基础(判断命中)与来源匹配，共匹配 ${matchedTotal} 行。来源：${tabsCfg.map((t) => t.name || t.tableName || t.srcNodeLabel || '关联').join('、')}（多标签全量在预警弹窗标签页查看）`
+          : '请添加关联标签（选择数据表或节点结果 + 基础表/关联表匹配字段）',
         linkviewData: { enabled: tabs.length > 0, baseCols, tabs },
       };
     }
