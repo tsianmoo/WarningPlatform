@@ -197,6 +197,7 @@ export function AlertList() {
   const [planDraft, setPlanDraft] = useState('');
   const [replyTarget, setReplyTarget] = useState<string | null>(null);
   const [lvTab, setLvTab] = useState(0);
+  const [lvGroup, setLvGroup] = useState<number | null>(null);
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
   const [replyDraft, setReplyDraft] = useState('');
   const [now, setNow] = useState(() => Date.now());
@@ -815,33 +816,52 @@ export function AlertList() {
                     ? [{ label: '预警关联展示', linkview: open.preview.linkview }]
                     : []);
                 if (!groups.length) return null;
+                const cur = groups[Math.min(lvGroup ?? 0, groups.length - 1)];
                 return (
-                  <div className="mt-4 space-y-4">
-                    {groups.map((g, gi) => {
-                      const tabs = g.linkview.tabs ?? [];
+                  <div className="mt-4">
+                    <div className="flex flex-wrap gap-1">
+                      {groups.map((g, gi) => {
+                        const active = lvGroup === gi;
+                        const total = (g.linkview.tabs ?? []).reduce((s, t) => s + (t.rows?.length ?? 0), 0);
+                        return (
+                          <button
+                            key={gi}
+                            type="button"
+                            onClick={() => { setLvGroup(active ? null : gi); setLvTab(0); }}
+                            className={`whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${active ? 'border-pink-600 bg-pink-600 text-white' : 'border-gray-200 bg-white text-gray-500 hover:border-pink-300 hover:text-pink-600'}`}
+                          >
+                            {g.label}
+                            <span className={`ml-1.5 text-[10px] ${active ? 'text-pink-100' : 'text-gray-300'}`}>{total}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {lvGroup !== null && cur ? (() => {
+                      const tabs = cur.linkview.tabs ?? [];
                       const tb = tabs[Math.min(lvTab ?? 0, tabs.length - 1)];
                       const cols = tb?.columns ?? [];
                       const rows = tb?.rows ?? [];
                       return (
-                        <div key={gi}>
-                          <h4 className="mb-2 text-sm font-semibold text-pink-600">{g.label}</h4>
-                          <div className="mb-2 flex flex-wrap gap-1">
-                            {tabs.map((tb2, ti) => {
-                              const active = (lvTab ?? 0) === ti;
-                              const label = tb2.name || tb2.tableName || tb2.srcNodeLabel || `关联${ti + 1}`;
-                              return (
-                                <button
-                                  key={ti}
-                                  type="button"
-                                  onClick={() => setLvTab(ti)}
-                                  className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${active ? 'bg-pink-600 text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}
-                                >
-                                  {label}
-                                  <span className={`ml-1 text-[10px] ${active ? 'text-pink-100' : 'text-gray-300'}`}>{tb2.rows?.length ?? 0}</span>
-                                </button>
-                              );
-                            })}
-                          </div>
+                        <div className="mt-3">
+                          {tabs.length > 1 && (
+                            <div className="mb-2 flex flex-wrap gap-1">
+                              {tabs.map((tb2, ti) => {
+                                const active = (lvTab ?? 0) === ti;
+                                const label = tb2.name || tb2.tableName || tb2.srcNodeLabel || `关联${ti + 1}`;
+                                return (
+                                  <button
+                                    key={ti}
+                                    type="button"
+                                    onClick={() => setLvTab(ti)}
+                                    className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${active ? 'bg-pink-600 text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}
+                                  >
+                                    {label}
+                                    <span className={`ml-1 text-[10px] ${active ? 'text-pink-100' : 'text-gray-300'}`}>{tb2.rows?.length ?? 0}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
                           <div className="overflow-auto rounded-lg border border-gray-100">
                             {rows.length ? (
                               <table className="w-full border-collapse text-[11px]">
@@ -868,7 +888,7 @@ export function AlertList() {
                           </div>
                         </div>
                       );
-                    })}
+                    })() : null}
                   </div>
                 );
               })()}
