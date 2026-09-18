@@ -38,8 +38,8 @@ const fmtSchedule = (s?: { repeatType?: string; timeOfDay?: string; nextTriggerA
   };
   return `${labels[m ?? 'once'] ?? m} ${time}${s.nextTriggerAt ? ` · ${s.nextTriggerAt} 触发` : ''}`;
 };
-import type { AlertRule, DataTable, FlowEdge, FlowNode, RuleGroup, DeadlineSetting } from '@/lib/types';
-import { DEFAULT_DEADLINE } from '@/lib/types';
+import type { AlertRule, DataTable, FlowEdge, FlowNode, RuleGroup } from '@/lib/types';
+import { uid } from '@/lib/types';
 import { useStore, makeDefaultRule, createPendingExecution, computeNextTrigger, buildAlertsForRule } from '@/lib/store';
 import { PalettePanel, FlowEditor } from './flow/FlowCanvas';
 import { toast } from 'sonner';
@@ -93,17 +93,6 @@ export function RuleConfigurator({
   const setFlow = (nodes: FlowNode[], edges: FlowEdge[]) => set({ flow: { nodes, edges } });
   const setSchedule = (schedule: AlertRule['schedule']) => set({ schedule });
   const setTargets = (targets: AlertRule['targets']) => set({ targets });
-  const setDeadline = (deadline: DeadlineSetting) => set({ deadline });
-  const candidateUsers = useMemo(
-    () =>
-      Array.from(
-        new Set([
-          ...(state.persons ?? []).map((p) => p.name).filter(Boolean),
-          ...(state.employees ?? []).map((e) => e.name).filter(Boolean),
-        ])
-      ),
-    [state.persons, state.employees]
-  );
 
   // 把规则的所选表注入构建上下文（供画布节点与字段面板读取）
   useEffect(() => {
@@ -146,7 +135,6 @@ export function RuleConfigurator({
         name: r.name.trim(),
         createdBy: !r.createdBy && meName ? meName : r.createdBy,
         targets: finalTargets,
-        deadline: r.deadline ?? DEFAULT_DEADLINE,
         status: mode === 'activate' ? 'active' : exists ? r.status : 'draft',
         executions:
           mode === 'activate' && r.executions.length === 0
@@ -328,9 +316,6 @@ export function RuleConfigurator({
               targets={rule.targets}
               onSchedule={setSchedule}
               onTargets={setTargets}
-              deadline={rule.deadline ?? DEFAULT_DEADLINE}
-              onDeadline={setDeadline}
-              candidateUsers={candidateUsers}
             />
           </div>
         </div>

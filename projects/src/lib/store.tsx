@@ -26,7 +26,7 @@ import type {
   LinkViewNodeData,
   DeadlineSetting,
 } from './types';
-import { uid, OPERATOR_OPTIONS, DEFAULT_HOME_CONFIG, normalizeHomeConfig, DEFAULT_DEADLINE } from './types';
+import { uid, OPERATOR_OPTIONS, DEFAULT_HOME_CONFIG, normalizeHomeConfig } from './types';
 import { buildSampleTable, ensureFieldsComplete } from './parser';
 import { evaluateFlow } from './evaluate';
 import type { NodePreview } from './evaluate';
@@ -224,6 +224,20 @@ export function calcDeadline(from: number, d?: DeadlineSetting): number | undefi
   return new Date(year, month, cand.getDate(), hh, mm, 0, 0).getTime();
 }
 
+/** 超时动作「转派对象」配置 → 具体人员名单（复用通知对象的选择方式：person 按职位/岗位；manual 手动选中人员） */
+function resolveEscalateNames(t?: TargetSetting, ctx?: BuildAlertCtx): string[] {
+  const mode = t?.mode ?? 'manual';
+  const persons = ctx?.persons ?? [];
+  if (mode === 'person') {
+    const posF = t?.personPositions ?? [];
+    const postF = t?.personPosts ?? [];
+    return persons
+      .filter((p) => p.enabled !== false && (!posF.length || (p.title && posF.includes(p.title))) && (!postF.length || (p.post && postF.includes(p.post))))
+      .map((p) => p.name);
+  }
+  return (t?.personnel ?? []).slice();
+}
+
 export function buildAlertsForRule(
   rule: AlertRule,
   tables?: DataTable[],
@@ -237,6 +251,13 @@ export function buildAlertsForRule(
   }
   if (base.length === 0) base.push({ id: '', data: { level: 'warn' as const, title: rule.name } });
   const targets = rule.targets;
+  // 超时动作：按「关联的预警动作」把处理时限与转派对象挂到对应动作上（动作知道了才知超期转交谁）
+  const dlTimeout = new Map<string, { deadline?: DeadlineSetting; escalateTarget?: TargetSetting }>();
+  for (const tn of rule.flow.nodes) {
+    if (tn.kind !== 'timeout' || !tn.data) continue;
+    const td = tn.data as unknown as { actionId?: string; deadline?: DeadlineSetting; escalateTarget?: TargetSetting };
+    dlTimeout.set(td.actionId || '', { deadline: td.deadline, escalateTarget: td.escalateTarget });
+  }
   // 触发时对规则求值，取每个预警动作的命中明细作为“预览数据”
   let evalMap: Record<string, NodePreview> | undefined;
   if (tables && tables.length) {
@@ -411,14 +432,16 @@ export function buildAlertsForRule(
       recipients = [{ mode: m, names: pers.map((p) => p.name) }];
     }
     const mk = (title: string, storeMsg?: { store?: string; message?: string; parts?: MsgPart[] }) => {
-      const dl = calcDeadline(Date.now(), rule.deadline);
+      const tcfg = dlTimeout.get(a.id) ?? dlTimeout.get('');
+      const dl = calcDeadline(Date.now(), tcfg?.deadline);
+      const escNames = tcfg?.escalateTarget ? resolveEscalateNames(tcfg.escalateTarget, ctx) : (tcfg?.deadline?.escalateTo ?? []);
       const deadlineFields = dl === undefined
         ? {}
         : {
             deadlineAt: dl,
-            graceMinutes: rule.deadline?.graceMinutes ?? 20,
-            graceUntil: dl + ((rule.deadline?.graceMinutes ?? 20) * 60_000),
-            escalateTo: rule.deadline?.escalateTo ?? [],
+            graceMinutes: tcfg?.deadline?.graceMinutes ?? 20,
+            graceUntil: dl + ((tcfg?.deadline?.graceMinutes ?? 20) * 60_000),
+            escalateTo: escNames,
             escalated: false,
           };
       const curStores = storeMsg
@@ -694,7 +717,6 @@ export function makeDefaultRule(): AlertRule {
     flow: { nodes: [], edges: [] },
     schedule: makeDefaultSchedule(),
     targets: { departments: [], personnel: [] },
-    deadline: { ...DEFAULT_DEADLINE },
     executions: [],
   };
 }

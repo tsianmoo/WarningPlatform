@@ -55,6 +55,7 @@ import {
   type LinkViewAllNodeData,
   type LinkViewAllTab,
   type DeadlineSetting,
+  type TimeoutNodeData,
 } from '@/lib/types';
 import { DEFAULT_DEADLINE } from '@/lib/types';
 import { useStore } from '@/lib/store';
@@ -83,7 +84,8 @@ type AnyData =
   | CalcNodeData
   | LinkJoinNodeData
   | LinkViewNodeData
-  | LinkViewAllNodeData;
+  | LinkViewAllNodeData
+  | TimeoutNodeData;
 
 const KIND_ICON: Record<FlowNode['kind'], React.ReactNode> = {
   trigger: <Play size={13} strokeWidth={2.5} />,
@@ -108,6 +110,7 @@ const KIND_ICON: Record<FlowNode['kind'], React.ReactNode> = {
   linkjoin: <Link2 size={13} strokeWidth={2.5} />,
   linkview: <Search size={13} strokeWidth={2.5} />,
   linkview_all: <SearchCheck size={13} strokeWidth={2.5} />,
+  timeout: <Timer size={13} strokeWidth={2.5} />,
 };
 
 function useNodeUpdater(id: string) {
@@ -122,16 +125,12 @@ function useRuleTables(): DataTable[] {
   return ids.length ? state.tables.filter((t) => ids.includes(t.id)) : state.tables;
 }
 
-/** 规则级配置（触发调度 / 通知对象 / 处理时限）构建上下文，供开始、预警动作节点内嵌配置 */
+/** 规则级配置（触发调度 / 通知对象）构建上下文，供开始、预警动作节点内嵌配置 */
 export type RuleMetaValue = {
   schedule: Schedule;
   targets: TargetSetting;
-  deadline: DeadlineSetting;
   setSchedule: (s: Schedule) => void;
   setTargets: (t: TargetSetting) => void;
-  setDeadline: (d: DeadlineSetting) => void;
-  /** 超时转派可选人员（全员名单） */
-  candidateUsers: string[];
 };
 export const BuildCtx = createContext<RuleMetaValue | null>(null);
 function useRuleMeta(): RuleMetaValue | null {
@@ -257,6 +256,7 @@ function nodeKindCn(kind: FlowNode['kind']) {
     linkjoin: '其他表添加列',
     linkview: '预警关联展示',
     linkview_all: '预警关联展示-全量',
+    timeout: '超时动作',
   };
   return map[kind];
 }
@@ -493,27 +493,23 @@ const DEADLINE_UNITS: { value: DeadlineSetting['unit']; label: string; ms: numbe
   { value: 'month', label: '月', ms: 30 * 86_400_000 },
 ];
 
-function DeadlinePanel() {
-  const meta = useRuleMeta();
-  if (!meta) return null;
-  const d = meta.deadline ?? DEFAULT_DEADLINE;
-  const set = (patch: Partial<DeadlineSetting>) => meta.setDeadline({ ...d, ...patch });
+function DeadlineFields({ d, set }: { d: DeadlineSetting; set: (p: Partial<DeadlineSetting>) => void }) {
   const row = 'mb-1.5';
   const label = 'mb-1 text-[10px] text-gray-400';
   const chip = (active: boolean) =>
     `rounded px-1.5 py-0.5 text-[10px] transition ${
-      active ? 'bg-orange-600 text-white' : 'bg-white text-gray-500 hover:bg-orange-100'
+      active ? 'bg-rose-600 text-white' : 'bg-white text-gray-500 hover:bg-rose-100'
     }`;
-  const input = 'rounded-md border bg-white px-1.5 py-0.5 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-orange-300';
+  const input = 'rounded-md border bg-white px-1.5 py-0.5 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-rose-300';
   return (
-    <div className="mt-1 rounded-lg border border-orange-100 bg-orange-50/40 p-1.5">
-      <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold text-orange-700">
+    <div className="mt-1 rounded-lg border border-rose-100 bg-rose-50/40 p-1.5">
+      <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold text-rose-700">
         <Timer size={11} /> 规定用时（处理时限）
         <button
           type="button"
           onClick={() => set({ enabled: !d.enabled })}
           className={`ml-auto rounded-md px-1.5 py-0.5 text-[10px] transition ${
-            d.enabled ? 'bg-orange-600 text-white' : 'bg-gray-200 text-gray-500'
+            d.enabled ? 'bg-rose-600 text-white' : 'bg-gray-200 text-gray-500'
           }`}
         >
           {d.enabled ? '已启用' : '未启用'}
@@ -536,7 +532,7 @@ function DeadlinePanel() {
           </div>
           {d.kind === 'duration' ? (
             <div className={row}>
-              <div className={label}>需在生成后的</div>
+              <div className={label}>须在预警生成后的</div>
               <div className="flex items-center gap-1">
                 <input
                   type="number"
@@ -567,7 +563,7 @@ function DeadlinePanel() {
                         type="button"
                         onClick={() => set({ weekday: w.n })}
                         className={`h-6 w-6 rounded text-[10px] transition ${
-                          d.weekday === w.n ? 'bg-orange-600 text-white' : 'bg-white text-gray-500 hover:bg-orange-100'
+                          d.weekday === w.n ? 'bg-rose-600 text-white' : 'bg-white text-gray-500 hover:bg-rose-100'
                         }`}
                       >
                         {w.label}
@@ -589,7 +585,7 @@ function DeadlinePanel() {
             </div>
           )}
           <div className={row}>
-            <div className={label}>超时后宽限期（分钟，可操作缓冲）</div>
+            <div className={label}>超时后宽限期（分钟，宽限内仍可操作）</div>
             <input
               type="number"
               min={0}
@@ -598,30 +594,175 @@ function DeadlinePanel() {
               className={`w-16 ${input}`}
             />
           </div>
-          <div className={row}>
-            <div className={label}>超过宽限期后转派处理（可多选）</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** 超时转派对象：复用「通知对象」的选择方式（person 按用户-职位/岗位；manual 手动选部门+其下人员） */
+function EscalateTargetPanel({ target, onChange }: { target: TargetSetting; onChange: (t: TargetSetting) => void }) {
+  const { state } = useStore();
+  const [selDept, setSelDept] = useState<string>('');
+  const mode: NotifyMode = target.mode === 'person' ? 'person' : 'manual';
+  const setMode = (m: NotifyMode) => onChange({ ...target, mode: m });
+  const orgs = state.orgs ?? [];
+  const persons = state.persons ?? [];
+  const deptOrgs = orgs.filter((o) => o.kind === '部门');
+  const deptPersons = persons.filter((p) => p.orgId === selDept && p.enabled !== false);
+  const positions = Array.from(new Set(persons.map((p) => p.title).filter(Boolean) as string[])).sort();
+  const posts = Array.from(new Set(persons.map((p) => p.post).filter(Boolean) as string[])).sort();
+  const groupLabel = 'mb-1 text-[10px] text-gray-400';
+  const chipBtn = (on: boolean) =>
+    `rounded px-1.5 py-0.5 text-[10px] transition ${on ? 'bg-rose-600 text-white' : 'bg-white text-gray-500 hover:bg-rose-100'}`;
+  const toggle = (k: 'personnel' | 'personPositions' | 'personPosts', v: string) => {
+    const arr: string[] = target[k] ?? [];
+    onChange({ ...target, [k]: arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v] });
+  };
+  return (
+    <div className="mt-1.5 rounded-lg border border-rose-100 bg-rose-50/40 p-1.5">
+      <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-rose-700">
+        <Users size={11} /> 超时后人转由谁处理（转派对象）
+      </div>
+      <div className="mb-1 flex flex-wrap gap-1">
+        {(
+          [
+            { value: 'manual' as const, label: '手动' },
+            { value: 'person' as const, label: '按用户' },
+          ]
+        ).map((m) => (
+          <button
+            key={m.value}
+            type="button"
+            onClick={() => setMode(m.value)}
+            className={`rounded px-1.5 py-0.5 text-[10px] transition ${
+              mode === m.value ? 'bg-rose-600 text-white' : 'bg-white text-gray-500 hover:bg-rose-100'
+            }`}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+      {mode === 'person' && (
+        <div className="space-y-1.5">
+          <div className="rounded bg-white/60 p-1.5 text-[10px] leading-relaxed text-gray-500">
+            选择超过宽限期后转派给哪些用户处理。<span className="text-gray-700">当前用户 {persons.length} 人</span>
+          </div>
+          <div>
+            <div className={groupLabel}>按职位筛选转派人（可不选，主管/专员等）</div>
             <div className="flex flex-wrap gap-1">
-              {(meta.candidateUsers ?? []).map((u) => {
-                const active = (d.escalateTo ?? []).includes(u);
+              {positions.length === 0 && <span className="text-[10px] text-gray-400">暂无职位</span>}
+              {positions.map((pos) => (
+                <button key={pos} type="button" onClick={() => toggle('personPositions', pos)} className={chipBtn((target.personPositions ?? []).includes(pos))}>
+                  {pos}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="mt-1.5">
+            <div className={groupLabel}>按岗位筛选转派人（可不选，如商品督导）</div>
+            <div className="flex flex-wrap gap-1">
+              {posts.length === 0 && <span className="text-[10px] text-gray-400">暂无岗位</span>}
+              {posts.map((post) => (
+                <button key={post} type="button" onClick={() => toggle('personPosts', post)} className={chipBtn((target.personPosts ?? []).includes(post))}>
+                  {post}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="text-[10px] text-gray-400">职位、岗位可不选；均不选 = 转派给全部用户，选中则仅转派给匹配的用户。</div>
+        </div>
+      )}
+      {mode === 'manual' && (
+        <>
+          <div className="mb-1.5">
+            <div className={groupLabel}>适用部门</div>
+            <div className="flex flex-wrap gap-1">
+              {deptOrgs.length === 0 && <span className="text-[10px] text-gray-400">暂无部门</span>}
+              {deptOrgs.map((o) => {
+                const on = o.id === selDept;
                 return (
                   <button
-                    key={u}
+                    key={o.id}
                     type="button"
-                    onClick={() => set({ escalateTo: active ? (d.escalateTo ?? []).filter((x) => x !== u) : [...(d.escalateTo ?? []), u] })}
-                    className={chip(active)}
+                    onClick={() => {
+                      setSelDept(o.id);
+                      onChange({
+                        ...target,
+                        departments: target.departments.includes(o.name) ? target.departments.filter((x) => x !== o.name) : [...target.departments, o.name],
+                      });
+                    }}
+                    className={chipBtn(on)}
                   >
-                    {u}
+                    {o.name}
                   </button>
                 );
               })}
-              {(meta.candidateUsers ?? []).length === 0 && <span className="text-[10px] text-gray-400">暂无可选人员</span>}
             </div>
+          </div>
+          <div>
+            <div className={groupLabel}>选择转派给该部门的人</div>
+            {!selDept ? (
+              <div className="text-[10px] text-gray-400">请先在上方选择一个部门</div>
+            ) : deptPersons.length === 0 ? (
+              <div className="text-[10px] text-gray-400">该部门暂无人员</div>
+            ) : (
+              <div className="flex flex-wrap gap-1">
+                {deptPersons.map((p) => (
+                  <button key={p.id} type="button" onClick={() => toggle('personnel', p.name)} className={chipBtn((target.personnel ?? []).includes(p.name))}>
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </>
       )}
     </div>
   );
 }
+
+// ---------- 超时动作节点 ----------
+const TimeoutNode = memo(function TimeoutNode({ id, data }: NodeProps) {
+  const fnode = { id, kind: 'timeout' as const, data, position: { x: 0, y: 0 } } as FlowNode;
+  const d = data as unknown as TimeoutNodeData;
+  const update = useNodeUpdater(id);
+  const allNodes = useNodes() as unknown as FlowNode[];
+  const dl = d.deadline ?? DEFAULT_DEADLINE;
+  const actionOpts = allNodes.filter((n) => n.kind === 'action' && n.id !== id).map((n) => {
+    const ad = n.data as unknown as ActionNodeData;
+    return { nodeId: n.id, label: ad.title?.trim() || '预警动作' };
+  });
+  const selAction = d.actionId || actionOpts[0]?.nodeId || '';
+  return (
+    <NodeShell fnode={fnode} width={400}>
+      <div className="space-y-1.5">
+        <div className="rounded-md bg-rose-50 px-2 py-1 text-[10px] leading-relaxed text-rose-700">
+          为某个预警动作设定处理时限与超时转派：到「预警动作」这一步才知道超期应转交给谁。请先在上方选择要关联的预警动作。
+        </div>
+        <div className="rounded-md border border-gray-100 bg-gray-50/60 p-1.5">
+          <div className="mb-1 text-[11px] font-medium text-gray-600">关联预警动作</div>
+          <select
+            value={selAction}
+            onChange={(e) => {
+              const o = actionOpts.find((x) => x.nodeId === e.target.value);
+              update({ actionId: e.target.value, actionLabel: o?.label });
+            }}
+            className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-rose-400"
+          >
+            {actionOpts.length === 0 && <option value="">当前画布没有预警动作节点</option>}
+            {actionOpts.map((o) => (
+              <option key={o.nodeId} value={o.nodeId}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+        <DeadlineFields d={dl} set={(p) => update({ deadline: { ...dl, ...p } })} />
+        <EscalateTargetPanel target={d.escalateTarget ?? { departments: [], personnel: [] }} onChange={(t) => update({ escalateTarget: t })} />
+      </div>
+    </NodeShell>
+  );
+});
+TimeoutNode.displayName = 'TimeoutNode';
 const TriggerNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'trigger' as const, data, position: { x: 0, y: 0 } } as FlowNode;
   const meta = useRuleMeta();
@@ -630,7 +771,6 @@ const TriggerNode = memo(({ id, data }: NodeProps) => {
       <div className="text-sm font-medium text-gray-700">开始监测</div>
       <div className="mt-1 text-xs text-gray-400">规则触发入口 · 在此配置调度</div>
       {meta && <SchedulePanel schedule={meta.schedule} />}
-      {meta && <DeadlinePanel />}
     </NodeShell>
   );
 });
@@ -5932,6 +6072,7 @@ export const nodeTypes = {
   linkjoin: LinkJoinNode,
   linkview: LinkViewNode,
   linkview_all: LinkViewAllNode,
+  timeout: TimeoutNode,
 };
 
 TopNNode.displayName = 'TopNNode';
@@ -6160,6 +6301,13 @@ export function createNodeData(
       return { tabs: [], resultLabel: '关联展示' };
     case 'linkview_all':
       return { tabs: [], resultLabel: '预警关联展示-全量' };
+    case 'timeout':
+      return {
+        actionId: '',
+        actionLabel: '',
+        deadline: { ...DEFAULT_DEADLINE },
+        escalateTarget: { departments: [], personnel: [] },
+      };
     default:
       return {};
   }

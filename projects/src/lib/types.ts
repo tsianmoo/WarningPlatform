@@ -75,6 +75,7 @@ export type NodeKind =
   | 'linkjoin' // 其他表添加列（把另一张表/节点结果按匹配键对齐后，取列附加到当前表）
   | 'linkview' // 预警关联展示（把相关的其他表/节点结果，用同名匹配键关联到命中数据，供查看预警弹窗以标签页展示）
   | 'linkview_all' // 预警关联展示-全量（展示来源数据表/节点的全部行，不受基础表过滤；独立组件，按权限控制使用与数据可见）
+  | 'timeout' // 超时动作（挂在预警动作后：规定用时+宽限期+超时转派对象，到预警动作这一步才知道超期转交谁）
 
 /** 比较运算符 */
 export type Operator =
@@ -785,6 +786,18 @@ export interface ActionNodeData {
   linkviews?: Array<{ id: string; enabled: boolean }>;
 }
 
+/** 超时动作节点数据：挂在「预警动作」之后，配置规定用时、宽限期与超时转派对象（到动作这一步才知道超期转交谁） */
+export interface TimeoutNodeData {
+  /** 关联的预警动作节点 id（动作节点为该超时动作的服务对象） */
+  actionId: string;
+  /** 关联动作显示名（展示用） */
+  actionLabel?: string;
+  /** 处理时限（规定用时 + 宽限期；escalateTo 字段废弃，转派对象见 escalateTarget） */
+  deadline: DeadlineSetting;
+  /** 超时转派对象：复用「通知对象」的选择方式（manual 手动选部门+人 / person 按用户-职位/岗位） */
+  escalateTarget: TargetSetting;
+}
+
 /** 时间窗口节点数据 */
 export interface TimeNodeData {
   timeWindow: TimeWindow;
@@ -861,6 +874,7 @@ export interface FlowNode {
     | LinkJoinNodeData
     | LinkViewNodeData
     | LinkViewAllNodeData
+    | TimeoutNodeData
     | Record<string, unknown>;
   position: { x: number; y: number };
 }
@@ -1005,7 +1019,8 @@ export interface AlertRule {
   flow: { nodes: FlowNode[]; edges: FlowEdge[] };
   schedule: Schedule;
   targets: TargetSetting;
-  deadline: DeadlineSetting;
+  /** 处理时限（旧的"开始组件规定用时"，已废弃——现由「超时动作」节点挂在预警动作上配置，保留字段兼容旧数据） */
+  deadline?: DeadlineSetting;
   executions: ExecutionRecord[];
 }
 
@@ -1065,6 +1080,7 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   linkjoin: '其他表添加列',
   linkview: '预警关联展示',
   linkview_all: '预警关联展示-全量',
+  timeout: '超时动作',
 };
 
 /** 节点分类色 */
@@ -1094,6 +1110,7 @@ export const KIND_COLOR: Record<
   linkjoin: { bg: '#FAF5FF', border: '#9333EA', text: '#6B21A8', dot: '#9333EA' },
   linkview: { bg: '#FDF2F8', border: '#EC4899', text: '#BE185D', dot: '#EC4899' },
   linkview_all: { bg: '#FDF4FF', border: '#A855F7', text: '#7E22CE', dot: '#A855F7' },
+  timeout: { bg: '#FFF1F2', border: '#F43F5E', text: '#BE123C', dot: '#F43F5E' },
 };
 
 /** 预警类型（级别→类型：提醒/预警） */

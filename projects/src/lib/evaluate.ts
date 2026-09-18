@@ -2864,6 +2864,9 @@ function evalNode(
       }
     }
 
+    case 'timeout':
+      return { title: '超时动作', columns: [], rows: [], note: '为关联预警动作配置处理时限与超时转派，不产生数据。', unsupported: true };
+
     default:
       return { title: '节点', columns: [], rows: [], note: '该节点暂不支持逐行预览。', unsupported: true };
   }
