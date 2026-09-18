@@ -2783,6 +2783,11 @@ function collectNodeDataRefs(node: FlowNode): string[] {
   push((d.left as { nodeId?: unknown } | null | undefined)?.nodeId);
   push((d.right as { nodeId?: unknown } | null | undefined)?.nodeId);
   push((d.ref as { nodeId?: unknown } | null | undefined)?.nodeId);
+  if (node.kind === 'linkview') {
+    push(d.baseNode as unknown);
+    const tabs = (d.tabs as Array<{ srcNode?: string }> | null | undefined) ?? [];
+    for (const t of tabs) if (t && typeof t.srcNode === 'string' && t.srcNode) refs.push(t.srcNode);
+  }
   const ex = (d.expr as { left?: { nodeId?: unknown }; ref?: { nodeId?: unknown } } | null | undefined);
   push(ex?.left?.nodeId);
   push(ex?.ref?.nodeId);
