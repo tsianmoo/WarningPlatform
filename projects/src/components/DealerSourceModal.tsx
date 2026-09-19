@@ -93,27 +93,29 @@ export function srcColumns(kind: SourceKind, cfg: Cfg | null): { key: string; sy
 /** 列表单元格取值 */
 export function srcValue(kind: SourceKind, rec: Dealer | Store | Employee, col: { key: string; sys: SemKey | null; label: string }): string {
   const r = rec as unknown as Record<string, unknown> & { attrs?: Record<string, string> };
+  const attr = (k: string) => r.attrs?.[k] ?? '';
+  const fb = () => attr(col.label) || attr(col.key) || '-';
   switch (col.sys) {
-    case 'code': return (r.code as string) || '-';
-    case 'name': return (r.name as string) || '-';
-    case 'contact': return (r.contact as string) || '-';
-    case 'phone': return (r.phone as string) || '-';
-    case 'address': return (r.address as string) || '-';
-    case 'password': return (r.password as string) || '-';
-    case 'birthday': return (r.birthday as string) || '-';
-    case 'province': return (r.province as string) || '-';
-    case 'city': return (r.city as string) || '-';
-    case 'district': return (r.district as string) || '-';
+    case 'code': return (r.code as string) || fb();
+    case 'name': return (r.name as string) || fb();
+    case 'contact': return (r.contact as string) || fb();
+    case 'phone': return (r.phone as string) || fb();
+    case 'address': return (r.address as string) || fb();
+    case 'password': return (r.password as string) || fb();
+    case 'birthday': return (r.birthday as string) || fb();
+    case 'province': return (r.province as string) || fb();
+    case 'city': return (r.city as string) || fb();
+    case 'district': return (r.district as string) || fb();
     case 'status': return ((r.onDuty !== undefined ? r.onDuty : r.enabled) as boolean) !== false ? '启用' : '停用';
-    case 'level': return r.attrs?.['经销商等级'] || '-';
-    case 'category': return r.attrs?.['经销商分类'] || '-';
-    case 'brand': return (r.brand as string) || r.attrs?.['主营品牌'] || '-';
-    case 'company': return (r.company as string) || '-';
-    case 'department': return (r.department as string) || '-';
-    case 'salesArea': return (r.salesArea as string) || r.attrs?.['销售区域'] || '-';
-    case 'post': return (r.post as string) || r.attrs?.['岗位'] || '-';
+    case 'level': return r.attrs?.['经销商等级'] || fb();
+    case 'category': return r.attrs?.['经销商分类'] || fb();
+    case 'brand': return (r.brand as string) || r.attrs?.['主营品牌'] || fb();
+    case 'company': return (r.company as string) || r.attrs?.['所属分公司'] || fb();
+    case 'department': return (r.department as string) || r.attrs?.['所属部门'] || fb();
+    case 'salesArea': return (r.salesArea as string) || r.attrs?.['销售区域'] || fb();
+    case 'post': return (r.post as string) || r.attrs?.['岗位'] || fb();
     case 'allowRetail': return r.allowRetail ? '是' : '-';
-    default: return r.attrs?.[col.label] ?? r.attrs?.[col.key] ?? '-';
+    default: return fb();
   }
 }
 

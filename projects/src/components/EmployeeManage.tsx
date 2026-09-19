@@ -8,7 +8,7 @@ import type { Employee } from '@/lib/types';
 import DealerSourceModal, { loadSrcCfg, srcColumns, srcValue } from '@/components/DealerSourceModal';
 
 export default function EmployeeManage({ onBack }: { onBack: () => void }) {
-  const { state, addEmployee, updateEmployee, removeEmployee } = useStore();
+  const { state, updateEmployee, removeEmployee } = useStore();
   const { employees, dealers, stores, hrAttributes } = state;
   const dealerMap = useMemo(() => new Map(dealers.map((d) => [d.id, d.name])), [dealers]);
   const storeMap = useMemo(() => new Map(stores.map((s) => [s.id, s.name])), [stores]);
@@ -34,15 +34,8 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
   const openEdit = (e: Employee) => { setEditing(e); setForm({ code: e.code ?? '', name: e.name, dealerId: e.dealerId ?? '', storeId: e.storeId ?? '', post: e.post ?? '', onDuty: e.onDuty !== false, enabled: e.enabled !== false, password: e.password ?? '', attrs: e.attrs ?? {} }); setOpen(true); };
 
   const save = () => {
-    const c = form.code.trim();
-    const n = form.name.trim();
-    if (!c || !n) { toast.warning('员工编号与姓名必填'); return; }
-    if (employees.some((x) => x.id !== editing?.id && x.code === c)) { toast.warning('员工编号已存在'); return; }
-    if (employees.some((x) => x.id !== editing?.id && x.name === n)) { toast.warning('员工姓名已存在'); return; }
-    const data = { code: c, name: n, dealerId: form.dealerId || undefined, storeId: form.storeId || undefined, post: form.attrs['岗位'] || form.post || undefined, onDuty: form.onDuty, enabled: form.enabled, password: form.password || undefined, attrs: form.attrs };
-    const sort = employees.length;
-    if (editing) updateEmployee({ ...data, sort, id: editing.id } as Employee);
-    else addEmployee({ ...data, sort } as Omit<Employee, 'id' | 'createdAt'>);
+    if (!editing) return;
+    updateEmployee({ ...editing, password: form.password.trim() || undefined } as Employee);
     setEditing(null);
     setOpen(false);
   };
@@ -152,21 +145,11 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setOpen(false)}>
           <div className="w-[420px] rounded-lg bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-3 text-base font-semibold">{editing ? '编辑员工' : '新增员工'}</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div><label className={label}>员工编号 *</label><input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className={input} /></div>
-              <div><label className={label}>员工姓名 *</label><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={input} /></div>
-              <div><label className={label}>所属经销商</label><select value={form.dealerId} onChange={(e) => setForm({ ...form, dealerId: e.target.value })} className={sel}><option value="">请选择</option>{dealers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
-              <div><label className={label}>所属店仓</label><select value={form.storeId} onChange={(e) => setForm({ ...form, storeId: e.target.value })} className={sel}><option value="">请选择</option>{stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-              <div><label className={label}>岗位</label><select value={form.attrs['岗位'] ?? form.post} onChange={(e) => setForm({ ...form, attrs: { ...form.attrs, 岗位: e.target.value }, post: e.target.value })} className={sel}><option value="">请选择</option>{(empAttrs.find((a) => a.name === '岗位')?.items ?? []).map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}</select></div>
-              <div><label className={label}>初始密码</label><input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className={input} /></div>
-              {empAttrs.filter((a) => a.name !== '岗位').map((a) => (
-                <div key={a.id}><label className={label}>{a.name}</label><input value={form.attrs[a.name] ?? ''} onChange={(e) => setForm({ ...form, attrs: { ...form.attrs, [a.name]: e.target.value } })} list={`e-attrs-${a.id}`} placeholder={`请选择或输入${a.name}`} className={input} /><datalist id={`e-attrs-${a.id}`}>{(a.items || []).map((x) => <option key={x.id} value={x.name} />)}</datalist></div>
-              ))}
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-1 text-sm"><input type="checkbox" checked={form.onDuty} onChange={(e) => setForm({ ...form, onDuty: e.target.checked })} />在职</label>
-                <label className="flex items-center gap-1 text-sm"><input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />可用</label>
-              </div>
+            <h3 className="mb-3 text-base font-semibold">重置员工密码</h3>
+            {editing && <p className="mb-3 text-xs text-gray-400">对象：{editing.name}（员工编号：{editing.code || '-'}）</p>}
+            <div>
+              <label className={label}>重置密码</label>
+              <input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="留空保持原密码" className={input} />
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={() => setOpen(false)} className="rounded border border-gray-300 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100">取消</button>
