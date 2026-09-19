@@ -25,7 +25,7 @@ const SYNONYMS: Record<SemKey, string[]> = {
 
 const STORE_KEY = 'dn_src_dealer_cfg';
 
-interface Cfg {
+export interface Cfg {
   tableId: string;
   /** 字段展示顺序（sourceKey），未显示字段自动排在最后 */
   order: string[];
@@ -46,6 +46,26 @@ function autoSemantics(fields: TableField[]): Partial<Record<SemKey, string>> {
     if (f) { sem[sk] = f.key; used.add(f.key); }
   }
   return sem;
+}
+
+/** 按来源列 key/alias 识别其所属系统字段（与 autoSemantics 一致） */
+export function classifyField(key: string, alias?: string): SemKey | null {
+  const a = (alias || '').trim();
+  for (const sk of Object.keys(SYNONYMS) as SemKey[]) {
+    if (SYNONYMS[sk].some((s) => a === s || key === s || a.toLowerCase() === s.toLowerCase())) return sk;
+  }
+  return null;
+}
+
+/** 读取经销商数据源配置（localStorage） */
+export function loadSrcCfg(): Cfg | null {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as Cfg;
+  } catch {
+    return null;
+  }
 }
 
 export default function DealerSourceModal({ open, onClose }: { open: boolean; onClose: () => void }) {

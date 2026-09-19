@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, Database, Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useStore } from '@/lib/store';
@@ -8,7 +8,7 @@ import { resolvePerm, canOper } from '@/lib/perm';
 import { toast } from 'sonner';
 import type { AttrCategory, Dealer, HrAttribute, Store } from '@/lib/types';
 import { parseExcel } from '@/lib/parser';
-import DealerSourceModal from '@/components/DealerSourceModal';
+import DealerSourceModal, { classifyField, loadSrcCfg } from '@/components/DealerSourceModal';
 
 type Kind = 'dealer' | 'store';
 
@@ -36,6 +36,37 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [srcOpen, setSrcOpen] = useState(false);
+
+  // 经销商数据源驱动：仅展示来源表勾选显示的字段列（未配置时为 null 走基础列兜底）
+  const srcCfg = useMemo(() => (kind === 'dealer' ? loadSrcCfg() : null), [kind]);
+  const srcCols = useMemo(() => {
+    if (kind !== 'dealer' || !srcCfg || !srcCfg.tableId) return null;
+    const t = state.tables.find((x) => x.id === srcCfg.tableId);
+    if (!t) return null;
+    return srcCfg.order
+      .filter((k) => srcCfg.visible[k] !== false)
+      .map((k) => {
+        const f = t.fields.find((x) => x.key === k);
+        return { key: k, sys: classifyField(k, f?.alias), label: srcCfg.renames[k] || f?.alias || k };
+      });
+  }, [kind, srcCfg, state.tables]);
+  const dealerColVal = (d: Dealer, c: NonNullable<typeof srcCols>[number]) => {
+    switch (c.sys) {
+      case 'code': return d.code || '-';
+      case 'name': return d.name || '-';
+      case 'contact': return d.contact || '-';
+      case 'phone': return d.phone || '-';
+      case 'province': return d.province || '-';
+      case 'city': return d.city || '-';
+      case 'district': return d.district || '-';
+      case 'address': return d.address || '-';
+      case 'password': return d.password || '-';
+      case 'birthday': return d.birthday || '-';
+      case 'level': return d.attrs?.['经销商等级'] || '-';
+      case 'category': return d.attrs?.['经销商分类'] || '-';
+      default: return d.attrs?.[c.label] ?? d.attrs?.[c.key] ?? '-';
+    }
+  };
   const q = kw.trim().toLowerCase();
   const filtered = q ? list.filter((d) => (d.name || '').toLowerCase().includes(q) || (d.code || '').toLowerCase().includes(q)) : list;
   const unit = META[kind].unit;
@@ -177,9 +208,9 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
               <span className="rounded-full bg-gray-100 px-1.5 text-[11px] text-gray-500">{filtered.length}</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <button onClick={downloadTemplate} title="下载模板" className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><Download size={15} />模板</button>
+              {kind === 'store' && <button onClick={downloadTemplate} title="下载模板" className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><Download size={15} />模板</button>}
               {kind === 'dealer' && <button onClick={() => setSrcOpen(true)} title="数据表驱动建档" className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1.5 text-sm text-white hover:bg-indigo-700"><Database size={15} />数据源</button>}
-              <button onClick={() => fileRef.current?.click()} disabled={loading} title={`导入${unit}`} className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-60"><Upload size={15} />{loading ? '导入中…' : '导入'}</button>
+              {kind === 'store' && <button onClick={() => fileRef.current?.click()} disabled={loading} title={`导入${unit}`} className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-60"><Upload size={15} />{loading ? '导入中…' : '导入'}</button>}
               {kind === 'store' && can('create') && <button onClick={() => setDictForm({ item: null })} title={`新增${unit}`} className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><Plus size={15} />新增{unit}</button>}
             </div>
           </div>
@@ -192,20 +223,26 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs text-gray-500">
                 <th className="px-3 py-2.5 font-medium">序号</th>
-                <th className="px-3 py-2.5 font-medium">{unit}编号</th>
-                <th className="px-3 py-2.5 font-medium">{unit}名称</th>
-                {kind === 'store' && <th className="px-3 py-2.5 font-medium">所属经销商</th>}
-                {kind === 'dealer' && <th className="px-3 py-2.5 font-medium">经销商等级</th>}
-                {kind === 'dealer' && <th className="px-3 py-2.5 font-medium">经销商分类</th>}
-                {kind === 'store' && <th className="px-3 py-2.5 font-medium">主营品牌</th>}
-                {kind === 'store' && <th className="px-3 py-2.5 font-medium">分公司</th>}
-                {kind === 'store' && <th className="px-3 py-2.5 font-medium">部门</th>}
-                {kind === 'store' && <th className="px-3 py-2.5 font-medium">销售区域</th>}
-                {kind === 'store' && <th className="px-3 py-2.5 font-medium">区部</th>}
-                {kind === 'store' && <th className="px-3 py-2.5 font-medium">允许零售</th>}
-                {kind === 'dealer' && <th className="px-3 py-2.5 font-medium">省份</th>}
-                {kind === 'dealer' && <th className="px-3 py-2.5 font-medium">城市</th>}
-                {kind === 'dealer' && <th className="px-3 py-2.5 font-medium">区县</th>}
+                {srcCols ? (
+                  srcCols.map((c) => <th key={c.key} className="px-3 py-2.5 font-medium">{c.label}</th>)
+                ) : (
+                  <>
+                    <th className="px-3 py-2.5 font-medium">{unit}编号</th>
+                    <th className="px-3 py-2.5 font-medium">{unit}名称</th>
+                    {kind === 'store' && <th className="px-3 py-2.5 font-medium">所属经销商</th>}
+                    {kind === 'dealer' && <th className="px-3 py-2.5 font-medium">经销商等级</th>}
+                    {kind === 'dealer' && <th className="px-3 py-2.5 font-medium">经销商分类</th>}
+                    {kind === 'store' && <th className="px-3 py-2.5 font-medium">主营品牌</th>}
+                    {kind === 'store' && <th className="px-3 py-2.5 font-medium">分公司</th>}
+                    {kind === 'store' && <th className="px-3 py-2.5 font-medium">部门</th>}
+                    {kind === 'store' && <th className="px-3 py-2.5 font-medium">销售区域</th>}
+                    {kind === 'store' && <th className="px-3 py-2.5 font-medium">区部</th>}
+                    {kind === 'store' && <th className="px-3 py-2.5 font-medium">允许零售</th>}
+                    {kind === 'dealer' && <th className="px-3 py-2.5 font-medium">省份</th>}
+                    {kind === 'dealer' && <th className="px-3 py-2.5 font-medium">城市</th>}
+                    {kind === 'dealer' && <th className="px-3 py-2.5 font-medium">区县</th>}
+                  </>
+                )}
                 <th className="px-3 py-2.5 font-medium">状态</th>
                 <th className="px-3 py-2.5 font-medium text-right">操作</th>
               </tr>
@@ -216,20 +253,26 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
                 return (
                   <tr key={d.id} onClick={() => setActiveId(d.id)} className={`cursor-pointer border-b border-gray-100 ${activeId === d.id ? 'bg-blue-50' : 'text-gray-700 hover:bg-gray-50'}`}>
                     <td className="px-3 py-2.5 text-gray-400">{idx + 1}</td>
-                    <td className="px-3 py-2.5">{d.code || '-'}</td>
-                    <td className={`px-3 py-2.5 font-medium ${activeId === d.id ? 'text-blue-700' : 'text-gray-900'}`}>{d.name}</td>
-                    {kind === 'store' && <td className="px-3 py-2.5">{dealers.find((x) => x.id === s.dealerId)?.name ?? '-'}</td>}
-                    {kind === 'dealer' && <td className="px-3 py-2.5">{s.attrs?.['经销商等级'] || '-'}</td>}
-                    {kind === 'dealer' && <td className="px-3 py-2.5">{s.attrs?.['经销商分类'] || '-'}</td>}
-                    {kind === 'store' && <td className="px-3 py-2.5">{s.attrs?.['主营品牌'] || '-'}</td>}
-                    {kind === 'store' && <td className="px-3 py-2.5">{s.attrs?.['分公司'] || '-'}</td>}
-                    {kind === 'store' && <td className="px-3 py-2.5">{s.attrs?.['部门'] || '-'}</td>}
-                    {kind === 'store' && <td className="px-3 py-2.5">{s.attrs?.['销售区域'] || '-'}</td>}
-                    {kind === 'store' && <td className="px-3 py-2.5">{s.attrs?.['区部'] || '-'}</td>}
-                    {kind === 'store' && <td className="px-3 py-2.5">{s.allowRetail === false ? '不允许' : '允许'}</td>}
-                    {kind === 'dealer' && <td className="px-3 py-2.5">{(d as unknown as { province?: string }).province || '-'}</td>}
-                    {kind === 'dealer' && <td className="px-3 py-2.5">{(d as unknown as { city?: string }).city || '-'}</td>}
-                    {kind === 'dealer' && <td className="px-3 py-2.5">{(d as unknown as { district?: string }).district || '-'}</td>}
+                    {srcCols ? (
+                      srcCols.map((c) => <td key={c.key} className="px-3 py-2.5">{dealerColVal(d as Dealer, c)}</td>)
+                    ) : (
+                      <>
+                        <td className="px-3 py-2.5">{d.code || '-'}</td>
+                        <td className={`px-3 py-2.5 font-medium ${activeId === d.id ? 'text-blue-700' : 'text-gray-900'}`}>{d.name}</td>
+                        {kind === 'store' && <td className="px-3 py-2.5">{dealers.find((x) => x.id === s.dealerId)?.name ?? '-'}</td>}
+                        {kind === 'dealer' && <td className="px-3 py-2.5">{s.attrs?.['经销商等级'] || '-'}</td>}
+                        {kind === 'dealer' && <td className="px-3 py-2.5">{s.attrs?.['经销商分类'] || '-'}</td>}
+                        {kind === 'store' && <td className="px-3 py-2.5">{s.attrs?.['主营品牌'] || '-'}</td>}
+                        {kind === 'store' && <td className="px-3 py-2.5">{s.attrs?.['分公司'] || '-'}</td>}
+                        {kind === 'store' && <td className="px-3 py-2.5">{s.attrs?.['部门'] || '-'}</td>}
+                        {kind === 'store' && <td className="px-3 py-2.5">{s.attrs?.['销售区域'] || '-'}</td>}
+                        {kind === 'store' && <td className="px-3 py-2.5">{s.attrs?.['区部'] || '-'}</td>}
+                        {kind === 'store' && <td className="px-3 py-2.5">{s.allowRetail === false ? '不允许' : '允许'}</td>}
+                        {kind === 'dealer' && <td className="px-3 py-2.5">{(d as unknown as { province?: string }).province || '-'}</td>}
+                        {kind === 'dealer' && <td className="px-3 py-2.5">{(d as unknown as { city?: string }).city || '-'}</td>}
+                        {kind === 'dealer' && <td className="px-3 py-2.5">{(d as unknown as { district?: string }).district || '-'}</td>}
+                      </>
+                    )}
                     <td className="px-3 py-2.5">{s.enabled === false ? <span className="rounded bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-500">停用</span> : <span className="rounded bg-green-50 px-1.5 py-0.5 text-xs font-medium text-green-600">启用</span>}</td>
                     <td className="px-3 py-2.5">
                       <span className="flex items-center justify-end gap-0.5 text-gray-400">
