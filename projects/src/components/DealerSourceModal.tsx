@@ -37,12 +37,21 @@ export interface Cfg {
 
 const str = (v: unknown) => (v == null || v === '' ? '' : String(v).trim());
 
-function autoSemantics(fields: TableField[]): Partial<Record<SemKey, string>> {
+function colName(f: TableField, renames?: Record<string, string>): string {
+  const r = (renames?.[f.key] || '').trim();
+  if (r) return r;
+  return (f.alias || '').trim() || f.key;
+}
+function autoSemantics(fields: TableField[], renames?: Record<string, string>): Partial<Record<SemKey, string>> {
   const used = new Set<string>();
   const sem: Partial<Record<SemKey, string>> = {};
   for (const sk of Object.keys(SYNONYMS) as SemKey[]) {
     const syns = SYNONYMS[sk];
-    const f = fields.find((x) => !used.has(x.key) && syns.some((s) => (x.alias || '').trim() === s || x.key === s || (x.alias || '').trim().toLowerCase() === s.toLowerCase()));
+    const f = fields.find((x) => {
+      if (used.has(x.key)) return false;
+      const nm = colName(x, renames).toLowerCase();
+      return syns.some((s) => nm === s.toLowerCase());
+    });
     if (f) { sem[sk] = f.key; used.add(f.key); }
   }
   return sem;
@@ -137,7 +146,7 @@ export default function DealerSourceModal({ open, onClose }: { open: boolean; on
   const syncBuild = async () => {
     if (!table) return toast.warning('请先选择数据来源表');
     if (!tableFields.length) return toast.warning('该数据表没有可配置的字段');
-    const sem = autoSemantics(tableFields);
+    const sem = autoSemantics(tableFields, cfg.renames);
     if (!sem.name) return toast.warning(`未在来源表匹配到「名称」列，请确认包含类似「${SYNONYMS.name.slice(0, 3).join('/')}」的列`);
     if (!sem.code) toast.info('未匹配到「编号」列，本次将全部新增、无法按编号去重更新');
     const rows: Record<string, unknown>[] = (table.rows?.length ? table.rows : table.previewRows) ?? [];

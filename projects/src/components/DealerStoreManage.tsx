@@ -47,7 +47,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
       .filter((k) => srcCfg.visible[k] !== false)
       .map((k) => {
         const f = t.fields.find((x) => x.key === k);
-        return { key: k, sys: classifyField(k, f?.alias), label: srcCfg.renames[k] || f?.alias || k };
+        return { key: k, sys: classifyField(k, srcCfg.renames[k] || f?.alias), label: srcCfg.renames[k] || f?.alias || k };
       });
   }, [kind, srcCfg, state.tables]);
   const dealerColVal = (d: Dealer, c: NonNullable<typeof srcCols>[number]) => {
