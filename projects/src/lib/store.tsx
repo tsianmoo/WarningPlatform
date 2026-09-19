@@ -449,7 +449,7 @@ function readLocalCache(): { tables: DataTable[]; rules: AlertRule[] } | null {
 }
 
 /** 把当前状态全量同步到服务端数据库（失败返回 false，保留本地缓存） */
-async function pushRemoteState(state: AppState): Promise<boolean> {
+async function pushRemoteState(state: AppState, opts?: { clearAlertsAll?: boolean }): Promise<boolean> {
   // 远程尚未确认可用（例如刚打开页面时 GET /api/state 失败）时，
   // 在每次写库前重新探测：连上则自愈为可同步，避免整个会话只存 localStorage。
   if (!remoteAvailable) {
@@ -464,7 +464,7 @@ async function pushRemoteState(state: AppState): Promise<boolean> {
     const res = await fetch(STATE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], tableGroups: state.tableGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] } }),
+      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], tableGroups: state.tableGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] }, clearAlertsAll: opts?.clearAlertsAll }),
     });
     if (!res.ok) {
       console.warn('[persist] 云端同步失败', res.status);
@@ -533,6 +533,7 @@ type StoreApi = {
   // alerts
   addAlert: (a: Omit<AlertTask, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateAlertStatus: (id: string, patch: Partial<AlertTask>) => void;
+  clearAllAlerts: () => void;
   // groups
   addRuleGroup: (name: string) => RuleGroup;
   updateRuleGroup: (id: string, name: string) => void;
@@ -750,6 +751,9 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
         ...state,
         alerts: state.alerts.map((a) => (a.id === alertId ? { ...a, ...patch, updatedAt: Date.now() } : a)),
       };
+    }
+    case 'CLEAR_ALERTS': {
+      return { ...state, alerts: [] };
     }
     case 'ADD_ALERT': {
       const raw = action.payload as Partial<AlertTask>;
@@ -1157,6 +1161,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       updateTableGroup: (id, name) => dispatch('UPDATE_TABLE_GROUP', { id, name }),
       addAlert: (alert) => dispatch('ADD_ALERT', alert),
       updateAlertStatus: (alertId, patch) => dispatch('UPDATE_ALERT', { alertId, patch }),
+      clearAllAlerts: () => {
+        dispatch('CLEAR_ALERTS');
+        void pushRemoteState({ ...state, alerts: [] }, { clearAlertsAll: true });
+      },
       addOrg: (o) => {
         const org: Organization = { ...o, id: uid('org'), createdAt: Date.now() };
         dispatch('ADD_ORG', org);

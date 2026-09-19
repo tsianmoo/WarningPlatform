@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, ClipboardList, Eye, MessageSquare, RotateCcw, Send, X } from 'lucide-react';
+import { Bell, ClipboardList, Eye, MessageSquare, RotateCcw, Send, Trash2, X } from 'lucide-react';
 import { useStore, computeAlertDims } from '@/lib/store';
 import { resolvePerm, canView, filterAlertsByScope, resolveAuthAccount } from '@/lib/perm';
 import { toast } from 'sonner';
@@ -173,7 +173,7 @@ function quickRange(key: string): { start: string; end: string } {
 }
 
 export function AlertList() {
-  const { state, updateAlertStatus } = useStore();
+  const { state, updateAlertStatus, clearAllAlerts } = useStore();
   const PEOPLE = PERSONNEL as unknown as { name: string; dept: string }[];
   const [meName] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : ''));
   const [onlyMine, setOnlyMine] = useState<boolean>(() => (typeof window !== 'undefined' ? localStorage.getItem('dn_alert_mine') === '1' : false));
@@ -387,6 +387,19 @@ export function AlertList() {
             <span className={`absolute top-0.5 h-2.5 w-2.5 rounded-full bg-white shadow transition-all ${onlyMine ? 'left-3' : 'left-0.5'}`} />
           </span>
           只看我的
+        </button>
+        <div className="mx-1.5 h-4 w-px bg-gray-100" />
+        <button
+          onClick={() => {
+            const n = String(state.alerts?.length ?? 0);
+            if (typeof window !== 'undefined' && window.confirm(`确定清空全部 ${n} 条预警吗？此操作不可撤销。`)) {
+              clearAllAlerts();
+            }
+          }}
+          className="inline-flex items-center gap-1.5 rounded-full border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50"
+          title="清空全部预警记录"
+        >
+          <Trash2 size={12} /> 清空全部（{state.alerts?.length ?? 0}）
         </button>
       </div>
 

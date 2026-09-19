@@ -85,7 +85,7 @@ export async function getAllAlerts(): Promise<AlertTask[]> {
 }
 
 /** 全量覆盖式保存预警（以入参为准，删除库中多余的预警） */
-export async function syncAlerts(alerts: AlertTask[]): Promise<void> {
+export async function syncAlerts(alerts: AlertTask[], opts?: { clearAll?: boolean }): Promise<void> {
   const client = getSupabaseClient();
   const rows = alerts.map((a) => ({
     id: a.id ?? `alert_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -115,6 +115,11 @@ export async function syncAlerts(alerts: AlertTask[]): Promise<void> {
   if (rows.length > 0) {
     const { error } = await client.from('alert_tasks').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存预警失败: ${error.message}`);
+  } else if (opts?.clearAll) {
+    // 用户在主界面主动「清空全部」，删除库中所有预警
+    const { error: delErr } = await client.from('alert_tasks').delete().neq('id', '');
+    if (delErr) throw new Error(`清空预警失败: ${delErr.message}`);
+    return;
   } else {
     // 本次提交为空集合时不清空库中已有预警，避免前端某次空同步误删全部业务预警
     return;
