@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { dbPool } from '@/lib/server/sync/sync-store';
 import type { AlertRule, AlertStatus, AlertTask, AttrCategory, DataTable, DataTableGroup, Dealer, Employee, HomeConfig, HrAttribute, Organization, Person, RuleGroup, Store } from '@/lib/types';
 
 interface TableRow {
@@ -145,7 +146,6 @@ export async function getAllTables(): Promise<DataTable[]> {
 
 /** 全量覆盖式保存数据表（以入参为准，删除库中多余的表） */
 export async function syncTables(tables: DataTable[]): Promise<void> {
-  const client = getSupabaseClient();
   const rows = tables.map((t) => ({
     id: t.id,
     name: t.name,
@@ -154,7 +154,17 @@ export async function syncTables(tables: DataTable[]): Promise<void> {
     created_at: t.createdAt ?? Date.now(),
     data: t,
   }));
+  const keepIds = tables.map((t) => t.id);
 
+  // 大表（单元格总数超阈值）走 Postgres 直连 upsert，规避 PostgREST HTTP 大 payload 触发的 statement_timeout
+  const cells = tables.reduce((s, t) => s + (t.rowCount ?? 0) * Math.max((t.fields?.length ?? 0), 1), 0);
+  if (cells > 200_000) {
+    if (rows.length > 0) await putTablesDirect(rows);
+    await deleteTablesStaleDirect(keepIds);
+    return;
+  }
+
+  const client = getSupabaseClient();
   if (rows.length > 0) {
     const { error } = await client.from('data_tables').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存数据表失败: ${error.message}`);
@@ -163,7 +173,7 @@ export async function syncTables(tables: DataTable[]): Promise<void> {
   // 删除已被前端移除的表
   const { data: existing, error: selErr } = await client.from('data_tables').select('id');
   if (selErr) throw new Error(`读取数据表ID失败: ${selErr.message}`);
-  const keep = new Set(tables.map((t) => t.id));
+  const keep = new Set(keepIds);
   const staleIds = ((existing as { id: string }[] | null) ?? [])
     .map((r) => r.id)
     .filter((id) => !keep.has(id));
@@ -171,6 +181,30 @@ export async function syncTables(tables: DataTable[]): Promise<void> {
     const { error: delErr } = await client.from('data_tables').delete().in('id', staleIds);
     if (delErr) throw new Error(`删除数据表失败: ${delErr.message}`);
   }
+}
+
+/** 大表单条直连 upsert（data::jsonb），绕过 PostgREST HTTP 的超时限制 */
+async function putTablesDirect(rows: TableRow[]): Promise<void> {
+  const pool = dbPool();
+  for (const r of rows) {
+    await pool.query(
+      `INSERT INTO data_tables (id, name, file_name, row_count, created_at, data, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, now())
+       ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name, file_name = EXCLUDED.file_name,
+         row_count = EXCLUDED.row_count, created_at = EXCLUDED.created_at,
+         data = EXCLUDED.data, updated_at = now()`,
+      [r.id, r.name, r.file_name, r.row_count, r.created_at, JSON.stringify(r.data)],
+    );
+  }
+}
+
+/** 删除库里不在保留列表中的数据表（直连） */
+async function deleteTablesStaleDirect(keepIds: string[]): Promise<void> {
+  const pool = dbPool();
+  await pool.query('DELETE FROM data_tables WHERE id = ANY($1::text[])', [
+    `{${keepIds.map((id) => `"${id.replace(/"/g, '""')}"`).join(',')}}`,
+  ]);
 }
 
 /** 读取所有规则 */

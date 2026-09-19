@@ -33,6 +33,17 @@ export async function POST(req: Request) {
     const dealers = Array.isArray(body.dealers) ? body.dealers : [];
     const stores = Array.isArray(body.stores) ? body.stores : [];
     const employees = Array.isArray(body.employees) ? body.employees : [];
+
+    // 防误清库：客户端推送“全空状态”时，若数据库中已有(除首页配置外的)业务数据，则拒绝本次覆盖，
+    // 避免某次空同步把整库业务数据一次性清空。仅当数据库本来就空时才放行。
+    const allEmpty = [tables, rules, alerts, groups, tableGroups, orgs, persons, hrAttributes, dealers, stores, employees].every((a) => a.length === 0);
+    if (allEmpty) {
+      const probe = await Promise.all([getAllTables(), getAllRules(), getAllAlerts(), getAllRuleGroups(), getAllTableGroups(), getAllOrganizations(), getAllPersons(), getAllHrAttributes(), getAllDealers(), getAllStores(), getAllEmployees()]);
+      if (probe.some((x) => x.length > 0)) {
+        return NextResponse.json({ error: '检测到全空全量推送，已阻止以防止误清库；若意图清空请先手动确认本地数据。' }, { status: 409 });
+      }
+    }
+
     await Promise.all([syncTables(tables), syncRules(rules), syncAlerts(alerts), syncRuleGroups(groups), syncTableGroups(tableGroups), syncOrganizations(orgs), syncPersons(persons), syncHrAttributes(hrAttributes), syncDealers(dealers), syncStores(stores), syncEmployees(employees)]);
     if (body.config) await saveHomeConfig(body.config);
     return NextResponse.json({ success: true, tableCount: tables.length, ruleCount: rules.length, alertCount: alerts.length, groupCount: groups.length, tableGroupCount: tableGroups.length, orgCount: orgs.length, personCount: persons.length, attrCount: hrAttributes.length, dealerCount: dealers.length, storeCount: stores.length, employeeCount: employees.length });
