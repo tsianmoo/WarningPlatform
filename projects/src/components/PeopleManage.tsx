@@ -4,7 +4,8 @@ import { useMemo, useState } from 'react';
 import { Users, Phone, Plus, Pencil, Trash2, Crosshair, KeyRound } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { resolvePerm, canOper } from '@/lib/perm';
-import type { Organization, Person } from '@/lib/types';
+import { classifyField } from '@/components/DealerSourceModal';
+import type { DataTable, Organization, Person, Store } from '@/lib/types';
 import { toast } from 'sonner';
 
 export function PeopleManage() {
@@ -303,7 +304,7 @@ export function PeopleManage() {
           orgs={orgList}
           persons={persons}
           stores={state.stores}
-          storeAttrs={state.hrAttributes.filter((a) => (a.category ?? 'person') === 'store')}
+          tables={state.tables}
           jobLabels={jobLabels}
           postLabels={postLabels}
           onCancel={() => setShowEditor(false)}
@@ -345,7 +346,7 @@ function PersonEditor({
   initial,
   orgs,
   stores,
-  storeAttrs,
+  tables,
   jobLabels,
   postLabels,
   onCancel,
@@ -354,8 +355,8 @@ function PersonEditor({
   initial: Person | null;
   orgs: Organization[];
   persons: Person[];
-  stores: { id: string; name: string; attrs?: Record<string, string> }[];
-  storeAttrs: { id: string; name: string; items: { id: string; name: string }[] }[];
+  stores: Store[];
+  tables: DataTable[];
   jobLabels: { id: string; name: string }[];
   postLabels: { id: string; name: string }[];
   onCancel: () => void;
@@ -372,31 +373,63 @@ function PersonEditor({
   const [address, setAddress] = useState(initial?.address || '');
   const [birthday, setBirthday] = useState(initial?.birthday || '');
   const [password, setPassword] = useState(initial?.password || '');
-  const [filters, setFilters] = useState<{ attrId: string; values: string[] }[]>(
-    initial?.manageScope?.filters?.map((f) => ({ attrId: storeAttrs.find((a) => a.name === f.attrName)?.id || '', values: f.values })) ??
-      (initial?.manageScope?.storeAttrId ? [{ attrId: initial.manageScope.storeAttrId, values: initial.manageScope.storeAttrValues ?? [] }] : [])
+  const [tableId, setTableId] = useState<string>(initial?.manageScope?.tableId ?? '');
+
+  const table = tables.find((t) => t.id === tableId) ?? null;
+  const tableFields = useMemo(() => {
+    if (!table) return [];
+    return table.fields.map((f) => {
+      const sys = classifyField(f.key, f.alias);
+      return { field: f.key, label: (f.alias || '').trim() || f.key, sys };
+    });
+  }, [table]);
+
+  const [filters, setFilters] = useState<{ field: string; values: string[] }[]>(
+    initial?.manageScope?.filters?.map((f) => {
+      const fl = tableFields.find((x) => x.label === f.attrName);
+      return { field: fl?.field ?? '', values: f.values };
+    }) ?? []
   );
   const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>(initial?.manageScope?.storeIds || []);
   const [enabled, setEnabled] = useState(initial ? initial.enabled : true);
 
+  const storeFieldValue = (s: Store, field: string): string => {
+    const col = tableFields.find((x) => x.field === field);
+    const sys = col?.sys ?? null;
+    const k = col?.label ?? field;
+    if (sys === 'brand' || k === '主营品牌' || k === '品牌') return s.brand ?? '';
+    if (sys === 'company' || k === '分公司' || k === '所属分公司') return s.company ?? '';
+    if (sys === 'department' || k === '部门' || k === '所属部门') return s.department ?? '';
+    if (sys === 'salesArea' || k === '销售区域') return s.salesArea ?? '';
+    if (sys === 'district' || k === '区部') return s.district ?? '';
+    if (sys === 'allowRetail' || k === '是否允许零售' || k === '允许零售') return s.allowRetail ? '允许' : '不允许';
+    if (sys === 'contact' || k === '联系人') return s.contact ?? '';
+    if (sys === 'phone' || k === '电话' || k === '联系电话') return s.phone ?? '';
+    if (sys === 'address' || k === '地址') return s.address ?? '';
+    if (sys === 'code' || k === '编号' || k === '店仓编号') return s.code ?? '';
+    if (sys === 'name' || k === '店仓名称' || k === '名称') return s.name ?? '';
+    return s.attrs?.[k] ?? '';
+  };
+
+  const fieldOptions = (field: string): string[] => {
+    const set = new Set<string>();
+    for (const s of stores) {
+      const v = storeFieldValue(s, field);
+      if (v) set.add(v);
+    }
+    return [...set];
+  };
+
   const matchedStores = useMemo(() => {
-    const activeFilters = filters.filter((f) => {
-      const a = storeAttrs.find((x) => x.id === f.attrId);
-      return a && f.values.length > 0;
-    });
+    const activeFilters = filters.filter((f) => f.field && f.values.length > 0);
     if (activeFilters.length === 0) return [];
-    return stores.filter((s) =>
-      activeFilters.every((f) => {
-        const a = storeAttrs.find((x) => x.id === f.attrId);
-        return f.values.includes(s.attrs?.[a!.name] ?? '');
-      })
-    );
-  }, [filters, stores, storeAttrs]);
+    return stores.filter((s) => activeFilters.every((f) => f.values.includes(storeFieldValue(s, f.field))));
+  }, [filters, stores, tableFields]);
   const visibleStores = filters.some((f) => f.values.length > 0) ? matchedStores : (filters.length ? stores : []);
   const activeDesc = filters
     .map((f) => {
-      const a = storeAttrs.find((x) => x.id === f.attrId);
-      return a && f.values.length ? `${a.name}（${f.values.join('、')}）` : null;
+      const a = tableFields.find((x) => x.field === f.field);
+      return a && f.values.length ? `${a.label}（${f.values.join('、')}）` : null;
     })
     .filter(Boolean)
     .join('；');
@@ -487,46 +520,64 @@ function PersonEditor({
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-gray-500">机构管理范围（多个筛选条件组合筛选 → 勾选管辖门店）</label>
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">机构管理范围（选择数据表 → 字段组合筛选 → 勾选管辖门店）</label>
             <div className="space-y-2 rounded-lg border border-gray-200 p-2">
-              {filters.map((fl, fi) => {
-                const attr = storeAttrs.find((a) => a.id === fl.attrId);
+              <div className="flex items-center gap-2">
+                <select
+                  value={tableId}
+                  onChange={(e) => { setTableId(e.target.value); setFilters([]); setSelectedStoreIds([]); }}
+                  className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-gray-900"
+                >
+                  <option value="">选择数据表（如 店仓档案）</option>
+                  {tables.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+                {tableId && (
+                  <span className="text-[11px] text-gray-400">{tableFields.length} 个字段可筛选</span>
+                )}
+              </div>
+
+              {tableId && filters.map((fl, fi) => {
+                const fieldLabel = tableFields.find((x) => x.field === fl.field)?.label ?? '';
                 return (
                   <div key={fi} className="grid grid-cols-[150px_1fr_28px] items-center gap-2">
                     <select
-                      value={fl.attrId}
+                      value={fl.field}
                       onChange={(e) => {
                         const nf = [...filters];
-                        nf[fi] = { attrId: e.target.value, values: [] };
+                        nf[fi] = { field: e.target.value, values: [] };
                         setFilters(nf);
                         setSelectedStoreIds([]);
                       }}
                       className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-gray-900"
                     >
-                      <option value="">选择条件</option>
-                      {storeAttrs.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                      <option value="">选择过滤字段</option>
+                      {tableFields.map((x) => <option key={x.field} value={x.field}>{x.label}</option>)}
                     </select>
                     <div className="flex flex-wrap items-center gap-1 rounded-md border border-gray-200 px-2 py-1">
-                      {attr?.items.length ? (
-                        attr.items.map((it) => {
-                          const on = fl.values.includes(it.name);
-                          return (
-                            <button
-                              key={it.id}
-                              type="button"
-                              onClick={() => {
-                                const nf = [...filters];
-                                nf[fi] = { ...fl, values: on ? fl.values.filter((x) => x !== it.name) : [...fl.values, it.name] };
-                                setFilters(nf);
-                              }}
-                              className={`rounded px-2 py-0.5 text-[11px] transition ${on ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                            >
-                              {it.name}
-                            </button>
-                          );
-                        })
+                      {fl.field ? (
+                        fieldOptions(fl.field).length ? (
+                          fieldOptions(fl.field).map((v) => {
+                            const on = fl.values.includes(v);
+                            return (
+                              <button
+                                key={v}
+                                type="button"
+                                onClick={() => {
+                                  const nf = [...filters];
+                                  nf[fi] = { ...fl, values: on ? fl.values.filter((x) => x !== v) : [...fl.values, v] };
+                                  setFilters(nf);
+                                }}
+                                className={`rounded px-2 py-0.5 text-[11px] transition ${on ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                              >
+                                {v}
+                              </button>
+                            );
+                          })
+                        ) : (
+                          <span className="text-[11px] text-gray-400">该字段暂无可用值</span>
+                        )
                       ) : (
-                        <span className="text-[11px] text-gray-400">请先选择筛选条件</span>
+                        <span className="text-[11px] text-gray-400">请先选择过滤字段</span>
                       )}
                     </div>
                     <button
@@ -540,16 +591,18 @@ function PersonEditor({
                   </div>
                 );
               })}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setFilters([...filters, { attrId: '', values: [] }])}
-                  className="rounded-md border border-dashed border-gray-300 px-2.5 py-1 text-[11px] text-gray-500 hover:bg-gray-50"
-                >
-                  + 添加筛选条件
-                </button>
-                <span className="text-[11px] text-gray-300">支持 主营品牌 / 分公司 / 部门 等店仓属性组合筛选</span>
-              </div>
+              {tableId && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFilters([...filters, { field: '', values: [] }])}
+                    className="rounded-md border border-dashed border-gray-300 px-2.5 py-1 text-[11px] text-gray-500 hover:bg-gray-50"
+                  >
+                    + 添加筛选条件
+                  </button>
+                  <span className="text-[11px] text-gray-300">支持 主营品牌 / 分公司 / 部门 / 销售区域 / 允许零售 等字段组合筛选</span>
+                </div>
+              )}
             </div>
             {scopeDesc && (
               <p className="mt-1.5 text-[11px] text-blue-500">筛选：{scopeDesc}</p>
@@ -611,7 +664,7 @@ function PersonEditor({
                 post: post.trim() || undefined,
                 manageScope:
                   activeDesc
-                    ? { filters: filters.map((f) => ({ attrName: storeAttrs.find((a) => a.id === f.attrId)?.name || '', values: f.values })).filter((f) => f.attrName && f.values.length > 0), storeIds: selectedStoreIds, desc: activeDesc }
+                    ? { tableId: tableId || undefined, filters: filters.map((f) => ({ attrName: tableFields.find((x) => x.field === f.field)?.label || '', values: f.values })).filter((f) => f.attrName && f.values.length > 0), storeIds: selectedStoreIds, desc: activeDesc }
                     : initial?.manageScope,
                 phone: phone.trim() || undefined,
                 email: email.trim() || undefined,

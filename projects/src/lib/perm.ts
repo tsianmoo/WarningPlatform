@@ -301,6 +301,13 @@ function storeAttrValue(s: Store, attrName: string): string {
   if (attrName === '区部' || attrName === 'district') return s.district ?? '';
   if (attrName === '所属分公司' || attrName === 'company') return s.company ?? '';
   if (attrName === '所属部门' || attrName === 'department') return s.department ?? '';
+  if (attrName === '主营品牌' || attrName === '品牌' || attrName === 'brand') return s.brand ?? '';
+  if (attrName === '是否允许零售' || attrName === '允许零售' || attrName === 'allowRetail') return s.allowRetail ? '允许' : '不允许';
+  if (attrName === '联系人' || attrName === 'contact') return s.contact ?? '';
+  if (attrName === '电话' || attrName === '联系电话' || attrName === 'phone') return s.phone ?? '';
+  if (attrName === '地址' || attrName === 'address') return s.address ?? '';
+  if (attrName === '店仓编号' || attrName === '编号' || attrName === 'code') return s.code ?? '';
+  if (attrName === '店仓名称' || attrName === '名称' || attrName === 'name') return s.name ?? '';
   return s.attrs?.[attrName] ?? '';
 }
 
