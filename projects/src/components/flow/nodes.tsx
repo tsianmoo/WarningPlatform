@@ -2,7 +2,7 @@
 
 import React, { memo, useEffect, useState, useMemo, useRef, createContext, useContext } from 'react';
 import { Handle, Position, useReactFlow, useEdges, useNodes, type NodeProps } from '@xyflow/react';
-import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, SearchCheck, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus, ChevronDown, LayoutList } from 'lucide-react';
+import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, SearchCheck, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus, ChevronDown, LayoutList, Copy } from 'lucide-react';
 import CalcExprEditor, { type CalcExprEditorHandle } from './CalcExprEditor';
 import {
   KIND_COLOR,
@@ -55,6 +55,7 @@ import {
   type LinkViewAllNodeData,
   type LinkViewAllTab,
 } from '@/lib/types';
+import { uid } from '@/lib/types';
 import { useStore } from '@/lib/store';
 import TimeComponent from './TimeComponent';
 import { useNodePreview } from './NodePreview';
@@ -267,12 +268,28 @@ function nodeTitle(fnode: FlowNode) {
 function NodeShell({ fnode, children, width = 300 }: { fnode: FlowNode; children: React.ReactNode; width?: number }) {
   const color = KIND_COLOR[fnode.kind];
   const hasSource = true; // 所有节点（含开始）都开放右侧出口，用于连向后继
-  const { deleteElements, getNodes, getEdges } = useReactFlow();
+  const { deleteElements, getNodes, getEdges, setNodes } = useReactFlow();
   const tables = useRuleTables();
   const preview = useNodePreview();
   const handlePreview = (e: React.MouseEvent) => {
     e.stopPropagation();
     preview.open(fnode, getNodes() as unknown as FlowNode[], getEdges() as unknown as FlowEdge[], tables);
+  };
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const all = getNodes();
+    const src = all.find((n) => n.id === fnode.id);
+    const copyData = JSON.parse(JSON.stringify(fnode.data));
+    const dup = {
+      id: uid('node'),
+      type: fnode.kind,
+      data: copyData,
+      position: {
+        x: (src ? src.position.x : fnode.position.x) + 24,
+        y: (src ? src.position.y : fnode.position.y) + 24,
+      },
+    };
+    setNodes([...all, dup]);
   };
   return (
     <div className="w-[300px] max-w-[300px] rounded-xl border bg-white shadow-sm" style={{ borderColor: color.border, width, maxWidth: width }}>
@@ -289,6 +306,14 @@ function NodeShell({ fnode, children, width = 300 }: { fnode: FlowNode; children
         <span className="min-w-0 flex-1 truncate text-xs font-semibold" style={{ color: color.text }}>
           {nodeTitle(fnode)}
         </span>
+        <button
+          type="button"
+          title="复制该组件"
+          onClick={handleCopy}
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-gray-500/70 transition hover:bg-white/80 hover:text-blue-600"
+        >
+          <Copy className="h-3.5 w-3.5" />
+        </button>
         <button
           type="button"
           title="预览该步结果"
