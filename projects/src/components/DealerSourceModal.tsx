@@ -238,8 +238,11 @@ export default function DealerSourceModal({ kind, open, onClose, onSynced }: { k
           const onDuty = sem.status ? !/停用|禁用|0|否|false|离职/i.test(str(r[sem.status])) : undefined;
           if (onDuty !== undefined) base.onDuty = onDuty;
           const attrs: Record<string, string> = {};
+          // 仅排除已写入 base 顶层/已处理的字段；其余（含被识别为 phone/contact 等但
+          // Employee 无对应顶层列）一律进 attrs，避免手机号等字段静默丢失
+          const handled = new Set([nameKey, sem.code, sem.post, sem.password, sem.status].filter((v): v is string => !!v));
           for (const k of cfg.order) {
-            if (cfg.visible[k] === false || semKeys.has(k)) continue;
+            if (cfg.visible[k] === false || handled.has(k)) continue;
             const v = str(r[k]);
             if (v) attrs[cfg.renames[k] || k] = v;
           }
