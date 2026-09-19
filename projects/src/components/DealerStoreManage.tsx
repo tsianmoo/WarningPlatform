@@ -19,7 +19,7 @@ const META: Record<Kind, { unit: string; label: string }> = {
 };
 
 export function DealerStoreManage({ kind }: { kind: Kind }) {
-  const { state, addDealer, updateDealer, removeDealer, moveDealer, addStore, updateStore, removeStore, moveStore, persistNow } = useStore();
+  const { state, addDealer, updateDealer, removeDealer, moveDealer, addStore, updateStore, removeStore, moveStore } = useStore();
   const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
   const me = state.persons.find((p) => p.name === meName) ?? null;
   const perm = resolvePerm(me, state.config);
@@ -145,8 +145,6 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
       if (noStatus.length) toast.warning(`以下店仓未匹配到所属经销商：${noStatus.join('、')}`);
       if (skipped.length) toast.warning(`跳过 ${skipped.length} 行（缺少必填项）：${skipped.slice(0, 5).join('；')}${skipped.length > 5 ? ' 等' : ''}`);
       if (ok) toast.success(`成功导入 ${ok} 条${unit}`);
-      const saved = await persistNow();
-      if (!saved) toast.warning('已保存到本地，但数据库写入未确认');
     } else {
       toast.error('请上传 .xlsx / .xls / .xlsm 文件');
     }

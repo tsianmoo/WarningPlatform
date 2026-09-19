@@ -40,14 +40,6 @@ export interface TableSnapshot {
   rows?: Record<string, string | number | boolean>[];
 }
 
-/** 判定为"大表"：单元格总量（行×列）超阈值 → 应走独立上传通道，避免混入 /api/state 超大 body */
-export function isBigDataTable(t?: DataTable | null | undefined): boolean {
-  if (!t) return false;
-  const rows = t.rowCount || (Array.isArray(t.rows) ? t.rows.length : 0);
-  const cols = Math.max(t.fields?.length ?? 0, 1);
-  return rows * cols > 200_000;
-}
-
 /** 表间关联 */
 export interface TableRelation {
   id: string;
