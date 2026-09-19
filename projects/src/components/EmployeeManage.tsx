@@ -9,7 +9,7 @@ import type { Employee } from '@/lib/types';
 import { parseExcel } from '@/lib/parser';
 
 export default function EmployeeManage({ onBack }: { onBack: () => void }) {
-  const { state, addEmployee, updateEmployee, removeEmployee } = useStore();
+  const { state, addEmployee, updateEmployee, removeEmployee, persistNow } = useStore();
   const { employees, dealers, stores, hrAttributes } = state;
   const dealerMap = useMemo(() => new Map(dealers.map((d) => [d.id, d.name])), [dealers]);
   const storeMap = useMemo(() => new Map(stores.map((s) => [s.id, s.name])), [stores]);
@@ -82,6 +82,8 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
         ok++;
       });
       toast.success(`导入成功 ${ok} 条` + (skipped ? `，跳过 ${skipped} 条缺失必填项：${missing.slice(0, 5).join('、')}` : ''));
+      const saved = await persistNow();
+      if (!saved) toast.warning('已保存到本地，但数据库写入未确认');
     } catch (err) {
       toast.error('导入失败：' + (err instanceof Error ? err.message : '文件解析错误'));
     }

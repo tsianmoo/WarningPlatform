@@ -248,3 +248,5 @@
 - **已加护栏**（`src/app/api/state/route.ts`）：POST 入参在主数据集全空时，若库中已有业务数据则返回 409 拒绝覆盖，防止空同步误清库。
 - **大表上传**：`syncTables` 对单元格总数（rowCount×字段数累计）>20 万的表改走 **Postgres 直连** `putTablesDirect`（`dbPool()`，`INSERT..ON CONFLICT` + `data::jsonb`），规避 PostgREST HTTP 大 payload 的 statement_timeout（此前 76k 行×42 字段 ~78MB 会被取消导致刷新生效失败）。小表仍走 Supabase upsert。
 - **恢复路径**：若库被清而浏览器 localStorage 仍含数据，重新打开平台时启动逻辑（remote 为空 + local 有数据）会自动把 local 数据迁移推回库；因此**不要清浏览器数据**，直接重开即可自愈。若 local 也空则需重新上传原始数据。
+- **上传落库反馈 / persistNow**：store 暴露 `persistNow(): Promise<boolean>`（立即 POST /api/state 并返回 res.ok）。需"写入数据库确认"的场景（DataTableManager 上传/覆盖、EmployeeManage、DealerStoreManage 导入）在变更后 `await persistNow()`，成功 toast「已确认写入数据库」，否则警告「仅存本地」。数据表上传另有进度条（解析→写入数据库两阶段）。
+- **清库预防（服务端，/api/state POST）**：入参在主数据集全空、而库中已有业务数据时，返回 409（不落库）。因此客户端的 persistNow 在该场景会得到 false → 界面明确提示"未写入数据库"。

@@ -449,25 +449,27 @@ function readLocalCache(): { tables: DataTable[]; rules: AlertRule[] } | null {
 }
 
 /** 把当前状态全量同步到服务端数据库（失败静默，保留本地缓存） */
-async function pushRemoteState(state: AppState) {
+async function pushRemoteState(state: AppState): Promise<boolean> {
   // 远程尚未确认可用（例如刚打开页面时 GET /api/state 失败）时，
   // 在每次写库前重新探测：连上则自愈为可同步，避免整个会话只存 localStorage。
   if (!remoteAvailable) {
     try {
       const ping = await fetchRemoteState();
-      if (!ping || !ping.tables) return; // 仍不可用则放弃本次，本地缓存继续兜底
+      if (!ping || !ping.tables) return false; // 仍不可用则放弃本次，本地缓存继续兜底
     } catch {
-      return;
+      return false;
     }
   }
   try {
-    await fetch(STATE_API, {
+    const res = await fetch(STATE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], tableGroups: state.tableGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] } }),
     });
+    return res.ok;
   } catch {
     /* 网络异常时忽略，localStorage 仍有兜底 */
+    return false;
   }
 }
 
@@ -568,6 +570,8 @@ type StoreApi = {
   setPermOverrides: (ovs: PersonPermOverride[]) => void;
   /** 立即把当前状态同步到服务端（跳过防抖），用于「保存」按钮等强一致场景 */
   flushNow: () => void;
+  /** 立即将当前状态写库并返回是否成功（用于上传等需要落库确认的场景） */
+  persistNow: () => Promise<boolean>;
   resetAll: () => void;
 };
 
@@ -1216,6 +1220,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       flushNow: () => {
         if (pushTimer.current) clearTimeout(pushTimer.current);
         void pushRemoteState(state);
+      },
+      persistNow: () => {
+        if (pushTimer.current) clearTimeout(pushTimer.current);
+        return pushRemoteState(state);
       },
       moveOrg: (id, dir) => {
         const target = state.orgs.find((o) => o.id === id);

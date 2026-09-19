@@ -19,6 +19,7 @@ import {
   Inbox,
   FolderPlus,
   FolderInput,
+  Loader2,
 } from 'lucide-react';
 import { useStore, formatDateTime } from '@/lib/store';
 import { resolvePerm, canOper } from '@/lib/perm';
@@ -51,12 +52,13 @@ const TYPE_LABEL: Record<FieldType, string> = {
 };
 
 export function DataTableManager() {
-  const { state, addTable, updateTable, removeTable, setActiveTable, renameField, setFieldType, addTableGroup, updateTableGroup, removeTableGroup } = useStore();
+  const { state, addTable, updateTable, removeTable, setActiveTable, renameField, setFieldType, addTableGroup, updateTableGroup, removeTableGroup, persistNow } = useStore();
   const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
   const me = state.persons.find((p) => p.name === meName) ?? null;
   const perm = resolvePerm(me, state.config);
   const can = (op: Parameters<typeof canOper>[2], _rid?: string) => canOper(perm, 'datatables', op);
   const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState<{ name: string; step: string } | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [openDelete, setOpenDelete] = useState<{ id: string; refs: AlertRule[] } | null>(null);
   const [openUpdate, setOpenUpdate] = useState<{
@@ -87,13 +89,22 @@ export function DataTableManager() {
   };
 
   const handleFile = async (file: File, group = '') => {
+    setUploading({ name: file.name, step: '正在解析文件…' });
     try {
       const next = await buildNew(file);
-      if (!next) return;
+      if (!next) {
+        setUploading(null);
+        return;
+      }
       const table: DataTable = { id: uid('tbl'), createdAt: Date.now(), group, ...next };
+      setUploading({ name: `${table.name}（${table.rowCount} 行）`, step: '正在写入数据库…' });
       addTable(table);
-      toast.success(`已导入「${table.name}」，共 ${table.rowCount} 行`);
+      const ok = await persistNow();
+      setUploading(null);
+      if (ok) toast.success(`已导入「${table.name}」共 ${table.rowCount} 行，并已确认写入数据库`);
+      else toast.warning(`已导入「${table.name}」共 ${table.rowCount} 行，但数据库写入未确认（已存本地）`);
     } catch (e) {
+      setUploading(null);
       toast.error('数据解析失败，请检查文件格式');
       console.error(e);
     }
@@ -118,7 +129,7 @@ export function DataTableManager() {
     }
   };
 
-  const applyUpdate = () => {
+  const applyUpdate = async () => {
     if (!openUpdate) return;
     const { t, next } = openUpdate;
     const mergedFields = next.fields.map((f) => {
@@ -136,7 +147,9 @@ export function DataTableManager() {
       prev: { fileName: t.fileName, rowCount: t.rowCount, fields: t.fields, previewRows: t.previewRows, rows: t.rows },
     });
     setOpenUpdate(null);
-    toast.success(`已覆盖更新「${t.name}」，如需还原可点击“返回上一步”`);
+    const ok = await persistNow();
+    if (ok) toast.success(`已覆盖更新「${t.name}」，并已确认写入数据库，如需还原可点击“返回上一步”`);
+    else toast.warning(`已覆盖更新「${t.name}」并保存本地，但数据库写入未确认`);
   };
 
   const undoUpdate = (t: DataTable) => {
@@ -494,6 +507,12 @@ export function DataTableManager() {
           </div>
 
           <div className="border-t border-gray-100 p-3">
+            {uploading && (
+              <div className="mb-2 flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                <Loader2 className="animate-spin" size={14} />
+                <span>{uploading.name}：{uploading.step}</span>
+              </div>
+            )}
             <div
               onDragOver={(e) => {
                 e.preventDefault();
