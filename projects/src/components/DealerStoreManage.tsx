@@ -313,18 +313,25 @@ function DictForm(props: {
   const [allowRetail, setAllowRetail] = useState(initial ? (initial as Store).allowRetail === true : true);
 
   const save = () => {
+    if (kind === 'dealer') {
+      const d = initial as Dealer | null;
+      if (!d?.name) return toast.error('缺少经销商名称，无法保存');
+      onSave({ ...d, password: password || undefined, sort: d.sort ?? 0 } as Omit<Dealer, 'id' | 'createdAt'>);
+      onClose();
+      return;
+    }
     if (!name.trim()) return toast.error('请填写名称');
     onSave({
       name: name.trim(), code: code.trim() || undefined, contact: contact.trim() || undefined,
       phone: phone.trim() || undefined,
-      province: kind === 'dealer' ? (province.trim() || undefined) : undefined,
-      city: kind === 'dealer' ? (city.trim() || undefined) : undefined,
-      district: kind === 'dealer' ? (district.trim() || undefined) : undefined,
+      province: undefined,
+      city: undefined,
+      district: undefined,
       address: address.trim() || undefined,
       password: password || undefined, birthday: birthday || undefined,
       enabled, attrs, sort: initial?.sort ?? 0,
-      dealerId: kind === 'store' ? (dealerId || undefined) : undefined,
-      allowRetail: kind === 'store' ? allowRetail : undefined,
+      dealerId: dealerId || undefined,
+      allowRetail,
     } as Omit<Store, 'id' | 'createdAt'>);
     onClose();
   };
@@ -334,7 +341,14 @@ function DictForm(props: {
       <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
         <h3 className="text-base font-semibold text-gray-900">{initial ? `编辑${unit}` : `新增${unit}`}</h3>
 
-        <div className="mt-5 grid grid-cols-2 gap-4">
+        {kind === 'dealer' ? (
+          <div className="mt-5">
+            <label className="block text-xs font-medium text-gray-500">重置密码</label>
+            <input value={password} onChange={(e) => setPassword(e.target.value)} type="text" placeholder="留空保持原密码" className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+          </div>
+        ) : (
+          <>
+            <div className="mt-5 grid grid-cols-2 gap-4">
           <div>
             <label className="mb-1.5 block text-xs font-medium text-gray-500">{unit}编号</label>
             <input value={code} onChange={(e) => setCode(e.target.value)} placeholder={`请输入${unit}编号`} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
@@ -371,22 +385,6 @@ function DictForm(props: {
             <label className="mb-1.5 block text-xs font-medium text-gray-500">电话</label>
             <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="联系电话" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
           </div>
-          {kind === 'dealer' && (
-            <>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-500">省份</label>
-                <input value={province} onChange={(e) => setProvince(e.target.value)} placeholder="所在省份" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-500">城市</label>
-                <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="所在城市" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-500">区县</label>
-                <input value={district} onChange={(e) => setDistrict(e.target.value)} placeholder="所在区县" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
-              </div>
-            </>
-          )}
           <div className="col-span-2">
             <label className="mb-1.5 block text-xs font-medium text-gray-500">地址</label>
             <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="详细地址" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
@@ -421,6 +419,8 @@ function DictForm(props: {
               ))}
             </div>
           </div>
+        )}
+          </>
         )}
 
         <div className="mt-6 flex justify-end gap-2">
