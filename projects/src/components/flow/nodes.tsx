@@ -3591,6 +3591,36 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
                       <option value="desc">降序</option>
                     </select>
                   )}
+                  {shown.length > 1 && (
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      <button
+                        type="button"
+                        disabled={idx === 0}
+                        onClick={() => {
+                          const next = [...shown];
+                          [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                          setMetrics(next);
+                        }}
+                        title="上移"
+                        className="rounded px-1 text-[12px] leading-none text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-30"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        disabled={idx === shown.length - 1}
+                        onClick={() => {
+                          const next = [...shown];
+                          [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]];
+                          setMetrics(next);
+                        }}
+                        title="下移"
+                        className="rounded px-1 text-[12px] leading-none text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-30"
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  )}
                   {(shown.length > 1 || metrics.length > 0) && (
                     <button
                       type="button"
