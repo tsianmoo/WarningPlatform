@@ -195,9 +195,9 @@ export default function DealerSourceModal({ open, onClose, onSynced }: { open: b
         if (exist) { updateDealer({ ...exist, ...base }); updated++; }
         else { addDealer(base); synced++; }
       }
-      toast.success(`同步建档完成：新增 ${synced}、更新 ${updated}${skipped ? `、跳过 ${skipped} 行` : ''}`);
+      const ok = flushNow ? await flushNow() : true;
+      toast.success(`同步建档完成：新增 ${synced}、更新 ${updated}${skipped ? `、跳过 ${skipped} 行` : ''}${ok ? '' : '（云端保存暂未成功，仅存本地）'}`);
       persistCfg();
-      if (flushNow) flushNow();
       onClose();
       onSynced?.();
     } finally {

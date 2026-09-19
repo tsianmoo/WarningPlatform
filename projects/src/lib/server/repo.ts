@@ -156,8 +156,11 @@ export async function syncTables(tables: DataTable[]): Promise<void> {
   }));
 
   if (rows.length > 0) {
-    const { error } = await client.from('data_tables').upsert(rows, { onConflict: 'id' });
-    if (error) throw new Error(`保存数据表失败: ${error.message}`);
+    // 逐表 upsert：单张大表（含 rows 全量）一次全量提交易超限量而整体失败，改为逐表提交降低单请求体积
+    for (const r of rows) {
+      const { error } = await client.from('data_tables').upsert([r], { onConflict: 'id' });
+      if (error) throw new Error(`保存数据表失败: ${error.message}`);
+    }
   }
 
   // 删除已被前端移除的表

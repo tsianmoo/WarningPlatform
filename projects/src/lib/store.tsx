@@ -448,26 +448,32 @@ function readLocalCache(): { tables: DataTable[]; rules: AlertRule[] } | null {
   }
 }
 
-/** 把当前状态全量同步到服务端数据库（失败静默，保留本地缓存） */
-async function pushRemoteState(state: AppState) {
+/** 把当前状态全量同步到服务端数据库（失败返回 false，保留本地缓存） */
+async function pushRemoteState(state: AppState): Promise<boolean> {
   // 远程尚未确认可用（例如刚打开页面时 GET /api/state 失败）时，
   // 在每次写库前重新探测：连上则自愈为可同步，避免整个会话只存 localStorage。
   if (!remoteAvailable) {
     try {
       const ping = await fetchRemoteState();
-      if (!ping || !ping.tables) return; // 仍不可用则放弃本次，本地缓存继续兜底
+      if (!ping || !ping.tables) return false; // 仍不可用则放弃本次，本地缓存继续兜底
     } catch {
-      return;
+      return false;
     }
   }
   try {
-    await fetch(STATE_API, {
+    const res = await fetch(STATE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], tableGroups: state.tableGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] } }),
     });
-  } catch {
-    /* 网络异常时忽略，localStorage 仍有兜底 */
+    if (!res.ok) {
+      console.warn('[persist] 云端同步失败', res.status);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('[persist] 云端同步异常', err);
+    return false;
   }
 }
 
@@ -567,7 +573,7 @@ type StoreApi = {
   setPermissions: (roles: RolePerm[]) => void;
   setPermOverrides: (ovs: PersonPermOverride[]) => void;
   /** 立即把当前状态同步到服务端（跳过防抖），用于「保存」按钮等强一致场景 */
-  flushNow: () => void;
+  flushNow: () => Promise<boolean>;
   resetAll: () => void;
 };
 
@@ -1213,10 +1219,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       updateHomeConfig: (patch) => dispatch('UPDATE_CONFIG', patch),
       setPermissions: (roles) => dispatch('SET_PERMISSIONS', roles),
       setPermOverrides: (ovs) => dispatch('SET_PERM_OVERRIDES', ovs),
-      flushNow: () => {
-        if (pushTimer.current) clearTimeout(pushTimer.current);
-        void pushRemoteState(state);
-      },
+      flushNow: () => pushRemoteState(state),
       moveOrg: (id, dir) => {
         const target = state.orgs.find((o) => o.id === id);
         if (!target) return;
