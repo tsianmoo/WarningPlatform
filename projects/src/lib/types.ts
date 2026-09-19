@@ -1433,6 +1433,12 @@ export interface Dealer {
   birthday?: string;
   /** 是否启用 */
   enabled?: boolean;
+  /** 省份 */
+  province?: string;
+  /** 城市 */
+  city?: string;
+  /** 区县 */
+  district?: string;
   /** 经销商属性（挂分类标签值） */
   attrs?: DictAttrs;
 }

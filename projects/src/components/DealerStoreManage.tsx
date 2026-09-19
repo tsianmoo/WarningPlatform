@@ -65,7 +65,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
   };
 
   const TEMPLATE_COLS = kind === 'dealer'
-    ? ['经销商编号', '经销商名称', '经销商等级', '经销商分类', '状态', '联系人', '电话', '地址', '密码', '生日']
+    ? ['经销商编号', '经销商名称', '状态', '联系人', '电话', '省份', '城市', '区县', '地址']
     : ['店仓编号', '店仓名称', '所属经销商', '主营品牌', '分公司', '部门', '销售区域', '区部', '是否允许零售', '状态', '联系人', '电话', '地址'];
 
   const downloadTemplate = () => {
@@ -119,6 +119,9 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
             sort: 0,
             contact: String(r['联系人'] ?? '').trim() || undefined,
             phone: String(r['电话'] ?? '').trim() || undefined,
+            province: String(r['省份'] ?? '').trim() || undefined,
+            city: String(r['城市'] ?? '').trim() || undefined,
+            district: String(r['区县'] ?? '').trim() || undefined,
             address: String(r['地址'] ?? '').trim() || undefined,
             password: String(r['密码'] ?? '').trim() || undefined,
             birthday: String(r['生日'] ?? '').trim() || undefined,
@@ -189,6 +192,9 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
                 {kind === 'store' && <th className="px-3 py-2.5 font-medium">销售区域</th>}
                 {kind === 'store' && <th className="px-3 py-2.5 font-medium">区部</th>}
                 {kind === 'store' && <th className="px-3 py-2.5 font-medium">允许零售</th>}
+                {kind === 'dealer' && <th className="px-3 py-2.5 font-medium">省份</th>}
+                {kind === 'dealer' && <th className="px-3 py-2.5 font-medium">城市</th>}
+                {kind === 'dealer' && <th className="px-3 py-2.5 font-medium">区县</th>}
                 <th className="px-3 py-2.5 font-medium">状态</th>
                 <th className="px-3 py-2.5 font-medium text-right">操作</th>
               </tr>
@@ -210,6 +216,9 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
                     {kind === 'store' && <td className="px-3 py-2.5">{s.attrs?.['销售区域'] || '-'}</td>}
                     {kind === 'store' && <td className="px-3 py-2.5">{s.attrs?.['区部'] || '-'}</td>}
                     {kind === 'store' && <td className="px-3 py-2.5">{s.allowRetail === false ? '不允许' : '允许'}</td>}
+                    {kind === 'dealer' && <td className="px-3 py-2.5">{(d as unknown as { province?: string }).province || '-'}</td>}
+                    {kind === 'dealer' && <td className="px-3 py-2.5">{(d as unknown as { city?: string }).city || '-'}</td>}
+                    {kind === 'dealer' && <td className="px-3 py-2.5">{(d as unknown as { district?: string }).district || '-'}</td>}
                     <td className="px-3 py-2.5">{s.enabled === false ? <span className="rounded bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-500">停用</span> : <span className="rounded bg-green-50 px-1.5 py-0.5 text-xs font-medium text-green-600">启用</span>}</td>
                     <td className="px-3 py-2.5">
                       <span className="flex items-center justify-end gap-0.5 text-gray-400">
@@ -281,6 +290,9 @@ function DictForm(props: {
   const [contact, setContact] = useState(initial?.contact ?? '');
   const [phone, setPhone] = useState(initial?.phone ?? '');
   const [address, setAddress] = useState(initial?.address ?? '');
+  const [province, setProvince] = useState((initial as Dealer | null)?.province ?? '');
+  const [city, setCity] = useState((initial as Dealer | null)?.city ?? '');
+  const [district, setDistrict] = useState((initial as Dealer | null)?.district ?? '');
   const [password, setPassword] = useState(initial?.password ?? '');
   const [birthday, setBirthday] = useState(initial?.birthday ?? '');
   const [enabled, setEnabled] = useState(initial ? (initial.enabled !== false) : true);
@@ -291,7 +303,11 @@ function DictForm(props: {
     if (!name.trim()) return toast.error('请填写名称');
     onSave({
       name: name.trim(), code: code.trim() || undefined, contact: contact.trim() || undefined,
-      phone: phone.trim() || undefined, address: address.trim() || undefined,
+      phone: phone.trim() || undefined,
+      province: kind === 'dealer' ? (province.trim() || undefined) : undefined,
+      city: kind === 'dealer' ? (city.trim() || undefined) : undefined,
+      district: kind === 'dealer' ? (district.trim() || undefined) : undefined,
+      address: address.trim() || undefined,
       password: password || undefined, birthday: birthday || undefined,
       enabled, attrs, sort: initial?.sort ?? 0,
       dealerId: kind === 'store' ? (dealerId || undefined) : undefined,
@@ -342,6 +358,22 @@ function DictForm(props: {
             <label className="mb-1.5 block text-xs font-medium text-gray-500">电话</label>
             <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="联系电话" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
           </div>
+          {kind === 'dealer' && (
+            <>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-500">省份</label>
+                <input value={province} onChange={(e) => setProvince(e.target.value)} placeholder="所在省份" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-500">城市</label>
+                <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="所在城市" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-500">区县</label>
+                <input value={district} onChange={(e) => setDistrict(e.target.value)} placeholder="所在区县" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+              </div>
+            </>
+          )}
           <div className="col-span-2">
             <label className="mb-1.5 block text-xs font-medium text-gray-500">地址</label>
             <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="详细地址" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
