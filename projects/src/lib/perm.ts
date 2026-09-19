@@ -162,13 +162,6 @@ export function resolveAuthAccount(
 ): { subject: AuthSubject | null; scopePerson: Person | null } {
   if (me) return { subject: me.post ? { kind: 'post', key: me.post } : null, scopePerson: me };
   if (!meName) return { subject: null, scopePerson: null };
-  const d = dealers.find((x) => !!(x.name && x.name === meName) || !!(x.code && x.code === meName));
-  if (d) {
-    return {
-      subject: { kind: 'dealer', key: COMMON_KEY },
-      scopePerson: { id: d.id, name: meName, orgId: '', dealerId: d.id, enabled: true, sort: 0, createdAt: 0 },
-    };
-  }
   const s = stores.find((x) => !!(x.name && x.name === meName) || !!(x.code && x.code === meName));
   if (s) {
     return {
@@ -181,6 +174,13 @@ export function resolveAuthAccount(
     return {
       subject: { kind: 'employee', key: COMMON_KEY },
       scopePerson: { id: e.id, name: meName, orgId: '', dealerId: e.dealerId, storeId: e.storeId, enabled: true, sort: 0, createdAt: 0 },
+    };
+  }
+  const d = dealers.find((x) => !!(x.name && x.name === meName) || !!(x.code && x.code === meName));
+  if (d) {
+    return {
+      subject: { kind: 'dealer', key: COMMON_KEY },
+      scopePerson: { id: d.id, name: meName, orgId: '', dealerId: d.id, enabled: true, sort: 0, createdAt: 0 },
     };
   }
   return { subject: null, scopePerson: null };
