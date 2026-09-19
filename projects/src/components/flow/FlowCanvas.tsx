@@ -40,7 +40,7 @@ import type { FlowEdge, FlowNode, Schedule, TargetSetting } from '@/lib/types';
 import { KIND_COLOR, uid } from '@/lib/types';
 import { useStore } from '@/lib/store';
 import { resolvePerm, resolveAuthAccount, canView } from '@/lib/perm';
-import { BuildCtx, createNodeData, nodeTypes } from './nodes';
+import { BuildCtx, createNodeData, nodeTypes, DupNodeCtx } from './nodes';
 import { NodePreviewProvider } from './NodePreview';
 
 type DragPayload = {
@@ -264,6 +264,22 @@ function CanvasInner({
   const rfNodes = useMemo(() => toRfNodes(localNodes), [localNodes]);
   const rfEdges = useMemo(() => toRfEdges(localEdges), [localEdges]);
 
+  const duplicateNode = useCallback(
+    (node: FlowNode) => {
+      const data = JSON.parse(JSON.stringify(node.data)) as FlowNode['data'];
+      const dup: FlowNode = {
+        id: uid('node'),
+        kind: node.kind,
+        data,
+        position: { x: node.position.x + 24, y: node.position.y + 24 },
+      };
+      const ns = [...localNodes, dup];
+      setLocalNodes(ns);
+      onFlowChange(ns, localEdges);
+    },
+    [localNodes, localEdges, setLocalNodes, onFlowChange]
+  );
+
   return (
     <div
       className="h-full w-full"
@@ -284,6 +300,7 @@ function CanvasInner({
           </button>
         </div>
       )}
+      <DupNodeCtx.Provider value={duplicateNode}>
       <ReactFlow
         nodes={rfNodes}
         edges={rfEdges}
@@ -317,6 +334,7 @@ function CanvasInner({
           style={{ width: 140, height: 90 }}
         />
       </ReactFlow>
+      </DupNodeCtx.Provider>
     </div>
   );
 }

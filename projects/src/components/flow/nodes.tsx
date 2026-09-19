@@ -132,6 +132,8 @@ export const BuildCtx = createContext<RuleMetaValue | null>(null);
 function useRuleMeta(): RuleMetaValue | null {
   return useContext(BuildCtx);
 }
+export type DuplicateNodeFn = (node: FlowNode) => void;
+export const DupNodeCtx = createContext<DuplicateNodeFn | null>(null);
 
 /** 通用样式（与各节点保持一致） */
 let uidSeq = 0;
@@ -268,28 +270,17 @@ function nodeTitle(fnode: FlowNode) {
 function NodeShell({ fnode, children, width = 300 }: { fnode: FlowNode; children: React.ReactNode; width?: number }) {
   const color = KIND_COLOR[fnode.kind];
   const hasSource = true; // 所有节点（含开始）都开放右侧出口，用于连向后继
-  const { deleteElements, getNodes, getEdges, setNodes } = useReactFlow();
+  const { deleteElements, getNodes, getEdges } = useReactFlow();
   const tables = useRuleTables();
   const preview = useNodePreview();
   const handlePreview = (e: React.MouseEvent) => {
     e.stopPropagation();
     preview.open(fnode, getNodes() as unknown as FlowNode[], getEdges() as unknown as FlowEdge[], tables);
   };
+  const duplicateNode = useContext(DupNodeCtx);
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const all = getNodes();
-    const src = all.find((n) => n.id === fnode.id);
-    const copyData = JSON.parse(JSON.stringify(fnode.data));
-    const dup = {
-      id: uid('node'),
-      type: fnode.kind,
-      data: copyData,
-      position: {
-        x: (src ? src.position.x : fnode.position.x) + 24,
-        y: (src ? src.position.y : fnode.position.y) + 24,
-      },
-    };
-    setNodes([...all, dup]);
+    if (duplicateNode) duplicateNode(fnode);
   };
   return (
     <div className="w-[300px] max-w-[300px] rounded-xl border bg-white shadow-sm" style={{ borderColor: color.border, width, maxWidth: width }}>
