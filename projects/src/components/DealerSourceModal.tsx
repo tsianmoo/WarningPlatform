@@ -78,7 +78,7 @@ export function loadSrcCfg(): Cfg | null {
 }
 
 export default function DealerSourceModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { state, addDealer, updateDealer } = useStore();
+  const { state, addDealer, updateDealer, flushNow } = useStore();
   const tables = state.tables;
   const dealers = state.dealers;
 
@@ -91,7 +91,7 @@ export default function DealerSourceModal({ open, onClose }: { open: boolean; on
       const raw = localStorage.getItem(STORE_KEY);
       if (raw) {
         const p = JSON.parse(raw) as Partial<Cfg>;
-        setCfg({ tableId: p.tableId ?? '', order: p.order ?? [], visible: {}, renames: p.renames ?? {} });
+        setCfg({ tableId: p.tableId ?? '', order: p.order ?? [], visible: p.visible ?? {}, renames: p.renames ?? {} });
       } else {
         setCfg({ tableId: '', order: [], visible: {}, renames: {} });
       }
@@ -194,6 +194,7 @@ export default function DealerSourceModal({ open, onClose }: { open: boolean; on
         else { addDealer(base); synced++; }
       }
       toast.success(`同步建档完成：新增 ${synced}、更新 ${updated}${skipped ? `、跳过 ${skipped} 行` : ''}`);
+      if (flushNow) flushNow();
       onClose();
     } finally {
       setSyncing(false);
