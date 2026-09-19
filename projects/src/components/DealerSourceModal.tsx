@@ -78,7 +78,7 @@ export function loadSrcCfg(): Cfg | null {
 }
 
 export default function DealerSourceModal({ open, onClose, onSynced }: { open: boolean; onClose: () => void; onSynced?: () => void }) {
-  const { state, addDealer, updateDealer, flushNow } = useStore();
+  const { state, addDealer, updateDealer, removeDealer, flushNow } = useStore();
   const tables = state.tables;
   const dealers = state.dealers;
 
@@ -149,18 +149,23 @@ export default function DealerSourceModal({ open, onClose, onSynced }: { open: b
     if (!table) return toast.warning('请先选择数据来源表');
     if (!tableFields.length) return toast.warning('该数据表没有可配置的字段');
     const sem = autoSemantics(tableFields, cfg.renames);
-    if (!sem.name) return toast.warning(`未在来源表匹配到「名称」列，请确认包含类似「${SYNONYMS.name.slice(0, 3).join('/')}」的列`);
-    if (!sem.code) toast.info('未匹配到「编号」列，本次将全部新增、无法按编号去重更新');
+    const shownOrder = cfg.order.filter((k) => cfg.visible[k] !== false);
+    const nameKey = (sem.name || shownOrder[0]) as string | undefined;
+    if (!nameKey) return toast.warning('请勾选并保留至少一个可作为「名称」的字段');
+    if (!sem.name) toast.info('未精确匹配到「名称」列，已用首个显示的列作为名称字段');
+    if (!sem.code) toast.info('未匹配到「编号」列，本次将按名称去重更新、无法按编号覆盖');
     const rows: Record<string, unknown>[] = (table.rows?.length ? table.rows : table.previewRows) ?? [];
     if (!rows.length) return toast.warning('来源表没有可用的数据行');
     const semKeys = new Set(Object.values(sem).filter((v): v is string => !!v));
     setSyncing(true);
     try {
-      let synced = 0, updated = 0, skipped = 0;
+      let synced = 0, updated = 0, removed = 0, skipped = 0;
+      const hit = new Set<string>();
       for (const r of rows) {
-        const name = str(r[sem.name as string]);
+        const name = str(r[nameKey]);
         if (!name) { skipped++; continue; }
         const code = sem.code ? str(r[sem.code]) || undefined : undefined;
+        if (code) hit.add(code);
         const base: Omit<Dealer, 'id' | 'createdAt'> = {
           name,
           code,
@@ -191,12 +196,16 @@ export default function DealerSourceModal({ open, onClose, onSynced }: { open: b
         }
         base.attrs = attrs;
 
-        const exist = dealers.find((d) => d.code && d.code === code);
+        const exist = dealers.find((d) => (code ? d.code === code : d.name === name));
         if (exist) { updateDealer({ ...exist, ...base }); updated++; }
         else { addDealer(base); synced++; }
       }
+      // 覆盖合并：来源表已不存在的旧经销商（有编号且在引用范围内）移除，避免旧数据残留
+      for (const d of dealers) {
+        if (d.code && !hit.has(d.code)) { removeDealer(d.id); removed++; }
+      }
       const ok = flushNow ? await flushNow() : true;
-      toast.success(`同步建档完成：新增 ${synced}、更新 ${updated}${skipped ? `、跳过 ${skipped} 行` : ''}${ok ? '' : '（云端保存暂未成功，仅存本地）'}`);
+      toast.success(`同步建档完成：新增 ${synced}、更新 ${updated}${removed ? `、移除 ${removed}` : ''}${skipped ? `、跳过 ${skipped} 行` : ''}${ok ? '' : '（云端保存暂未成功，仅存本地）'}`);
       persistCfg();
       onClose();
       onSynced?.();
