@@ -3572,7 +3572,6 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
                   <div className="min-w-0 flex-1">
                     <TimeComponent
                       value={mt.timeWindow}
-                      disabled={!!d.timeWindow}
                       onChange={(tw) => {
                         const next = [...shown];
                         next[idx] = { ...mt, timeWindow: tw, id: mt.id || `gm_${Date.now()}_${idx}` };
