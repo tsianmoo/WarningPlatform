@@ -3558,6 +3558,23 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
                       </option>
                     ))}
                   </select>
+                  {mt.fieldKey && (
+                    <select
+                      value={mt.sort || ''}
+                      onChange={(e) => {
+                        const v = e.target.value as '' | 'asc' | 'desc';
+                        const next = [...shown].map((m) => ({ ...m, sort: undefined as 'asc' | 'desc' | undefined }));
+                        if (v) next[idx] = { ...next[idx], sort: v };
+                        setMetrics(next);
+                      }}
+                      className="shrink-0 rounded-md border bg-white px-1.5 py-1 text-[9px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                      title="排序：全部分组聚合指标只能选一个字段排序"
+                    >
+                      <option value="">排序</option>
+                      <option value="asc">升序</option>
+                      <option value="desc">降序</option>
+                    </select>
+                  )}
                   {(shown.length > 1 || metrics.length > 0) && (
                     <button
                       type="button"

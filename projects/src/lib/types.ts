@@ -468,6 +468,8 @@ export interface GroupMetric {
   resultLabel?: string;
   /** 该指标独立的统计时间窗（可选）：设置了则按此窗口过滤聚合，同一字段可配多条不同窗口（累销/近3天/本月…）；未设置回退到节点级 timeWindow */
   timeWindow?: TimeWindow;
+  /** 聚合结果排序方向（升序/降序）：全部聚合指标中只能有一个字段启用排序 */
+  sort?: 'asc' | 'desc';
 }
 
 /** 过滤条件运算符 */

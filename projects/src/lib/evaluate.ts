@@ -1733,7 +1733,7 @@ function evalNode(
       }));
       const metricField = gd.metricField || t.fields.find((f) => f.type === 'number')?.key;
       // 多指标：优先用 metrics 列表；否则回退到单指标 metricField/metricFn
-      const metrics: { key: string; label: string; fn: string; outLabel: string; isDate: boolean }[] = (
+      const metrics: { key: string; label: string; fn: string; outLabel: string; isDate: boolean; sort?: 'asc' | 'desc' }[] = (
         Array.isArray(gd.metrics) && gd.metrics.length
           ? gd.metrics.filter((m) => m.fieldKey)
           : gd.metricField
@@ -1747,6 +1747,7 @@ function evalNode(
           fn: (m.fn || 'sum') as string,
           outLabel: m.resultLabel || '',
           isDate: !!t.fields?.find((f) => f.key === key && f.type === 'date'),
+          sort: (m as { sort?: 'asc' | 'desc' }).sort,
         };
       });
       if (!metrics.length) metrics.push({ key: metricField ?? '', label: metricField ?? '', fn: 'sum', outLabel: '', isDate: false });
@@ -1986,6 +1987,15 @@ function evalNode(
         const key = dimLabels[sortIdx] ?? groupLabel(sd.fieldLabel || sd.fieldKey, sd.granularity);
         const dir = sd.sort === 'desc' ? -1 : 1;
         out.sort((a, b) => dir * numCmp(String(a[key] ?? ''), String(b[key] ?? '')));
+      }
+      // 聚合指标唯一排序字段：全部分组聚合指标中只能有一个指标启用升/降序（dim 排序优先时不再叠加指标排序）
+      if (sortIdx < 0) {
+        const mSortIdx = metrics.findIndex((x) => x.sort === 'asc' || x.sort === 'desc');
+        if (mSortIdx >= 0) {
+          const key = mLabels[mSortIdx];
+          const dir = metrics[mSortIdx].sort === 'desc' ? -1 : 1;
+          out.sort((a, b) => dir * numCmp(String(a[key] ?? ''), String(b[key] ?? '')));
+        }
       }
       // 兜底：若 groups 为空（无行），仍构造一次以便展示类型
       const cmpColNames = (m: string) =>
