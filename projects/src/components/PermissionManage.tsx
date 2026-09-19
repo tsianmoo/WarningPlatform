@@ -46,8 +46,6 @@ const PAGE_SPECS: PageSpec[] = [
     m: 'store', label: '店仓管理', group: '组织架构',
     coarseOps: ['create'], resOps: ['edit', 'delete'],
   },
-  { m: 'dattrs', label: '经销商属性', group: '组织架构', coarseOps: ['manage'] },
-  { m: 'sattrs', label: '店仓属性', group: '组织架构', coarseOps: ['manage'] },
   {
     m: 'people', label: '用户管理', group: '人事管理',
     coarseOps: ['create'], resOps: ['edit', 'delete', 'assign', 'resetPwd'],

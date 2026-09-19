@@ -1301,8 +1301,6 @@ export type PermModule =
   | 'alerts'      // 预警列表
   | 'dealer'      // 组织-经销商管理
   | 'store'       // 组织-店仓管理
-  | 'dattrs'      // 组织-经销商属性
-  | 'sattrs'      // 组织-店仓属性
   | 'people'      // 人事-人员管理
   | 'attrs'       // 人事-属性管理
   | 'homecfg'     // 系统-首页管理

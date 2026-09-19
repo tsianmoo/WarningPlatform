@@ -23,7 +23,7 @@ import PermissionManage from '@/components/PermissionManage';
 import ApiDataTablePage from '@/components/sync/ApiDataTablePage';
 import { resolvePerm, canView, resolveAuthAccount } from '@/lib/perm';
 
-type View = 'home' | 'tables' | 'apitable' | 'formtable' | 'rules' | 'new' | 'edit' | 'alerts' | 'people' | 'attrs' | 'dealer' | 'store' | 'dattrs' | 'sattrs' | 'emp' | 'eattrs' | 'homecfg' | 'perms' | 'navcfg' | 'brandcfg';
+type View = 'home' | 'tables' | 'apitable' | 'formtable' | 'rules' | 'new' | 'edit' | 'alerts' | 'people' | 'attrs' | 'dealer' | 'store' | 'emp' | 'homecfg' | 'perms' | 'navcfg' | 'brandcfg';
 
 function hexToRgba(hex: string, alpha: number): string {
   const h = (hex || '#000000').replace('#', '');
@@ -50,7 +50,7 @@ function Shell() {
   const { state, updatePerson, ready } = useStore();
   const navMenus: NavMenuEntry[] = state.config.navMenus?.length ? state.config.navMenus : DEFAULT_NAV_MENUS;
   const brand = state.config.brand || DEFAULT_HOME_CONFIG.brand;
-  const VIEWS = ['home', 'tables', 'apitable', 'formtable', 'rules', 'new', 'edit', 'alerts', 'people', 'attrs', 'dealer', 'store', 'dattrs', 'sattrs', 'emp', 'eattrs', 'homecfg', 'perms', 'navcfg', 'brandcfg'] as const;
+  const VIEWS = ['home', 'tables', 'apitable', 'formtable', 'rules', 'new', 'edit', 'alerts', 'people', 'attrs', 'dealer', 'store', 'emp', 'homecfg', 'perms', 'navcfg', 'brandcfg'] as const;
   const CRUMBS: Record<string, string[]> = {
     home: ['工作台'],
     tables: ['工作台', '数据表管理', '上传数据表'],
@@ -61,11 +61,8 @@ function Shell() {
     edit: ['工作台', '预警规则', '编辑预警'],
     alerts: ['工作台', '预警列表'],
     dealer: ['工作台', '组织架构', '经销商管理'],
-    dattrs: ['工作台', '组织架构', '经销商属性'],
     store: ['工作台', '组织架构', '店仓管理'],
-    sattrs: ['工作台', '组织架构', '店仓属性'],
     emp: ['工作台', '组织架构', '员工管理'],
-    eattrs: ['工作台', '组织架构', '员工属性'],
     people: ['工作台', '人事管理', '用户管理'],
     attrs: ['工作台', '人事管理', '属性管理'],
     homecfg: ['工作台', '系统管理', '首页管理'],
@@ -188,12 +185,6 @@ function Shell() {
     content = <EmployeeManage onBack={() => navigate('dealer')} />;
   } else if (view === 'store') {
     content = <DealerStoreManage kind="store" />;
-  } else if (view === 'dattrs') {
-    content = <AttrManage category="dealer" />;
-  } else if (view === 'sattrs') {
-    content = <AttrManage category="store" />;
-  } else if (view === 'eattrs') {
-    content = <AttrManage category="employee" />;
   } else if (view === 'people') {
     content = <PeopleManage />;
   } else if (view === 'attrs') {
@@ -219,7 +210,7 @@ function Shell() {
   );
 
   // 预警配置页（new / edit）隐藏左侧导航栏，聚焦画布编辑
-  const withSidebar = view === 'home' || view === 'tables' || view === 'apitable' || view === 'formtable' || view === 'rules' || view === 'alerts' || view === 'people' || view === 'attrs' || view === 'dealer' || view === 'store' || view === 'dattrs' || view === 'sattrs' || view === 'emp' || view === 'eattrs' || view === 'homecfg' || view === 'perms' || view === 'navcfg' || view === 'brandcfg';
+  const withSidebar = view === 'home' || view === 'tables' || view === 'apitable' || view === 'formtable' || view === 'rules' || view === 'alerts' || view === 'people' || view === 'attrs' || view === 'dealer' || view === 'store' || view === 'emp' || view === 'homecfg' || view === 'perms' || view === 'navcfg' || view === 'brandcfg';
   const currentView = view;
 
   const renderMenu = (key: NavMenuKey, label: string): React.ReactNode => {
@@ -252,7 +243,7 @@ function Shell() {
           </div>
         ) : null;
       case 'org':
-        return can('dealer') || can('store') || can('dattrs') || can('sattrs') ? (
+        return can('dealer') || can('store') ? (
           <div className="pt-1">
             <button onClick={() => toggleGroup('org')} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] font-medium text-gray-800 hover:bg-gray-50">
               <Briefcase size={17} strokeWidth={1.75} className="text-gray-400" />
@@ -262,11 +253,8 @@ function Shell() {
             {openGroup === 'org' && (
               <>
                 {can('dealer') && <NavItem nested active={currentView === 'dealer'} icon={<span className="text-gray-400">·</span>} label="经销商管理" onClick={() => navigate('dealer')} />}
-                {can('dattrs') && <NavItem nested active={currentView === 'dattrs'} icon={<span className="text-gray-400">·</span>} label="经销商属性" onClick={() => navigate('dattrs')} />}
                 {can('store') && <NavItem nested active={currentView === 'store'} icon={<span className="text-gray-400">·</span>} label="店仓管理" onClick={() => navigate('store')} />}
-                {can('sattrs') && <NavItem nested active={currentView === 'sattrs'} icon={<span className="text-gray-400">·</span>} label="店仓属性" onClick={() => navigate('sattrs')} />}
                 {can('dealer') && <NavItem nested active={currentView === 'emp'} icon={<span className="text-gray-400">·</span>} label="员工管理" onClick={() => navigate('emp')} />}
-                {can('dealer') && <NavItem nested active={currentView === 'eattrs'} icon={<span className="text-gray-400">·</span>} label="员工属性" onClick={() => navigate('eattrs')} />}
               </>
             )}
           </div>

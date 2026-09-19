@@ -22,8 +22,6 @@ export const ALL_MODULES: PermModule[] = [
   'alerts',
   'dealer',
   'store',
-  'dattrs',
-  'sattrs',
   'people',
   'attrs',
   'homecfg',
