@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { gunzipSync } from 'zlib';
-import { getAllTables, getAllRules, getAllAlerts, getAllRuleGroups, getAllTableGroups, getAllOrganizations, getAllPersons, getAllHrAttributes, getAllDealers, getAllStores, getAllEmployees, getHomeConfig, syncTables, syncRules, syncAlerts, syncRuleGroups, syncTableGroups, syncOrganizations, syncPersons, syncHrAttributes, syncDealers, syncStores, syncEmployees, saveHomeConfig } from '@/lib/server/repo';
+import { getAllTables, getAllRules, getAllAlerts, getAllRuleGroups, getAllTableGroups, getAllOrganizations, getAllPersons, getAllHrAttributes, getAllDealers, getAllStores, getAllEmployees, getHomeConfig, syncTables, syncRules, syncAlerts, syncRuleGroups, syncTableGroups, syncOrganizations, syncPersons, syncHrAttributes, syncDealers, syncStores, syncEmployees, saveHomeConfig, putTablesDirect } from '@/lib/server/repo';
 import type { AlertRule, AlertTask, DataTable, DataTableGroup, Dealer, Employee, HrAttribute, HomeConfig, Organization, Person, RuleGroup, Store } from '@/lib/types';
 import { isBigDataTable } from '@/lib/types';
 
@@ -34,9 +34,28 @@ export async function POST(req: Request) {
     };
     const tables = Array.isArray(body.tables) ? body.tables : [];
     // 大表已通过独立 /api/tables 通道落库（其 body 仅占位元信息、不含 rows 内容）。
-    // 此处只 upsert 普通表，并把大表 id 并入保留集，避免 stale-delete 把它们误删。
-    const smallTables = tables.filter((t) => !isBigDataTable(t));
-    const bigTableIds = tables.filter((t) => isBigDataTable(t)).map((t) => t.id);
+    // 兜底兼容：若提交的大表仍带全量 rows（如旧浏览器端未走新通道），此处直接直连落库，避免大表内容被丢弃。
+    const allTables = Array.isArray(tables) ? tables : [];
+    const smallTables: DataTable[] = [];
+    const directBigRows = [];
+    const bigTableIds: string[] = [];
+    for (const t of allTables) {
+      if (isBigDataTable(t)) {
+        bigTableIds.push(t.id);
+        if (Array.isArray(t.rows) && t.rows.length > 0) {
+          directBigRows.push({
+            id: t.id,
+            name: t.name,
+            file_name: t.fileName ?? '',
+            row_count: t.rowCount ?? 0,
+            created_at: t.createdAt ?? Date.now(),
+            data: t,
+          });
+        }
+      } else {
+        smallTables.push(t);
+      }
+    }
     const rules = Array.isArray(body.rules) ? body.rules : [];
     const alerts = Array.isArray(body.alerts) ? body.alerts : [];
     const groups = Array.isArray(body.groups) ? body.groups : [];
@@ -58,6 +77,7 @@ export async function POST(req: Request) {
       }
     }
 
+    if (directBigRows.length > 0) await putTablesDirect(directBigRows);
     await Promise.all([syncTables(smallTables, bigTableIds), syncRules(rules), syncAlerts(alerts), syncRuleGroups(groups), syncTableGroups(tableGroups), syncOrganizations(orgs), syncPersons(persons), syncHrAttributes(hrAttributes), syncDealers(dealers), syncStores(stores), syncEmployees(employees)]);
     if (body.config) await saveHomeConfig(body.config);
     return NextResponse.json({ success: true, tableCount: tables.length, ruleCount: rules.length, alertCount: alerts.length, groupCount: groups.length, tableGroupCount: tableGroups.length, orgCount: orgs.length, personCount: persons.length, attrCount: hrAttributes.length, dealerCount: dealers.length, storeCount: stores.length, employeeCount: employees.length });
