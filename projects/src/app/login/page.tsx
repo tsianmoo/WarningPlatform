@@ -94,8 +94,12 @@ export default function LoginPage() {
       setError('账号或密码错误');
       return;
     }
-    if (exact.length > 1) { setPick(exact); return; }
-    const user = exact.find(Boolean);
+    let user = exact.find(Boolean);
+    if (exact.length > 1) {
+      // 多个账号共用同一编号（如店仓号与经销商号重复）时，按类型优先级自动登录，不弹层
+      const P: Record<string, number> = { store: 0, employee: 1, dealer: 2, person: 3 };
+      user = [...exact].sort((a, b) => (P[a.type] ?? 9) - (P[b.type] ?? 9))[0];
+    }
     setLoading(true);
     const who = user ? user.name : '管理员';
     localStorage.setItem('dn_auth', who);
