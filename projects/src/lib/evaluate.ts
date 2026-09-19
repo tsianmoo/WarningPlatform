@@ -1856,6 +1856,21 @@ function evalNode(
           }
           outB.push(row);
         }
+        // 聚合指标唯一排序字段（Mode B）：只允许一个指标启用升/降序，按其结果列数值排序
+        const mSortDirB = ['asc', 'desc'].includes(String((rawMetricsB.find((m) => m.sort === 'asc' || m.sort === 'desc') || {}).sort || ''))
+          ? (rawMetricsB.find((m) => m.sort === 'asc' || m.sort === 'desc') as unknown as GroupMetric).sort
+          : undefined;
+        if (mSortDirB) {
+          const cmpx = (a: string, b: string): number => {
+            const na = Number(a), nb = Number(b);
+            if (a !== '' && b !== '' && Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+            return a === b ? 0 : a < b ? -1 : 1;
+          };
+          const mi = rawMetricsB.findIndex((m) => m.sort === 'asc' || m.sort === 'desc');
+          const keyB = mLabels[mi];
+          const dirB = mSortDirB === 'desc' ? -1 : 1;
+          outB.sort((a, b) => dirB * cmpx(String(a[keyB] ?? ''), String(b[keyB] ?? '')));
+        }
         const emptyRowB: Record<string, string> = Object.fromEntries([
           ...dimLabels.map((lab) => [lab, ''] as const),
           ...colKeysB.map((ck) => [ck, ''] as const),
