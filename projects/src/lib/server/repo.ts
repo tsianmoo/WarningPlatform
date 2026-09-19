@@ -338,16 +338,16 @@ export async function syncOrganizations(orgs: Organization[]): Promise<void> {
   if (rows.length > 0) {
     const { error } = await client.from('organizations').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存组织架构失败: ${error.message}`);
-  }
-  const { data: existing, error: selErr } = await client.from('organizations').select('id');
-  if (selErr) throw new Error(`读取组织ID失败: ${selErr.message}`);
-  const keep = new Set(orgs.map((o) => o.id));
-  const staleIds = ((existing as { id: string }[] | null) ?? [])
-    .map((r) => r.id)
-    .filter((id) => !keep.has(id));
-  if (staleIds.length > 0) {
-    const { error: delErr } = await client.from('organizations').delete().in('id', staleIds);
-    if (delErr) throw new Error(`删除组织失败: ${delErr.message}`);
+    const { data: existing, error: selErr } = await client.from('organizations').select('id');
+    if (selErr) throw new Error(`读取组织ID失败: ${selErr.message}`);
+    const keep = new Set(orgs.map((o) => o.id));
+    const staleIds = ((existing as { id: string }[] | null) ?? [])
+      .map((r) => r.id)
+      .filter((id) => !keep.has(id));
+    if (staleIds.length > 0) {
+      const { error: delErr } = await client.from('organizations').delete().in('id', staleIds);
+      if (delErr) throw new Error(`删除组织失败: ${delErr.message}`);
+    }
   }
 }
 
@@ -434,16 +434,16 @@ export async function syncPersons(persons: Person[]): Promise<void> {
   if (rows.length > 0) {
     const { error } = await client.from('persons').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存人事架构失败: ${error.message}`);
-  }
-  const { data: existing, error: selErr } = await client.from('persons').select('id');
-  if (selErr) throw new Error(`读取人员ID失败: ${selErr.message}`);
-  const keep = new Set(persons.map((p) => p.id));
-  const staleIds = ((existing as { id: string }[] | null) ?? [])
-    .map((r) => r.id)
-    .filter((id) => !keep.has(id));
-  if (staleIds.length > 0) {
-    const { error: delErr } = await client.from('persons').delete().in('id', staleIds);
-    if (delErr) throw new Error(`删除人员失败: ${delErr.message}`);
+    const { data: existing, error: selErr } = await client.from('persons').select('id');
+    if (selErr) throw new Error(`读取人员ID失败: ${selErr.message}`);
+    const keep = new Set(persons.map((p) => p.id));
+    const staleIds = ((existing as { id: string }[] | null) ?? [])
+      .map((r) => r.id)
+      .filter((id) => !keep.has(id));
+    if (staleIds.length > 0) {
+      const { error: delErr } = await client.from('persons').delete().in('id', staleIds);
+      if (delErr) throw new Error(`删除人员失败: ${delErr.message}`);
+    }
   }
 }
 
@@ -474,16 +474,16 @@ export async function syncHrAttributes(attributes: HrAttribute[]): Promise<void>
   if (rows.length > 0) {
     const { error } = await client.from('hr_attributes').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存人事属性失败: ${error.message}`);
-  }
-  const { data: existing, error: selErr } = await client.from('hr_attributes').select('id');
-  if (selErr) throw new Error(`读取属性ID失败: ${selErr.message}`);
-  const keep = new Set(attributes.map((a) => a.id));
-  const staleIds = ((existing as { id: string }[] | null) ?? [])
-    .map((r) => r.id)
-    .filter((id) => !keep.has(id));
-  if (staleIds.length > 0) {
-    const { error: delErr } = await client.from('hr_attributes').delete().in('id', staleIds);
-    if (delErr) throw new Error(`删除属性失败: ${delErr.message}`);
+    const { data: existing, error: selErr } = await client.from('hr_attributes').select('id');
+    if (selErr) throw new Error(`读取属性ID失败: ${selErr.message}`);
+    const keep = new Set(attributes.map((a) => a.id));
+    const staleIds = ((existing as { id: string }[] | null) ?? [])
+      .map((r) => r.id)
+      .filter((id) => !keep.has(id));
+    if (staleIds.length > 0) {
+      const { error: delErr } = await client.from('hr_attributes').delete().in('id', staleIds);
+      if (delErr) throw new Error(`删除属性失败: ${delErr.message}`);
+    }
   }
 }
 
@@ -587,14 +587,14 @@ export async function syncDealers(dealers: Dealer[]): Promise<void> {
   if (rows.length > 0) {
     const { error } = await client.from('dealers').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存经销商失败: ${error.message}`);
-  }
-  const { data: existing, error: selErr } = await client.from('dealers').select('id');
-  if (selErr) throw new Error(`读取经销商ID失败: ${selErr.message}`);
-  const keep = new Set(dealers.map((d) => d.id));
-  const staleIds = ((existing as { id: string }[] | null) ?? []).map((r) => r.id).filter((id) => !keep.has(id));
-  if (staleIds.length > 0) {
-    const { error: delErr } = await client.from('dealers').delete().in('id', staleIds);
-    if (delErr) throw new Error(`删除经销商失败: ${delErr.message}`);
+    const { data: existing, error: selErr } = await client.from('dealers').select('id');
+    if (selErr) throw new Error(`读取经销商ID失败: ${selErr.message}`);
+    const keep = new Set(dealers.map((d) => d.id));
+    const staleIds = ((existing as { id: string }[] | null) ?? []).map((r) => r.id).filter((id) => !keep.has(id));
+    if (staleIds.length > 0) {
+      const { error: delErr } = await client.from('dealers').delete().in('id', staleIds);
+      if (delErr) throw new Error(`删除经销商失败: ${delErr.message}`);
+    }
   }
 }
 
@@ -632,13 +632,15 @@ export async function syncStores(stores: Store[]): Promise<void> {
     const { error } = await client.from('stores').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存店仓失败: ${error.message}`);
   }
-  const { data: existing, error: selErr } = await client.from('stores').select('id');
-  if (selErr) throw new Error(`读取店仓ID失败: ${selErr.message}`);
-  const keep = new Set(stores.map((s) => s.id));
-  const staleIds = ((existing as { id: string }[] | null) ?? []).map((r) => r.id).filter((id) => !keep.has(id));
-  if (staleIds.length > 0) {
-    const { error: delErr } = await client.from('stores').delete().in('id', staleIds);
-    if (delErr) throw new Error(`删除店仓失败: ${delErr.message}`);
+  if (rows.length > 0) {
+    const { data: existing, error: selErr } = await client.from('stores').select('id');
+    if (selErr) throw new Error(`读取店仓ID失败: ${selErr.message}`);
+    const keep = new Set(stores.map((s) => s.id));
+    const staleIds = ((existing as { id: string }[] | null) ?? []).map((r) => r.id).filter((id) => !keep.has(id));
+    if (staleIds.length > 0) {
+      const { error: delErr } = await client.from('stores').delete().in('id', staleIds);
+      if (delErr) throw new Error(`删除店仓失败: ${delErr.message}`);
+    }
   }
 }
 
@@ -685,14 +687,14 @@ export async function syncEmployees(employees: Employee[]): Promise<void> {
   if (rows.length > 0) {
     const { error } = await client.from('employees').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存员工失败: ${error.message}`);
-  }
-  const { data: existing, error: selErr } = await client.from('employees').select('id');
-  if (selErr) throw new Error(`读取员工ID失败: ${selErr.message}`);
-  const keep = new Set(employees.map((e) => e.id));
-  const staleIds = ((existing as { id: string }[] | null) ?? []).map((r) => r.id).filter((id) => !keep.has(id));
-  if (staleIds.length > 0) {
-    const { error: delErr } = await client.from('employees').delete().in('id', staleIds);
-    if (delErr) throw new Error(`删除员工失败: ${delErr.message}`);
+    const { data: existing, error: selErr } = await client.from('employees').select('id');
+    if (selErr) throw new Error(`读取员工ID失败: ${selErr.message}`);
+    const keep = new Set(employees.map((e) => e.id));
+    const staleIds = ((existing as { id: string }[] | null) ?? []).map((r) => r.id).filter((id) => !keep.has(id));
+    if (staleIds.length > 0) {
+      const { error: delErr } = await client.from('employees').delete().in('id', staleIds);
+      if (delErr) throw new Error(`删除员工失败: ${delErr.message}`);
+    }
   }
 }
 
