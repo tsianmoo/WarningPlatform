@@ -101,7 +101,7 @@ export default function DealerSourceModal({ open, onClose }: { open: boolean; on
     const inShown = cfg.visible[key] !== false;
     const group = cfg.order.filter((k) => (inShown ? cfg.visible[k] !== false : cfg.visible[k] === false));
     const i = group.indexOf(key);
-    const nb = group[i - dir];
+    const nb = group[i + dir];
     if (i < 0 || !nb) return;
     const a = cfg.order.indexOf(key);
     const b = cfg.order.indexOf(nb);
@@ -234,12 +234,12 @@ export default function DealerSourceModal({ open, onClose }: { open: boolean; on
                 </div>
                 <div className="flex-1">
                   <select
-                    value={sem ?? ''}
+                    value={sem && sem !== 'attr' ? sem : ''}
                     disabled={!shown}
-                    onChange={(e) => setAssign(k, e.target.value as SemKey | 'attr' | '')}
+                    onChange={(e) => setAssign(k, e.target.value as SemKey | '')}
                     className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-blue-400 disabled:opacity-50"
                   >
-                    <option value="attr">属性字段（建档展示）</option>
+                    <option value="">不映射</option>
                     {SEM_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
                   </select>
                   {usedByOther && <span className="mt-0.5 block text-[11px] text-amber-500">该语义已由其他列映射，此列不写入</span>}
