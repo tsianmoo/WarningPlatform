@@ -1785,7 +1785,22 @@ function evalNode(
       const cmpEnabled = cmpSeries.filter((s) => s.groups);
       const fnLabel = (fn: string) =>
         fn === 'activeDays' ? '开单天数' : fn === 'countDistinct' ? '去重计数' : fn === 'sum' ? '求和' : fn === 'avg' ? '平均' : fn === 'max' ? '最大' : fn === 'min' ? '最小' : fn === 'count' ? '计数' : fn;
-      const mLabels = metrics.map((mt) => mt.outLabel || `${fnLabel(mt.fn)}(${mt.label || mt.key})`);
+      // 聚合指标列名去重：多个指标字段名相同时，重复项追加后缀 1/2/3…，避免结果列重叠串列
+      const mLabels = (() => {
+        const countMap = new Map<string, number>();
+        for (const mt of metrics) {
+          const b = mt.outLabel || `${fnLabel(mt.fn)}(${mt.label || mt.key})`;
+          countMap.set(b, (countMap.get(b) ?? 0) + 1);
+        }
+        const used = new Map<string, number>();
+        return metrics.map((mt) => {
+          const b = mt.outLabel || `${fnLabel(mt.fn)}(${mt.label || mt.key})`;
+          if ((countMap.get(b) ?? 0) <= 1) return b;
+          const n = (used.get(b) ?? 0) + 1;
+          used.set(b, n);
+          return `${b}${n}`;
+        });
+      })();
       const dimLabels = dims.map((x) => groupLabel(x.label, x.gran));
       const dateKey = gd.dateField || t.fields.find((f) => f.type === 'date')?.key || '';
       // —— Mode B：至少一个聚合指标自带时间窗 → 逐指标按自身窗口过滤聚合，输出宽表多列（含各自同期/环期）——
