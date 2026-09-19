@@ -177,7 +177,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
         </div>
 
         <div className="flex-1 overflow-auto">
-          <table className="w-full border-collapse text-sm">
+          <table className="min-w-full border-collapse text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" style={{ width: 'max-content' }}>
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs text-gray-500">
                 <th className="px-3 py-2.5 font-medium">序号</th>
