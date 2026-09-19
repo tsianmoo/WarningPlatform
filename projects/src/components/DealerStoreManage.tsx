@@ -83,6 +83,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
       const { rows } = await parseExcel(file);
       if (!rows.length) return toast.error('模板中没有数据');
       let ok = 0;
+      let updated = 0;
       const noStatus: string[] = [];
       const skipped: string[] = [];
       for (const r of rows) {
@@ -111,7 +112,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
             skipped.push(`经销商编号/名称缺失（${codeStr || '-'}）`);
             return;
           }
-          addDealer({
+          const base: Omit<Dealer, 'id' | 'createdAt'> = {
             code: codeStr || undefined,
             name: nameStr,
             attrs,
@@ -125,7 +126,14 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
             address: String(r['地址'] ?? '').trim() || undefined,
             password: String(r['密码'] ?? '').trim() || undefined,
             birthday: String(r['生日'] ?? '').trim() || undefined,
-          } as never);
+          };
+          const exist = dealers.find((x) => x.code === codeStr);
+          if (exist) {
+            updateDealer({ ...exist, ...base });
+            updated++;
+          } else {
+            addDealer(base as Dealer);
+          }
         } else {
           const dealerName = String(r['所属经销商'] ?? '').trim();
           const dealer = dealers.find((x) => x.name === dealerName);
@@ -147,7 +155,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
       }
       if (noStatus.length) toast.warning(`以下店仓未匹配到所属经销商：${noStatus.join('、')}`);
       if (skipped.length) toast.warning(`跳过 ${skipped.length} 行（缺少必填项）：${skipped.slice(0, 5).join('；')}${skipped.length > 5 ? ' 等' : ''}`);
-      if (ok) toast.success(`成功导入 ${ok} 条${unit}`);
+      if (ok) toast.success(kind === 'dealer' ? `成功导入 ${ok} 条商户（新增 ${ok - updated}、更新 ${updated}）` : `成功导入 ${ok} 条${unit}`);
     } else {
       toast.error('请上传 .xlsx / .xls / .xlsm 文件');
     }
