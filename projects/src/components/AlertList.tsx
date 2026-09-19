@@ -389,18 +389,20 @@ export function AlertList() {
           只看我的
         </button>
         <div className="mx-1.5 h-4 w-px bg-gray-100" />
-        <button
-          onClick={() => {
-            const n = String(state.alerts?.length ?? 0);
-            if (typeof window !== 'undefined' && window.confirm(`确定清空全部 ${n} 条预警吗？此操作不可撤销。`)) {
-              clearAllAlerts();
-            }
-          }}
-          className="inline-flex items-center gap-1.5 rounded-full border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50"
-          title="清空全部预警记录"
-        >
-          <Trash2 size={12} /> 清空全部（{state.alerts?.length ?? 0}）
-        </button>
+        {isManager && (
+          <button
+            onClick={() => {
+              const n = String(state.alerts?.length ?? 0);
+              if (typeof window !== 'undefined' && window.confirm(`确定清空全部 ${n} 条预警吗？此操作不可撤销。`)) {
+                clearAllAlerts();
+              }
+            }}
+            className="inline-flex items-center gap-1.5 rounded-full border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50"
+            title="清空全部预警记录（仅管理员）"
+          >
+            <Trash2 size={12} /> 清空全部（{state.alerts?.length ?? 0}）
+          </button>
+        )}
       </div>
 
       {/* 第二行：日期 · 快捷 · 商品/店仓维度 */}
