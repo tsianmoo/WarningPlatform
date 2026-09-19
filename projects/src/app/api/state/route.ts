@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { gunzipSync } from 'zlib';
 import { getAllTables, getAllRules, getAllAlerts, getAllRuleGroups, getAllTableGroups, getAllOrganizations, getAllPersons, getAllHrAttributes, getAllDealers, getAllStores, getAllEmployees, getHomeConfig, syncTables, syncRules, syncAlerts, syncRuleGroups, syncTableGroups, syncOrganizations, syncPersons, syncHrAttributes, syncDealers, syncStores, syncEmployees, saveHomeConfig } from '@/lib/server/repo';
 import type { AlertRule, AlertTask, DataTable, DataTableGroup, Dealer, Employee, HrAttribute, HomeConfig, Organization, Person, RuleGroup, Store } from '@/lib/types';
 
@@ -18,7 +19,15 @@ export async function GET() {
 // 全量同步：以客户端提交的数据为准，覆盖数据库
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as {
+    // 兼容 gzip 压缩传输（客户端对大状态启用 Content-Encoding: gzip，规避超大 body 被网关限制）
+    let raw: unknown;
+    if (req.headers.get('content-encoding') === 'gzip') {
+      const buf = Buffer.from(await req.arrayBuffer());
+      raw = JSON.parse(gunzipSync(buf).toString('utf8'));
+    } else {
+      raw = await req.json();
+    }
+    const body = raw as {
       tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[]; tableGroups?: DataTableGroup[];
       orgs?: Organization[]; persons?: Person[]; hrAttributes?: HrAttribute[]; dealers?: Dealer[]; stores?: Store[]; employees?: Employee[]; config?: HomeConfig | null;
     };

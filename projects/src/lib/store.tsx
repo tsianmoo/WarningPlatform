@@ -448,6 +448,13 @@ function readLocalCache(): { tables: DataTable[]; rules: AlertRule[] } | null {
   }
 }
 
+/** 把对象序列化为 gzip 压缩后的二进制（浏览器 CompressionStream） */
+async function gzipJson(obj: unknown): Promise<ArrayBuffer> {
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'));
+  return await new Response(stream).arrayBuffer();
+}
+
 /** 把当前状态全量同步到服务端数据库（失败静默，保留本地缓存） */
 async function pushRemoteState(state: AppState): Promise<boolean> {
   // 远程尚未确认可用（例如刚打开页面时 GET /api/state 失败）时，
@@ -461,11 +468,24 @@ async function pushRemoteState(state: AppState): Promise<boolean> {
     }
   }
   try {
-    const res = await fetch(STATE_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], tableGroups: state.tableGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] } }),
-    });
+    const payload = { tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], tableGroups: state.tableGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] } };
+    // gzip 压缩再传输：数据表可能很大（数十 MB），超大 body 会被网关/请求限制拦下导致刷新后丢数据
+    let res: Response;
+    try {
+      const gz = await gzipJson(payload);
+      res = await fetch(STATE_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Encoding': 'gzip' },
+        body: gz,
+      });
+    } catch {
+      // 不支持 CompressionStream 时的兜底：退回未压缩 JSON
+      res = await fetch(STATE_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    }
     return res.ok;
   } catch {
     /* 网络异常时忽略，localStorage 仍有兜底 */

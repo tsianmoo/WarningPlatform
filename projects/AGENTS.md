@@ -250,3 +250,4 @@
 - **恢复路径**：若库被清而浏览器 localStorage 仍含数据，重新打开平台时启动逻辑（remote 为空 + local 有数据）会自动把 local 数据迁移推回库；因此**不要清浏览器数据**，直接重开即可自愈。若 local 也空则需重新上传原始数据。
 - **上传落库反馈 / persistNow**：store 暴露 `persistNow(): Promise<boolean>`（立即 POST /api/state 并返回 res.ok）。需"写入数据库确认"的场景（DataTableManager 上传/覆盖、EmployeeManage、DealerStoreManage 导入）在变更后 `await persistNow()`，成功 toast「已确认写入数据库」，否则警告「仅存本地」。数据表上传另有进度条（解析→写入数据库两阶段）。
 - **清库预防（服务端，/api/state POST）**：入参在主数据集全空、而库中已有业务数据时，返回 409（不落库）。因此客户端的 persistNow 在该场景会得到 false → 界面明确提示"未写入数据库"。
+- **大状态传输（重点）**：/api/state 的整体 body 将多表/规则/组织/预警打包在一起，超大 payload（实测 78MB）会被网关/请求体积限制拦下导致 POST 失败、刷新后丢数据（20.9MB 能过是临界证据）。已改为客户端 `pushRemoteState` 用 `CompressionStream` **gzip 压缩整个 body** 并带 `Content-Encoding: gzip` 发送；`/api/state` 路由按该头用 `zlib.gunzipSync` 解压再处理。不支持 CompressionStream 的旧浏览器退化为未压缩。改传输方案时注意保持末端的编码一致性。
