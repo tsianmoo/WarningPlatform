@@ -1,13 +1,14 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import { ChevronDown, ChevronUp, Database, Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useStore } from '@/lib/store';
 import { resolvePerm, canOper } from '@/lib/perm';
 import { toast } from 'sonner';
 import type { AttrCategory, Dealer, HrAttribute, Store } from '@/lib/types';
 import { parseExcel } from '@/lib/parser';
+import DealerSourceModal from '@/components/DealerSourceModal';
 
 type Kind = 'dealer' | 'store';
 
@@ -34,6 +35,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
+  const [srcOpen, setSrcOpen] = useState(false);
   const q = kw.trim().toLowerCase();
   const filtered = q ? list.filter((d) => (d.name || '').toLowerCase().includes(q) || (d.code || '').toLowerCase().includes(q)) : list;
   const unit = META[kind].unit;
@@ -176,8 +178,9 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
             </div>
             <div className="flex items-center gap-1.5">
               <button onClick={downloadTemplate} title="下载模板" className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><Download size={15} />模板</button>
+              {kind === 'dealer' && <button onClick={() => setSrcOpen(true)} title="数据表驱动建档" className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1.5 text-sm text-white hover:bg-indigo-700"><Database size={15} />数据源</button>}
               <button onClick={() => fileRef.current?.click()} disabled={loading} title={`导入${unit}`} className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-60"><Upload size={15} />{loading ? '导入中…' : '导入'}</button>
-              {can('create') && <button onClick={() => setDictForm({ item: null })} title={`新增${unit}`} className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><Plus size={15} />新增{unit}</button>}
+              {kind === 'store' && can('create') && <button onClick={() => setDictForm({ item: null })} title={`新增${unit}`} className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><Plus size={15} />新增{unit}</button>}
             </div>
           </div>
           <input value={kw} onChange={(e) => setKw(e.target.value)} placeholder={`搜索${unit}名称 / 编号`} className="mt-2 w-full rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm outline-none focus:border-blue-400" />
@@ -277,6 +280,8 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
           </div>
         </div>
       )}
+
+      <DealerSourceModal open={srcOpen} onClose={() => setSrcOpen(false)} />
     </div>
   );
 }
