@@ -2300,6 +2300,10 @@ function evalNode(
         }
         return r;
       });
+      const firstCol = uniLabels[0];
+      if (firstCol) {
+        rows.sort((a, b) => String(a[firstCol] ?? '').localeCompare(String(b[firstCol] ?? ''), 'zh'));
+      }
       return {
         title: '左关联补全',
         columns: [...uniLabels, ...retFields.map((f) => f.label), ...factCols],
