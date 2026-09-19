@@ -2,6 +2,10 @@
 
 这是一个基于 [Next.js 16](https://nextjs.org) + [shadcn/ui](https://ui.shadcn.com) 的全栈应用项目，由扣子编程 CLI 创建。
 
+## 文档
+
+- 数据库表结构文档：[docs/DB_SCHEMA.md](docs/DB_SCHEMA.md)
+
 ## 快速开始
 
 ### 启动开发服务器
