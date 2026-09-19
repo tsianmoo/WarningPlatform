@@ -144,6 +144,33 @@ function Shell() {
     navigate(t ?? 'rules');
   };
 
+  // 当前视图无权限时回退到第一个有权限的落地页（例如店仓账号未授权首页时直接落到预警列表）
+  const viewPermitted = (v: View): boolean => {
+    switch (v) {
+      case 'home': return can('home');
+      case 'tables': case 'apitable': case 'formtable': return can('datatables');
+      case 'new': case 'edit': return can('rules');
+      case 'rules': return can('rules');
+      case 'alerts': return can('alerts');
+      case 'dealer': return can('dealer');
+      case 'store': return can('store');
+      case 'emp': return can('dealer');
+      case 'people': return can('people');
+      case 'attrs': return can('attrs');
+      case 'homecfg': return can('homecfg');
+      case 'perms': return can('perms');
+      case 'navcfg': return can('navcfg');
+      case 'brandcfg': return can('brandcfg');
+      default: return true;
+    }
+  };
+  useEffect(() => {
+    if (!viewPermitted(view)) {
+      const first = (['home', 'alerts', 'rules', 'datatables', 'dealer', 'store', 'people', 'attrs', 'homecfg', 'perms', 'navcfg', 'brandcfg'] as View[]).find(viewPermitted);
+      navigate(first ?? 'home');
+    }
+  }, [view, perm]);
+
   const startNew = () => {
     if (state.tables.length === 0) {
       alert('请先在「数据表管理」中上传一张数据表，之后即可创建预警规则');
@@ -160,7 +187,9 @@ function Shell() {
   };
 
   let content;
-  if (view === 'home') {
+  if (!viewPermitted(view)) {
+    content = null;
+  } else if (view === 'home') {
     content = <Dashboard />;
   } else if (view === 'tables') {
     content = <DataTableManager />;
@@ -216,7 +245,9 @@ function Shell() {
   const renderMenu = (key: NavMenuKey, label: string): React.ReactNode => {
     switch (key) {
       case 'home':
-        return <NavItem active={view === 'home'} icon={<LayoutDashboard size={18} strokeWidth={1.75} />} label={label} onClick={goHome} />;
+        return can('home') ? (
+          <NavItem active={view === 'home'} icon={<LayoutDashboard size={18} strokeWidth={1.75} />} label={label} onClick={goHome} />
+        ) : null;
       case 'rules':
         return can('rules') ? (
           <NavItem active={currentView === 'rules' || currentView === 'new' || currentView === 'edit'} icon={<BellRing size={18} strokeWidth={1.75} />} label={label} onClick={() => goRules()} />
@@ -276,7 +307,7 @@ function Shell() {
           </div>
         ) : null;
       case 'sys':
-        return (
+        return can('navcfg') || can('homecfg') || can('brandcfg') || can('perms') ? (
           <div className="pt-1">
             <button onClick={() => toggleGroup('sys')} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] font-medium text-gray-800 hover:bg-gray-50">
               <Settings size={17} strokeWidth={1.75} className="text-gray-400" />
@@ -285,14 +316,14 @@ function Shell() {
             </button>
             {openGroup === 'sys' && (
               <>
-                <NavItem active={currentView === 'navcfg'} icon={<ListOrdered size={16} strokeWidth={1.75} />} label="导航栏管理" nested onClick={() => navigate('navcfg')} />
+                {can('navcfg') && <NavItem active={currentView === 'navcfg'} icon={<ListOrdered size={16} strokeWidth={1.75} />} label="导航栏管理" nested onClick={() => navigate('navcfg')} />}
                 {can('homecfg') && <NavItem active={currentView === 'homecfg'} icon={<LayoutDashboard size={16} strokeWidth={1.75} />} label="首页管理" nested onClick={() => navigate('homecfg')} />}
-                <NavItem active={currentView === 'brandcfg'} icon={<Settings2 size={16} strokeWidth={1.75} />} label="基础信息管理" nested onClick={() => navigate('brandcfg')} />
+                {can('brandcfg') && <NavItem active={currentView === 'brandcfg'} icon={<Settings2 size={16} strokeWidth={1.75} />} label="基础信息管理" nested onClick={() => navigate('brandcfg')} />}
                 {can('perms') && <NavItem active={currentView === 'perms'} icon={<Shield size={16} strokeWidth={1.75} />} label="权限管理" nested onClick={() => navigate('perms')} />}
               </>
             )}
           </div>
-        );
+        ) : null;
       default:
         return null;
     }

@@ -1308,6 +1308,8 @@ export type PermModule =
   | 'homecfg'     // 系统-首页管理
   | 'datasync'    // 数据同步平台
   | 'perms'      // 系统-权限管理
+  | 'navcfg'     // 系统-导航栏管理
+  | 'brandcfg'   // 系统-基础信息管理
   | 'linkview_all'; // 预警关联展示-全量（按此权限控制该节点的使用与全量数据可见）
 
 /** 权限操作码（可勾选的最小操作单元，越细越好） */

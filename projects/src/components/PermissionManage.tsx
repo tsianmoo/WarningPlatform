@@ -52,6 +52,8 @@ const PAGE_SPECS: PageSpec[] = [
   },
   { m: 'attrs', label: '属性管理', group: '人事管理', coarseOps: ['manage'] },
   { m: 'homecfg', label: '首页管理', group: '系统管理', coarseOps: ['edit'] },
+  { m: 'navcfg', label: '导航栏管理', group: '系统管理', coarseOps: ['edit'] },
+  { m: 'brandcfg', label: '基础信息管理', group: '系统管理', coarseOps: ['edit'] },
   { m: 'datasync', label: '数据同步平台', group: '系统管理', coarseOps: ['upload'] },
   { m: 'linkview_all', label: '预警关联展示-全量', group: '业务管理' },
   { m: 'perms', label: '权限管理', group: '系统管理', coarseOps: ['edit'] },

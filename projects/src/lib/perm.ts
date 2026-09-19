@@ -27,6 +27,8 @@ export const ALL_MODULES: PermModule[] = [
   'homecfg',
   'datasync',
   'perms',
+  'navcfg',
+  'brandcfg',
   'linkview_all',
 ];
 
@@ -46,6 +48,18 @@ export function defaultPagePerms(): Partial<Record<PermModule, PagePerm>> {
   };
   const out: Partial<Record<PermModule, PagePerm>> = {};
   for (const m of ALL_MODULES) out[m] = { view: true, ops: { ...all } };
+  return out;
+}
+
+/**
+ * 角色生效权限的“严格”展开：把命中角色（或人员覆盖）的 pages 展开为全模块表。
+ * 角色里未显式出现的模块一律视为 view:false（未勾选 = 不可见），避免被全开基底误放行，
+ * 使“没勾选的页面不显示”真正成立。仅用于已命中角色/覆盖的账号；未命中任何角色的账号
+ * 仍走 defaultPagePerms() 全开兜底（系统管理员/开箱即用）。
+ */
+function strictPagePerms(pages: Partial<Record<PermModule, PagePerm>> | undefined): Partial<Record<PermModule, PagePerm>> {
+  const out: Partial<Record<PermModule, PagePerm>> = {};
+  for (const m of ALL_MODULES) out[m] = pages?.[m] ?? { view: false, ops: {} };
   return out;
 }
 
@@ -116,7 +130,7 @@ export function resolvePerm(person: Person | null, cfg: HomeConfig | undefined |
     if (ov) {
       const m = migrateOverride(ov);
       return {
-        pages: { ...defaultPagePerms(), ...(m.pages ?? {}) },
+        pages: strictPagePerms(m.pages),
         dataScope: m.dataScope ?? null,
         overridden: true,
       };
@@ -125,7 +139,7 @@ export function resolvePerm(person: Person | null, cfg: HomeConfig | undefined |
     if (role) {
       const m = migrateRole(role);
       return {
-        pages: { ...defaultPagePerms(), ...(m.pages ?? {}) },
+        pages: strictPagePerms(m.pages),
         dataScope: m.dataScope ?? null,
         overridden: false,
       };
@@ -138,7 +152,7 @@ export function resolvePerm(person: Person | null, cfg: HomeConfig | undefined |
     if (role) {
       const m = migrateRole(role);
       return {
-        pages: { ...defaultPagePerms(), ...(m.pages ?? {}) },
+        pages: strictPagePerms(m.pages),
         dataScope: m.dataScope ?? null,
         overridden: false,
       };
