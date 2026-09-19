@@ -144,8 +144,9 @@ export async function getAllTables(): Promise<DataTable[]> {
   return (data as TableRow[] | null)?.map((r) => r.data as DataTable) ?? [];
 }
 
-/** 全量覆盖式保存数据表（以入参为准，删除库中多余的表） */
-export async function syncTables(tables: DataTable[]): Promise<void> {
+/** 全量覆盖式保存数据表（以入参为准，删除库中多余的表）。
+ *  keepExtra：除入参 tables 外仍需保留（不删除）的表 id —— 用于"大表已通过独立 /api/tables 通道落库、此处仅以元信息占位"的场景。 */
+export async function syncTables(tables: DataTable[], keepExtra: string[] = []): Promise<void> {
   const rows = tables.map((t) => ({
     id: t.id,
     name: t.name,
@@ -154,7 +155,7 @@ export async function syncTables(tables: DataTable[]): Promise<void> {
     created_at: t.createdAt ?? Date.now(),
     data: t,
   }));
-  const keepIds = tables.map((t) => t.id);
+  const keepIds = [...tables.map((t) => t.id), ...(keepExtra ?? [])];
 
   // 大表（单元格总数超阈值）走 Postgres 直连 upsert，规避 PostgREST HTTP 大 payload 触发的 statement_timeout
   const cells = tables.reduce((s, t) => s + (t.rowCount ?? 0) * Math.max((t.fields?.length ?? 0), 1), 0);
@@ -184,7 +185,7 @@ export async function syncTables(tables: DataTable[]): Promise<void> {
 }
 
 /** 大表单条直连 upsert（data::jsonb），绕过 PostgREST HTTP 的超时限制 */
-async function putTablesDirect(rows: TableRow[]): Promise<void> {
+export async function putTablesDirect(rows: TableRow[]): Promise<void> {
   const pool = dbPool();
   for (const r of rows) {
     await pool.query(

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { gunzipSync } from 'zlib';
 import { getAllTables, getAllRules, getAllAlerts, getAllRuleGroups, getAllTableGroups, getAllOrganizations, getAllPersons, getAllHrAttributes, getAllDealers, getAllStores, getAllEmployees, getHomeConfig, syncTables, syncRules, syncAlerts, syncRuleGroups, syncTableGroups, syncOrganizations, syncPersons, syncHrAttributes, syncDealers, syncStores, syncEmployees, saveHomeConfig } from '@/lib/server/repo';
 import type { AlertRule, AlertTask, DataTable, DataTableGroup, Dealer, Employee, HrAttribute, HomeConfig, Organization, Person, RuleGroup, Store } from '@/lib/types';
+import { isBigDataTable } from '@/lib/types';
 
 // 读取持久化的全部业务数据（数据表 + 规则 + 预警 + 规则分组 + 组织架构 + 人事架构 + 经销商/店仓 + 员工 + 首页配置）
 export async function GET() {
@@ -32,6 +33,10 @@ export async function POST(req: Request) {
       orgs?: Organization[]; persons?: Person[]; hrAttributes?: HrAttribute[]; dealers?: Dealer[]; stores?: Store[]; employees?: Employee[]; config?: HomeConfig | null;
     };
     const tables = Array.isArray(body.tables) ? body.tables : [];
+    // 大表已通过独立 /api/tables 通道落库（其 body 仅占位元信息、不含 rows 内容）。
+    // 此处只 upsert 普通表，并把大表 id 并入保留集，避免 stale-delete 把它们误删。
+    const smallTables = tables.filter((t) => !isBigDataTable(t));
+    const bigTableIds = tables.filter((t) => isBigDataTable(t)).map((t) => t.id);
     const rules = Array.isArray(body.rules) ? body.rules : [];
     const alerts = Array.isArray(body.alerts) ? body.alerts : [];
     const groups = Array.isArray(body.groups) ? body.groups : [];
@@ -53,7 +58,7 @@ export async function POST(req: Request) {
       }
     }
 
-    await Promise.all([syncTables(tables), syncRules(rules), syncAlerts(alerts), syncRuleGroups(groups), syncTableGroups(tableGroups), syncOrganizations(orgs), syncPersons(persons), syncHrAttributes(hrAttributes), syncDealers(dealers), syncStores(stores), syncEmployees(employees)]);
+    await Promise.all([syncTables(smallTables, bigTableIds), syncRules(rules), syncAlerts(alerts), syncRuleGroups(groups), syncTableGroups(tableGroups), syncOrganizations(orgs), syncPersons(persons), syncHrAttributes(hrAttributes), syncDealers(dealers), syncStores(stores), syncEmployees(employees)]);
     if (body.config) await saveHomeConfig(body.config);
     return NextResponse.json({ success: true, tableCount: tables.length, ruleCount: rules.length, alertCount: alerts.length, groupCount: groups.length, tableGroupCount: tableGroups.length, orgCount: orgs.length, personCount: persons.length, attrCount: hrAttributes.length, dealerCount: dealers.length, storeCount: stores.length, employeeCount: employees.length });
   } catch (err) {

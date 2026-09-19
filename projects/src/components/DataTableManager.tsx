@@ -24,7 +24,7 @@ import {
 import { useStore, formatDateTime } from '@/lib/store';
 import { resolvePerm, canOper } from '@/lib/perm';
 import { parseTableFile, buildTableFromRows } from '@/lib/parser';
-import { uid, type FieldType, type DataTable, type AlertRule } from '@/lib/types';
+import { uid, isBigDataTable, type FieldType, type DataTable, type AlertRule } from '@/lib/types';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -52,7 +52,7 @@ const TYPE_LABEL: Record<FieldType, string> = {
 };
 
 export function DataTableManager() {
-  const { state, addTable, updateTable, removeTable, setActiveTable, renameField, setFieldType, addTableGroup, updateTableGroup, removeTableGroup, persistNow } = useStore();
+  const { state, addTable, updateTable, removeTable, setActiveTable, renameField, setFieldType, addTableGroup, updateTableGroup, removeTableGroup, persistNow, pushOneTable } = useStore();
   const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
   const me = state.persons.find((p) => p.name === meName) ?? null;
   const perm = resolvePerm(me, state.config);
@@ -99,7 +99,9 @@ export function DataTableManager() {
       const table: DataTable = { id: uid('tbl'), createdAt: Date.now(), group, ...next };
       setUploading({ name: `${table.name}（${table.rowCount} 行）`, step: '正在写入数据库…' });
       addTable(table);
-      const ok = await persistNow();
+      // 大表走独立 /api/tables 通道直写数据库（全局 state body 只保留元信息占位），
+      // 避免把几十 MB 的 rows 塞进全局 body 被网关/请求大小限制拦下而"刷新后丢失"。
+      const ok = isBigDataTable(table) ? await pushOneTable(table) : await persistNow();
       setUploading(null);
       if (ok) toast.success(`已导入「${table.name}」共 ${table.rowCount} 行，并已确认写入数据库`);
       else toast.warning(`已导入「${table.name}」共 ${table.rowCount} 行，但数据库写入未确认（已存本地）`);
@@ -147,7 +149,8 @@ export function DataTableManager() {
       prev: { fileName: t.fileName, rowCount: t.rowCount, fields: t.fields, previewRows: t.previewRows, rows: t.rows },
     });
     setOpenUpdate(null);
-    const ok = await persistNow();
+    const merged: DataTable = { ...t, ...next, fields: mergedFields, rows: next.rows };
+    const ok = isBigDataTable(merged) ? await pushOneTable(merged) : await persistNow();
     if (ok) toast.success(`已覆盖更新「${t.name}」，并已确认写入数据库，如需还原可点击“返回上一步”`);
     else toast.warning(`已覆盖更新「${t.name}」并保存本地，但数据库写入未确认`);
   };

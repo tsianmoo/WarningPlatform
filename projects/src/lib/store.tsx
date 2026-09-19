@@ -25,7 +25,7 @@ import type {
   LinkViewTab,
   LinkViewNodeData,
 } from './types';
-import { uid, OPERATOR_OPTIONS, DEFAULT_HOME_CONFIG, normalizeHomeConfig } from './types';
+import { uid, OPERATOR_OPTIONS, DEFAULT_HOME_CONFIG, normalizeHomeConfig, isBigDataTable } from './types';
 import { buildSampleTable, ensureFieldsComplete } from './parser';
 import { evaluateFlow } from './evaluate';
 import type { NodePreview } from './evaluate';
@@ -468,7 +468,14 @@ async function pushRemoteState(state: AppState): Promise<boolean> {
     }
   }
   try {
-    const payload = { tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], tableGroups: state.tableGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] } };
+    // 大表已通过独立 /api/tables 通道落库，避免把几十 MB 的 rows 一并塞进全局 body 被网关限制拦下。
+    // 此处为其保留"元信息占位"（去掉全量内容），服务端据此把它们并入保留集、不做覆盖删除。
+    const tables = state.tables.map((t) => {
+      if (!isBigDataTable(t)) return t;
+      const { rows: _r, previewRows: _p, prev: _prev, ...meta } = t;
+      return { ...meta };
+    });
+    const payload = { tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], tableGroups: state.tableGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] } };
     // gzip 压缩再传输：数据表可能很大（数十 MB），超大 body 会被网关/请求限制拦下导致刷新后丢数据
     let res: Response;
     try {
@@ -489,6 +496,33 @@ async function pushRemoteState(state: AppState): Promise<boolean> {
     return res.ok;
   } catch {
     /* 网络异常时忽略，localStorage 仍有兜底 */
+    return false;
+  }
+}
+
+const TABLES_API = '/api/tables';
+
+/** 单独把一张大表（含全量 rows）通过独立通道 gzip 上传写库，返回是否成功 */
+async function pushOneTable(table: DataTable): Promise<boolean> {
+  try {
+    const payload = { table };
+    let res: Response;
+    try {
+      const gz = await gzipJson(payload);
+      res = await fetch(TABLES_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Encoding': 'gzip' },
+        body: gz,
+      });
+    } catch {
+      res = await fetch(TABLES_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    }
+    return res.ok;
+  } catch {
     return false;
   }
 }
@@ -592,6 +626,8 @@ type StoreApi = {
   flushNow: () => void;
   /** 立即将当前状态写库并返回是否成功（用于上传等需要落库确认的场景） */
   persistNow: () => Promise<boolean>;
+  /** 单独把一张大表直写数据库（走 /api/tables，绕过全局 state body） */
+  pushOneTable: (table: DataTable) => Promise<boolean>;
   resetAll: () => void;
 };
 
@@ -1245,6 +1281,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         if (pushTimer.current) clearTimeout(pushTimer.current);
         return pushRemoteState(state);
       },
+      pushOneTable: (table) => pushOneTable(table),
       moveOrg: (id, dir) => {
         const target = state.orgs.find((o) => o.id === id);
         if (!target) return;
