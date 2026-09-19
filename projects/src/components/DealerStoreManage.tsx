@@ -8,7 +8,7 @@ import { resolvePerm, canOper } from '@/lib/perm';
 import { toast } from 'sonner';
 import type { AttrCategory, Dealer, HrAttribute, Store } from '@/lib/types';
 import { parseExcel } from '@/lib/parser';
-import DealerSourceModal, { classifyField, loadSrcCfg } from '@/components/DealerSourceModal';
+import DealerSourceModal, { classifyField, loadSrcCfg, srcColumns, srcValue, type SemKey } from '@/components/DealerSourceModal';
 
 type Kind = 'dealer' | 'store';
 
@@ -39,34 +39,13 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
 
   // 经销商数据源驱动：仅展示来源表勾选显示的字段列（未配置时为 null 走基础列兜底）
   const [srcTick, setSrcTick] = useState(0);
-  const srcCfg = useMemo(() => (kind === 'dealer' ? loadSrcCfg() : null), [kind, srcTick]);
+  const srcCfg = useMemo(() => (kind === 'dealer' || kind === 'store') ? loadSrcCfg(kind) : null, [kind, srcTick]);
   const srcCols = useMemo(() => {
-    if (kind !== 'dealer' || !srcCfg || !srcCfg.tableId) return null;
-    const t = state.tables.find((x) => x.id === srcCfg.tableId);
-    return srcCfg.order
-      .filter((k) => srcCfg.visible[k] !== false)
-      .map((k) => {
-        const f = t?.fields.find((x) => x.key === k);
-        return { key: k, sys: classifyField(k, srcCfg.renames[k] || f?.alias), label: srcCfg.renames[k] || f?.alias || k };
-      });
-  }, [kind, srcCfg, state.tables]);
-  const dealerColVal = (d: Dealer, c: NonNullable<typeof srcCols>[number]) => {
-    switch (c.sys) {
-      case 'code': return d.code || '-';
-      case 'name': return d.name || '-';
-      case 'contact': return d.contact || '-';
-      case 'phone': return d.phone || '-';
-      case 'province': return d.province || '-';
-      case 'city': return d.city || '-';
-      case 'district': return d.district || '-';
-      case 'address': return d.address || '-';
-      case 'password': return d.password || '-';
-      case 'birthday': return d.birthday || '-';
-      case 'level': return d.attrs?.['经销商等级'] || '-';
-      case 'category': return d.attrs?.['经销商分类'] || '-';
-      default: return d.attrs?.[c.label] ?? d.attrs?.[c.key] ?? '-';
-    }
-  };
+    if (kind !== 'dealer' && kind !== 'store') return null;
+    const cols = srcColumns(kind, srcCfg);
+    return cols.length ? cols : null;
+  }, [kind, srcCfg]);
+  const dealerColVal = (d: Dealer | Store, c: NonNullable<typeof srcCols>[number]) => srcValue(kind, d, c);
   const q = kw.trim().toLowerCase();
   const filtered = q ? list.filter((d) => (d.name || '').toLowerCase().includes(q) || (d.code || '').toLowerCase().includes(q)) : list;
   const unit = META[kind].unit;
@@ -208,10 +187,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
               <span className="rounded-full bg-gray-100 px-1.5 text-[11px] text-gray-500">{filtered.length}</span>
             </div>
             <div className="flex items-center gap-1.5">
-              {kind === 'store' && <button onClick={downloadTemplate} title="下载模板" className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><Download size={15} />模板</button>}
-              {kind === 'dealer' && <button onClick={() => setSrcOpen(true)} title="数据表驱动建档" className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1.5 text-sm text-white hover:bg-indigo-700"><Database size={15} />数据源</button>}
-              {kind === 'store' && <button onClick={() => fileRef.current?.click()} disabled={loading} title={`导入${unit}`} className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-60"><Upload size={15} />{loading ? '导入中…' : '导入'}</button>}
-              {kind === 'store' && can('create') && <button onClick={() => setDictForm({ item: null })} title={`新增${unit}`} className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><Plus size={15} />新增{unit}</button>}
+              <button onClick={() => setSrcOpen(true)} title="数据表驱动建档" className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1.5 text-sm text-white hover:bg-indigo-700"><Database size={15} />数据源</button>
             </div>
           </div>
           <input value={kw} onChange={(e) => setKw(e.target.value)} placeholder={`搜索${unit}名称 / 编号`} className="mt-2 w-full rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm outline-none focus:border-blue-400" />
@@ -324,7 +300,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
         </div>
       )}
 
-      <DealerSourceModal open={srcOpen} onClose={() => setSrcOpen(false)} onSynced={() => setSrcTick((x) => x + 1)} />
+      <DealerSourceModal kind={kind} open={srcOpen} onClose={() => setSrcOpen(false)} onSynced={() => setSrcTick((x) => x + 1)} />
     </div>
   );
 }

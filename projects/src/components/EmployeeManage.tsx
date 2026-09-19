@@ -1,12 +1,11 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
-import { Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { useMemo, useState } from 'react';
+import { Database, Pencil, Trash2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { toast } from 'sonner';
 import type { Employee } from '@/lib/types';
-import { parseExcel } from '@/lib/parser';
+import DealerSourceModal, { loadSrcCfg, srcColumns, srcValue } from '@/components/DealerSourceModal';
 
 export default function EmployeeManage({ onBack }: { onBack: () => void }) {
   const { state, addEmployee, updateEmployee, removeEmployee } = useStore();
@@ -14,6 +13,10 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
   const dealerMap = useMemo(() => new Map(dealers.map((d) => [d.id, d.name])), [dealers]);
   const storeMap = useMemo(() => new Map(stores.map((s) => [s.id, s.name])), [stores]);
   const empAttrs = useMemo(() => hrAttributes.filter((a) => (a.category ?? 'person') === 'employee'), [hrAttributes]);
+  const [srcOpen, setSrcOpen] = useState(false);
+  const [srcTick, setSrcTick] = useState(0);
+  const srcCfg = useMemo(() => loadSrcCfg('employee'), [srcTick]);
+  const srcCols = useMemo(() => { const c = srcColumns('employee', srcCfg); return c.length ? c : null; }, [srcCfg]);
   const [f, setF] = useState({ dealerId: '', storeId: '', code: '', name: '', post: '', onDuty: '', enabled: '' });
   const filtered = useMemo(() => employees.filter((e) =>
     (!f.dealerId || e.dealerId === f.dealerId) &&
@@ -28,10 +31,6 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
   const [editing, setEditing] = useState<Employee | null>(null);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<{ code: string; name: string; dealerId: string; storeId: string; post: string; onDuty: boolean; enabled: boolean; password: string; attrs: Record<string, string> }>({ code: '', name: '', dealerId: '', storeId: '', post: '', onDuty: true, enabled: true, password: '', attrs: {} });
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const blankForm = () => ({ code: '', name: '', dealerId: '', storeId: '', post: '', onDuty: true, enabled: true, password: '', attrs: {} });
-  const openNew = () => { setEditing(null); setForm(blankForm()); setOpen(true); };
   const openEdit = (e: Employee) => { setEditing(e); setForm({ code: e.code ?? '', name: e.name, dealerId: e.dealerId ?? '', storeId: e.storeId ?? '', post: e.post ?? '', onDuty: e.onDuty !== false, enabled: e.enabled !== false, password: e.password ?? '', attrs: e.attrs ?? {} }); setOpen(true); };
 
   const save = () => {
@@ -50,43 +49,6 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
 
   const del = (e: Employee) => { if (confirm(`确认删除员工「${e.name}」？`)) removeEmployee(e.id); };
 
-  const downloadTemplate = () => {
-    const aoa = [['员工编号', '员工姓名', '所属经销商', '所属店仓', '岗位', '是否在职', '是否可用', '初始密码'], ['E001', '张三', '经销商A', '店仓A', '店长', '是', '是', '123456']];
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, '员工模板');
-    XLSX.writeFile(wb, '员工档案模板.xlsx');
-  };
-
-  const handleImport = async (file: File) => {
-    try {
-      const { rows } = await parseExcel(file);
-      let ok = 0;
-      let skipped = 0;
-      const missing: string[] = [];
-      rows.forEach((r, idx) => {
-        const code = String(r['员工编号'] ?? '').trim();
-        const name = String(r['员工姓名'] ?? '').trim();
-        if (!code || !name) { skipped++; missing.push((r['员工姓名'] || r['员工编号'] || '?') + ''); return; }
-        const dealer = dealers.find((d) => d.name === String(r['所属经销商'] ?? '').trim());
-        const store = stores.find((s) => s.name === String(r['所属店仓'] ?? '').trim());
-        addEmployee({
-          code, name, sort: employees.length + idx,
-          dealerId: dealer?.id,
-          storeId: store?.id,
-          post: String(r['岗位'] ?? '').trim() || undefined,
-          onDuty: String(r['是否在职'] ?? '是') !== '否',
-          enabled: String(r['是否可用'] ?? '是') !== '否',
-          password: String(r['初始密码'] ?? '').trim() || undefined,
-        });
-        ok++;
-      });
-      toast.success(`导入成功 ${ok} 条` + (skipped ? `，跳过 ${skipped} 条缺失必填项：${missing.slice(0, 5).join('、')}` : ''));
-    } catch (err) {
-      toast.error('导入失败：' + (err instanceof Error ? err.message : '文件解析错误'));
-    }
-  };
-
   const input = 'w-full rounded border border-gray-300 px-2.5 py-1.5 text-sm';
   const label = 'mb-1 block text-xs font-medium text-gray-600';
   const th = 'border border-gray-200 px-3 py-2 text-left text-xs font-semibold text-gray-600 bg-gray-50';
@@ -98,10 +60,7 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
       <div className="flex items-center justify-between">
         <button onClick={onBack} className="rounded border border-gray-300 px-3 py-1 text-sm text-gray-600 hover:bg-gray-100">‹ 返回</button>
         <div className="flex items-center gap-2">
-          <button onClick={downloadTemplate} className="flex items-center gap-1 rounded border border-gray-300 px-3 py-1 text-sm text-gray-600 hover:bg-gray-100"><Download className="h-3.5 w-3.5" />模板</button>
-          <button onClick={() => fileRef.current?.click()} className="flex items-center gap-1 rounded border border-gray-300 px-3 py-1 text-sm text-gray-600 hover:bg-gray-100"><Upload className="h-3.5 w-3.5" />导入</button>
-          <input ref={fileRef} type="file" accept=".xlsx,.xls,.xlsm" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImport(f); e.target.value = ''; }} />
-          <button onClick={openNew} className="flex items-center gap-1 rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-700"><Plus className="h-3.5 w-3.5" />新增员工</button>
+          <button onClick={() => setSrcOpen(true)} title="数据表驱动建档" className="inline-flex items-center gap-1 rounded bg-indigo-600 px-3 py-1 text-sm text-white hover:bg-indigo-700"><Database className="h-3.5 w-3.5" />数据源</button>
         </div>
       </div>
 
@@ -146,13 +105,17 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
           <thead>
             <tr>
               <th className={th}>序号</th>
-              <th className={th}>员工编号</th>
-              <th className={th}>员工姓名</th>
-              <th className={th}>所属经销商</th>
-              <th className={th}>所属店仓</th>
-              <th className={th}>岗位</th>
-              <th className={th}>是否在职</th>
-              <th className={th}>是否可用</th>
+              {srcCols ? srcCols.map((c) => <th key={c.key} className={th}>{c.label}</th>) : (
+                <>
+                  <th className={th}>员工编号</th>
+                  <th className={th}>员工姓名</th>
+                  <th className={th}>所属经销商</th>
+                  <th className={th}>所属店仓</th>
+                  <th className={th}>岗位</th>
+                  <th className={th}>是否在职</th>
+                  <th className={th}>是否可用</th>
+                </>
+              )}
               <th className={th}>操作</th>
             </tr>
           </thead>
@@ -160,13 +123,17 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
             {filtered.map((e, i) => (
               <tr key={e.id} className="hover:bg-gray-50">
                 <td className={td}>{i + 1}</td>
-                <td className={td}>{e.code}</td>
-                <td className={td}>{e.name}</td>
-                <td className={td}>{dealerMap.get(e.dealerId ?? '') ?? '-'}</td>
-                <td className={td}>{storeMap.get(e.storeId ?? '') ?? '-'}</td>
-                <td className={td}>{e.attrs?.['岗位'] || e.post || '-'}</td>
-                <td className={td}>{e.onDuty !== false ? '在职' : '离职'}</td>
-                <td className={td}>{e.enabled !== false ? '可用' : '停用'}</td>
+                {srcCols ? srcCols.map((c) => <td key={c.key} className={td}>{srcValue('employee', e, c)}</td>) : (
+                  <>
+                    <td className={td}>{e.code}</td>
+                    <td className={td}>{e.name}</td>
+                    <td className={td}>{dealerMap.get(e.dealerId ?? '') ?? '-'}</td>
+                    <td className={td}>{storeMap.get(e.storeId ?? '') ?? '-'}</td>
+                    <td className={td}>{e.attrs?.['岗位'] || e.post || '-'}</td>
+                    <td className={td}>{e.onDuty !== false ? '在职' : '离职'}</td>
+                    <td className={td}>{e.enabled !== false ? '可用' : '停用'}</td>
+                  </>
+                )}
                 <td className={td}>
                   <div className="flex items-center gap-1">
                     <button onClick={() => openEdit(e)} className="rounded p-1 text-blue-600 hover:bg-blue-50"><Pencil className="h-4 w-4" /></button>
@@ -176,7 +143,7 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={9} className="px-3 py-8 text-center text-sm text-gray-400">暂无员工</td></tr>
+              <tr><td colSpan={srcCols ? srcCols.length + 2 : 9} className="px-3 py-8 text-center text-sm text-gray-400">暂无员工</td></tr>
             )}
           </tbody>
         </table>
@@ -208,6 +175,8 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
           </div>
         </div>
       )}
+
+      <DealerSourceModal kind="employee" open={srcOpen} onClose={() => setSrcOpen(false)} onSynced={() => setSrcTick((x) => x + 1)} />
     </div>
   );
 }
