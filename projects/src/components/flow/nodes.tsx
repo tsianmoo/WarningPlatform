@@ -3635,6 +3635,9 @@ const FilterNode = memo(({ id, data }: NodeProps) => {
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
+  const allEdges = useEdges();
+  const runtimeNodes = useMemo(() => allNodes as unknown as FlowNode[], [allNodes]);
+  const runtimeEdges = useMemo(() => allEdges as unknown as FlowEdge[], [allEdges]);
   const source = d.source ?? 'table';
   const nodeOutputs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'column');
 
@@ -3670,9 +3673,33 @@ const FilterNode = memo(({ id, data }: NodeProps) => {
     update({ conditions: conds.filter((_, j) => j !== i) });
   };
 
-  // 取某字段的去重候选值：数据表用全量行；节点结果无前端行数据时给空（运行时按上游结果）
+  // 取某字段的去重候选值：数据表用全量行；节点结果用上游节点运行输出行
+  const nodeDistinct = useMemo(() => {
+    if (source !== 'node' || !d.sourceNode) return new Map<string, string[]>();
+    try {
+      const outputs = evaluateFlow(runtimeNodes, runtimeEdges, tables);
+      const out = outputs[d.sourceNode];
+      const rows = out && out.rows ? out.rows : [];
+      const map = new Map<string, Set<string>>();
+      for (const r of rows) {
+        for (const key of Object.keys(r)) {
+          const v = r[key];
+          if (v != null && v !== '') {
+            if (!map.has(key)) map.set(key, new Set());
+            map.get(key)!.add(String(v));
+          }
+        }
+      }
+      const res = new Map<string, string[]>();
+      map.forEach((s, k) => res.set(k, [...s]));
+      return res;
+    } catch {
+      return new Map();
+    }
+  }, [source, d.sourceNode, runtimeNodes, runtimeEdges, tables]);
+
   const distinctValues = (fieldKey: string): string[] => {
-    if (source === 'node') return [];
+    if (source === 'node') return nodeDistinct.get(fieldKey) ?? [];
     if (!table) return [];
     const set = new Set<string>();
     const src = table.rows && table.rows.length ? table.rows : table.previewRows;
