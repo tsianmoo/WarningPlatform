@@ -502,6 +502,8 @@ interface DictRow {
   sales_area?: string | null;
   district?: string | null;
   allow_retail?: boolean | null;
+  province?: string | null;
+  city?: string | null;
 }
 
 function toDealer(r: DictRow): Dealer {
@@ -518,6 +520,9 @@ function toDealer(r: DictRow): Dealer {
     birthday: r.birthday ?? undefined,
     enabled: r.enabled ?? true,
     attrs: r.attrs ?? undefined,
+    province: r.province ?? undefined,
+    city: r.city ?? undefined,
+    district: r.district ?? undefined,
   };
 }
 
@@ -567,6 +572,9 @@ export async function syncDealers(dealers: Dealer[]): Promise<void> {
     birthday: d.birthday ?? null,
     enabled: d.enabled ?? true,
     attrs: d.attrs ?? null,
+    province: d.province ?? null,
+    city: d.city ?? null,
+    district: d.district ?? null,
   }));
   if (rows.length > 0) {
     const { error } = await client.from('dealers').upsert(rows, { onConflict: 'id' });
