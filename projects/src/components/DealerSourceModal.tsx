@@ -77,7 +77,7 @@ export function loadSrcCfg(): Cfg | null {
   }
 }
 
-export default function DealerSourceModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export default function DealerSourceModal({ open, onClose, onSynced }: { open: boolean; onClose: () => void; onSynced?: () => void }) {
   const { state, addDealer, updateDealer, flushNow } = useStore();
   const tables = state.tables;
   const dealers = state.dealers;
@@ -138,12 +138,14 @@ export default function DealerSourceModal({ open, onClose }: { open: boolean; on
     setCfg({ ...cfg, order });
   };
 
+  const persistCfg = () => localStorage.setItem(STORE_KEY, JSON.stringify({ tableId: cfg.tableId, order: cfg.order, visible: cfg.visible, renames: cfg.renames }));
   const saveCfg = () => {
-    localStorage.setItem(STORE_KEY, JSON.stringify({ tableId: cfg.tableId, order: cfg.order, visible: cfg.visible, renames: cfg.renames }));
+    persistCfg();
     toast.success('数据源配置已保存');
   };
 
   const syncBuild = async () => {
+    persistCfg(); // 同步建档前先落配置，避免勾选/重命名丢失
     if (!table) return toast.warning('请先选择数据来源表');
     if (!tableFields.length) return toast.warning('该数据表没有可配置的字段');
     const sem = autoSemantics(tableFields, cfg.renames);
@@ -194,8 +196,10 @@ export default function DealerSourceModal({ open, onClose }: { open: boolean; on
         else { addDealer(base); synced++; }
       }
       toast.success(`同步建档完成：新增 ${synced}、更新 ${updated}${skipped ? `、跳过 ${skipped} 行` : ''}`);
+      persistCfg();
       if (flushNow) flushNow();
       onClose();
+      onSynced?.();
     } finally {
       setSyncing(false);
     }

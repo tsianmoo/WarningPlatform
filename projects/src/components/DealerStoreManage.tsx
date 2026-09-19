@@ -38,15 +38,15 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
   const [srcOpen, setSrcOpen] = useState(false);
 
   // 经销商数据源驱动：仅展示来源表勾选显示的字段列（未配置时为 null 走基础列兜底）
-  const srcCfg = useMemo(() => (kind === 'dealer' ? loadSrcCfg() : null), [kind]);
+  const [srcTick, setSrcTick] = useState(0);
+  const srcCfg = useMemo(() => (kind === 'dealer' ? loadSrcCfg() : null), [kind, srcTick]);
   const srcCols = useMemo(() => {
     if (kind !== 'dealer' || !srcCfg || !srcCfg.tableId) return null;
     const t = state.tables.find((x) => x.id === srcCfg.tableId);
-    if (!t) return null;
     return srcCfg.order
       .filter((k) => srcCfg.visible[k] !== false)
       .map((k) => {
-        const f = t.fields.find((x) => x.key === k);
+        const f = t?.fields.find((x) => x.key === k);
         return { key: k, sys: classifyField(k, srcCfg.renames[k] || f?.alias), label: srcCfg.renames[k] || f?.alias || k };
       });
   }, [kind, srcCfg, state.tables]);
@@ -324,7 +324,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
         </div>
       )}
 
-      <DealerSourceModal open={srcOpen} onClose={() => setSrcOpen(false)} />
+      <DealerSourceModal open={srcOpen} onClose={() => setSrcOpen(false)} onSynced={() => setSrcTick((x) => x + 1)} />
     </div>
   );
 }
