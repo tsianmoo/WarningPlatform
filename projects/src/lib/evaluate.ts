@@ -2199,20 +2199,20 @@ function evalNode(
         return { title: '节点结果排序', columns: [], rows: [], note: '请选择上游节点结果。' };
       const srcCols = src.columns;
       const cfgs = Array.isArray(rs.cols) ? rs.cols : [];
-      // 全部字段列（顺序即表头顺序）；一律保留，不删除，show 控制是否输出
-      let all = cfgs.length
-        ? cfgs.slice()
-        : srcCols.map((k) => ({ key: k, label: k, type: 'auto' as const, show: true }));
-      // 补全上游新增/缺失的字段，保证"展示全部字段"
-      for (const k of srcCols) {
-        if (!all.some((c) => c.key === k)) all.push({ key: k, label: k, type: 'auto' as const, show: true });
-      }
-      // 输出列 = 勾选显示的列（保持面板顺序）；未显示的列不输出
-      const shown = all.filter((c) => c.show !== false && src.columns.includes(c.key));
+      // 全部字段列 = 上游真实输出列（权威基准，保证"展示全部字段"不缺失）；
+      // rowsort 已保存的 cols 仅作配置覆层（show/type/unit/decimals/…），按展示名 label||key 对齐。
+      const all: Array<{ key: string; label?: string; type?: string; show?: boolean; unit?: string; decimals?: number; suffix?: string; thousandSep?: boolean; sort?: string }> = srcCols.map((k) => {
+        const cfg = cfgs.find((c) => (c.label || c.key) === k);
+        return cfg
+          ? { ...cfg }
+          : { key: k, label: k, type: 'auto' as const, show: true };
+      });
+      // 输出列 = 勾选显示的列（保持上游顺序）；未显示的列不输出
+      const shown = all.filter((c) => c.show !== false);
       // 多级分组聚集：按输出列顺序逐列稳定排序，使首列值相同放一起，组内再按次列值相同聚集
       const sorted = src.rows.slice().sort((a, b) => {
         for (const c of shown) {
-          const k = c.key;
+          const k = c.label || c.key;
           const av = toNum(a[k]);
           const bv = toNum(b[k]);
           let cmp = 0;
@@ -2225,7 +2225,8 @@ function evalNode(
       const outRows = sorted.map((r) => {
         const o: Record<string, string> = {};
         for (const c of shown) {
-          o[c.label || c.key] = formatNumByConfig(r[c.key], c);
+          const k = c.label || c.key;
+          o[k] = formatNumByConfig(r[k], c);
         }
         return o;
       });
