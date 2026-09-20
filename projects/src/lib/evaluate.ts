@@ -2216,7 +2216,7 @@ function evalNode(
       const cfgs = Array.isArray(rs.cols) ? rs.cols : [];
       // 全部字段列 = 上游真实输出列（权威基准，保证"展示全部字段"不缺失）；
       // rowsort 已保存的 cols 仅作配置覆层（show/type/unit/decimals/…），按展示名 label||key 对齐。
-      const all: Array<{ key: string; label?: string; type?: string; show?: boolean; unit?: string; decimals?: number; suffix?: string; thousandSep?: boolean; unpivot?: boolean; sort?: string }> = srcCols.map((k) => {
+      const all: Array<{ key: string; label?: string; type?: string; show?: boolean; unit?: string; decimals?: number; suffix?: string; thousandSep?: boolean; unpivot?: boolean; pivotValue?: boolean; sort?: string }> = srcCols.map((k) => {
         const cfg = cfgs.find((c) => (c.label || c.key) === k);
         return cfg
           ? { ...cfg }
@@ -2237,49 +2237,64 @@ function evalNode(
         }
         return 0;
       });
-      // 列转行（Unpivot）：勾选为"值字段"的列纵向展开成行，配「指标名 + 值」两列；
-      // 非值字段列原样保留。有无转行字段决定是否启用。
-      const valueCols = shown.filter((c) => c.unpivot === true);
-      const fixedCols = shown.filter((c) => c.unpivot !== true);
-      const pivotName = rs.unpivotLabel || '指标';
-      const pivotVal = rs.unpivotValueLabel || '值';
+      // 行转列（Pivot）：勾选为"行转列字段"（unpivot）的列，其去重值组合成横向表头列，原列不再保留；
+      // 其余字段原样保留为行分组；由唯一「值字段」（pivotValue）填充表头下数值。
+      const pivotCols = shown.filter((c) => c.unpivot === true);
+      const fixedCols = shown.filter((c) => c.unpivot !== true && c.pivotValue !== true);
+      const valCfg = shown.find((c) => c.pivotValue === true) || fixedCols.find((c) => /数字|库存|金额|求和|数量|sales|qty|val|amount|sum/i.test(c.key || ''));
+      const fixedKey = (r: Record<string, unknown>, c: { label?: string; key?: string }) => r[(c.label || c.key) as string] ?? '';
       let outRows: Array<Record<string, string>>;
       let outCols: string[];
-      if (valueCols.length) {
-        outCols = [...fixedCols.map((c) => c.label || c.key), pivotName, pivotVal];
-        outRows = [];
+      if (pivotCols.length) {
+        // 收集所有行该行转列字段的组合值（保持出现顺序去重），每个组合一列表头
+        const combos: string[] = [];
         for (const r of sorted) {
-          for (const c of valueCols) {
-            const o: Record<string, string> = {};
-            for (const f of fixedCols) {
-              const k = f.label || f.key;
-              o[k] = formatNumByConfig(r[k], f);
-            }
-            o[pivotName] = c.label || c.key;
-            o[pivotVal] = formatNumByConfig(r[c.label || c.key], c);
-            outRows.push(o);
-          }
+          const combo = pivotCols.map((c) => String(fixedKey(r, c) ?? '')).join('·');
+          if (!combos.includes(combo)) combos.push(combo);
         }
-      } else {
-        outCols = shown.map((c) => c.label || c.key);
-        outRows = sorted.map((r) => {
-          const o: Record<string, string> = {};
-          for (const c of shown) {
-            const k = c.label || c.key;
-            o[k] = formatNumByConfig(r[k], c);
+        const valKey = valCfg ? valCfg.label || valCfg.key : '';
+        // 固定列各自成列；每个固定组一行，各组合列填值字段数值
+        const outHead: string[] = [...fixedCols.map((c) => c.label || c.key), ...combos];
+        const groupKey = (r: Record<string, unknown>) => fixedCols.map((c) => String(fixedKey(r, c) ?? '')).join('\u0001');
+        const groups = new Map<string, Record<string, string>>();
+        for (const r of sorted) {
+          const gk = groupKey(r);
+          let row = groups.get(gk);
+          if (!row) {
+            row = {};
+            for (const c of fixedCols) row[c.label || c.key] = String(fixedKey(r, c) ?? '');
+            groups.set(gk, row);
           }
-          return o;
-        });
+          const combo = pivotCols.map((c) => String(fixedKey(r, c) ?? '')).join('·');
+          const raw = valKey ? r[valKey] : pivotCols.length === 1 ? r[pivotCols[0].label || pivotCols[0].key] : null;
+          row[combo] = formatNumByConfig(raw, valCfg || pivotCols[0]);
+        }
+        outCols = outHead;
+        outRows = [...groups.values()];
+        return {
+          title: '节点结果排序',
+          columns: outCols,
+          rows: cap(outRows),
+          shape: 'table',
+          note: `来自「${src.title || '上游节点'}」共 ${src.rows.length} 行；已按「${pivotCols.map((c) => c.label || c.key).join('/')}」行转列，去重出 ${combos.length} 个横向表头列（值字段：${valCfg ? valCfg.label || valCfg.key : '自动' + (pivotCols[0].label || pivotCols[0].key)}）。`,
+          allCols: outCols,
+        };
       }
+      outCols = shown.map((c) => c.label || c.key);
+      outRows = sorted.map((r) => {
+        const o: Record<string, string> = {};
+        for (const c of shown) {
+          const k = c.label || c.key;
+          o[k] = formatNumByConfig(r[k], c);
+        }
+        return o;
+      });
       return {
         title: '节点结果排序',
         columns: outCols,
         rows: cap(outRows),
         shape: 'table',
-        note:
-          valueCols.length
-            ? `来自「${src.title || '上游节点'}」共 ${src.rows.length} 行；已将 ${valueCols.length} 个值字段列转行为「${pivotName} + ${pivotVal}」${src.rows.length * valueCols.length} 行（非值字段列原样保留）。`
-            : `来自「${src.title || '上游节点'}」共 ${src.rows.length} 行，输出 ${outCols.length} 列；按列顺序分组聚集展示（首列相同值归并，组内按后续列归并）。`,
+        note: `来自「${src.title || '上游节点'}」共 ${src.rows.length} 行，输出 ${outCols.length} 列；按列顺序分组聚集展示（首列相同值归并，组内按后续列归并）。`,
         allCols: outCols,
       };
     }
