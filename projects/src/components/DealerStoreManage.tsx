@@ -36,7 +36,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [srcOpen, setSrcOpen] = useState(false);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(0);
 
   // 经销商数据源驱动：仅展示来源表勾选显示的字段列（未配置时为 null 走基础列兜底）
