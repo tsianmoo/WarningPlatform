@@ -803,39 +803,44 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
     case 'diff':
       return [{ key: s(data.baseField) || 'key', label: s(data.baseFieldLabel) || '结果' }];
     case 'filljoin': {
+      // 输出列与 evaluate filljoin 的 columns 保持一致：全集键列 + 全集返回列（label 即列名）
+      // + 事实列（与前者重名时加序号去重，如 商品→商品1），这样下游 rowsort 能按真实列名补全
       const tag: ColOpt[] = [];
-      const pushUniq = (c: ColOpt) => { if (!tag.some((t) => t.key === c.key)) tag.push(c); };
-      // 匹配键（全集侧）+ 主键，用于去重全额带出的列
       const uniKey = s(data.universeField);
       const extras = Array.isArray(data.extraKeys) ? (data.extraKeys as Record<string, unknown>[]) : [];
       const uniKeySet = new Set([uniKey, ...extras.map((k) => s(k.universeField)).filter(Boolean)]);
-      // 1) 全集主键列（label 优先取全集字段展示名）
-      if (uniKey) pushUniq({ key: uniKey, label: s(data.universeFieldLabel) || uniKey });
-      // 2) 追加匹配键（复合键）—— 全集侧标签
+      const usedLabs = new Set<string>();
+      const pushKey = (key: string, lab: string) => {
+        if (!tag.some((t) => t.key === key)) {
+          tag.push({ key, label: lab });
+          usedLabs.add(lab);
+        }
+      };
+      // 1) 全集主键列 + 复合键（全集侧标签）
+      if (uniKey) pushKey(uniKey, s(data.universeFieldLabel) || uniKey);
       for (const k of extras) {
         const uf = s(k.universeField);
-        if (!uf) continue;
-        pushUniq({ key: uf, label: s(k.universeFieldLabel) || uf });
+        if (uf) pushKey(uf, s(k.universeFieldLabel) || uf);
       }
-      // 3) 全集来源其余业务列（与 evaluate filljoin 输出对齐：默认带回全集全部非键列，供下游选字段）
+      // 2) 全集来源其余非键业务列
       if (s(data.universeSource) === 'node') {
         const uniNode = s(data.universeNodeId);
-        if (uniNode) for (const c of inferNodeCols(allNodes, tables, uniNode)) if (!uniKeySet.has(c.key)) pushUniq(c);
+        if (uniNode) for (const c of inferNodeCols(allNodes, tables, uniNode)) if (!uniKeySet.has(c.key)) pushKey(c.key, c.label || c.key);
       } else {
         const ut = tables.find((x) => x.id === s(data.universeTableId));
-        if (ut) for (const f of ut.fields) if (!uniKeySet.has(f.key)) pushUniq({ key: f.key, label: f.alias || f.key });
+        if (ut) for (const f of ut.fields) if (!uniKeySet.has(f.key)) pushKey(f.key, f.alias || f.key);
       }
-      // 4) 全集额外返回列（如把"店铺成交"命名为"数量"）—— 用命名后的列名作为输出 key
+      // 3) 全集额外返回列（重命名后列名即输出 key/label）
       const retFields: ColOpt[] = (Array.isArray(data.universeReturnFields) ? data.universeReturnFields as Record<string, unknown>[] : [])
         .filter((f) => s(f.key) && !uniKeySet.has(s(f.key)))
         .map((f) => ({ key: s(f.label) || s(f.key), label: s(f.label) || s(f.key) }));
-      for (const rf of retFields) pushUniq(rf);
+      for (const rf of retFields) pushKey(rf.key, rf.label);
       const retField = s(data.universeReturnField);
       if (retField) {
         const retLabel = s(data.universeReturnLabel) || retField;
-        pushUniq({ key: retLabel, label: retLabel });
+        pushKey(retLabel, retLabel);
       }
-      // 4) 事实来源带来的列（按事实匹配键过滤，且只带"事实带回指标列"）
+      // 4) 事实来源列：过滤匹配键与"事实带回列"后，与既有列名去重（加序号）
       const factSrc = s(data.factSource);
       const factNode = s(data.factNode);
       const factTid = s(data.factTableId);
@@ -849,13 +854,20 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
         if (factRet && key !== factRet && key !== s(data.factReturnLabel)) return false;
         return true;
       };
-      if (factSrc === 'node' && factNode) {
-        for (const c of inferNodeCols(allNodes, tables, factNode)) {
-          if (allowFact(c.key)) pushUniq(c);
+      const factCols: ColOpt[] = factSrc === 'node' && factNode
+        ? inferNodeCols(allNodes, tables, factNode)
+        : tables.find((x) => x.id === factTid)?.fields.map((f) => ({ key: f.key, label: f.alias || f.key })) ?? [];
+      const labCounter = new Map<string, number>();
+      for (const c of factCols) {
+        if (!allowFact(c.key)) continue;
+        let lab = c.label || c.key;
+        let n = labCounter.get(lab) ?? 0;
+        while (usedLabs.has(lab) || labCounter.has(lab)) {
+          n += 1;
+          lab = `${c.label || c.key}${n}`;
         }
-      } else if (factTid) {
-        const t = tables.find((x) => x.id === factTid);
-        if (t) for (const f of t.fields) if (allowFact(f.key)) pushUniq({ key: f.key, label: f.alias || f.key });
+        labCounter.set(lab, n);
+        pushKey(lab, lab);
       }
       return tag;
     }
@@ -5601,7 +5613,7 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
       sourceNode: nid,
       sourceNodeLabel: label,
       cols: colsOf.map((c) => {
-        const exist = cols.find((x) => x && x.key === c.key);
+        const exist = cols.find((x) => x && (x.key === c.key || (x.label && c.label && x.label === c.label)));
         return exist ?? { key: c.key, label: c.label || c.key, type: 'auto', show: true };
       }),
     } as Partial<RowSortNodeData>);
@@ -5612,19 +5624,31 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
     const colsOf = inferNodeCols(allNodes, tables, d.sourceNode);
     update({
       cols: colsOf.map((c) => {
-        const exist = cols.find((x) => x && x.key === c.key);
+        const exist = cols.find((x) => x && (x.key === c.key || (x.label && c.label && x.label === c.label)));
         return exist ?? { key: c.key, label: c.label || c.key, type: 'auto', show: true };
       }),
     } as Partial<RowSortNodeData>);
   };
   const setCol = (i: number, patch: Partial<RowSortCol>) => {
-    const arr = cols.slice();
+    const arr = mergeCols().slice();
     arr[i] = { ...arr[i], ...patch };
     update({ cols: arr } as Partial<RowSortNodeData>);
   };
-  // 展示列在前、未展示沉底的显示列表；索引基于该列表，改配置时映射回原 cols 下标
-  const displayCols = [...cols].sort((a, b) => Number(a.show === false) - Number(b.show === false));
-  const idxOf = (colIdx: number) => cols.indexOf(displayCols[colIdx]);
+  // 权威显示列表 = 已存 cols（保留顺序与显示/格式配置）+ 上游缺失字段追加到末尾；
+  // 保证字段齐全（含 filljoin/linkjoin 去重列如 商品1 等）且不破坏用户排版；无上游时回退已存 cols
+  const mergeCols = (): RowSortCol[] => {
+    if (!d.sourceNode || !upCols.length) return cols;
+    const keyOf = (c: RowSortCol) => (c.label != null && c.label !== '' ? c.label : c.key!) ?? '';
+    const seen = new Set(cols.map(keyOf));
+    const missing = upCols
+      .filter((c) => !seen.has(c.label || c.key))
+      .map((c) => ({ key: c.key, label: c.label || c.key, type: 'auto', show: true } as RowSortCol));
+    return [...cols, ...missing];
+  };
+  const merged = mergeCols();
+  // 展示列在前、未展示沉底的显示列表；索引基于该列表，改配置时映射回 merged 下标
+  const displayCols = [...merged].sort((a, b) => Number(a.show === false) - Number(b.show === false));
+  const idxOf = (colIdx: number) => merged.indexOf(displayCols[colIdx]);
   const moveCol = (i: number, dir: -1 | 1) => {
     const j = i + dir;
     if (j < 0 || j >= displayCols.length) return;
@@ -5633,7 +5657,7 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
     arr.splice(j, 0, it);
     update({ cols: arr } as Partial<RowSortNodeData>);
   };
-  const fmt = fmtFor != null ? (cols[fmtFor] ?? null) : null;
+  const fmt = fmtFor != null ? (merged[fmtFor] ?? null) : null;
   const exampleVal = 21000.04;
   const fmtCls = (on: boolean) => `rounded px-1.5 py-0.5 text-[10px] ring-1 transition ${on ? 'bg-sky-600 text-white ring-sky-600' : 'bg-white text-gray-600 ring-gray-200 hover:bg-gray-100'}`;
   return (
