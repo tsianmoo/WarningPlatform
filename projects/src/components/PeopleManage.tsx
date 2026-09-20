@@ -76,21 +76,6 @@ export function PeopleManage() {
 
   return (
     <div className="flex h-full flex-col overflow-y-auto px-8 pb-10 pt-6">
-      <div className="mb-6 flex items-center justify-end">
-        {can('create') && (
-        <button
-          onClick={() => {
-            setEditing(null);
-            setShowEditor(true);
-          }}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-700"
-        >
-          <Plus size={15} />
-          新增人员
-        </button>
-        )}
-      </div>
-
       <div className="grid gap-6 grid-cols-[280px_1fr]">
         {/* 左侧：部门（组织）列表 */}
         <div className="rounded-xl border border-gray-200 bg-white p-2">
@@ -210,9 +195,21 @@ export function PeopleManage() {
             {hasFilter && (
               <button
                 onClick={() => { setFName(''); setFUsername(''); setFPhone(''); setFTitle(''); setFPost(''); setFScope(''); }}
-                className="ml-auto rounded-md border border-gray-200 px-2.5 py-1.5 text-[11px] text-gray-500 hover:bg-white"
+                className="rounded-md border border-gray-200 px-2.5 py-1.5 text-[11px] text-gray-500 hover:bg-white"
               >
                 重置
+              </button>
+            )}
+            {can('create') && (
+              <button
+                onClick={() => {
+                  setEditing(null);
+                  setShowEditor(true);
+                }}
+                className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-700"
+              >
+                <Plus size={15} />
+                新增用户
               </button>
             )}
           </div>
@@ -223,7 +220,7 @@ export function PeopleManage() {
           {shown.length === 0 && (
             <div className="flex h-[300px] flex-col items-center justify-center rounded-lg border border-dashed border-gray-200 text-sm text-gray-400">
               <Users size={28} strokeWidth={1.4} className="mb-3 text-gray-300" />
-              暂无人员，点击右上角「新增人员」添加
+              暂无用户，点击右上角「新增用户」添加
             </div>
           )}
           <div className="space-y-2">
@@ -311,7 +308,7 @@ export function PeopleManage() {
           onSave={(p) => {
             if (editing) updatePerson(p);
             else addPerson(p);
-            toast.success(editing ? '已更新人员' : '已新增人员');
+            toast.success(editing ? '已更新用户' : '已新增用户');
             setShowEditor(false);
           }}
         />
@@ -440,7 +437,7 @@ function PersonEditor({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div className="flex max-h-[calc(100vh-32px)] w-full max-w-5xl flex-col rounded-xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-          <h3 className="text-base font-semibold text-gray-900">{initial ? '编辑人员' : '新增人员'}</h3>
+          <h3 className="text-base font-semibold text-gray-900">{initial ? '编辑用户' : '新增用户'}</h3>
         </div>
 
         <div className="grid flex-1 grid-cols-1 gap-3 overflow-y-auto px-6 py-4">
