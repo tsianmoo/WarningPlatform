@@ -858,12 +858,14 @@ export interface RowSortCol {
   showUnit?: boolean;
   /** 是否在结果中显示（勾选控制；未显示的列在面板中沉底） */
   show?: boolean;
-  /** 是否作为行转列（Pivot）字段：勾选后该列值与其它行转列字段的值组合成横向表头列（原列不再保留） */
+  /** 是否作为行转列（Pivot）字段：勾选后该列不同取值与其它行转列字段的取值组合成横向表头列，同时原列仍保留展示 */
   unpivot?: boolean;
   /** 该字段是否为「值字段」：行转列/普通视图下填充数值的列（多字段行转列时唯一值列） */
   pivotValue?: boolean;
   /** 行转列（Pivot）表头的横排组合顺序（由「转」弹窗调整；缺省时按上游出现顺序） */
   pivotOrder?: string[];
+  /** 行转列表头各取值对应的自定义显示名（key 为该字段的去重取值，value 为展示名） */
+  pivotLabels?: Record<string, string>;
 }
 
 /** 节点结果排序/格式化 节点数据 */

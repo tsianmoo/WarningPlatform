@@ -2255,16 +2255,18 @@ function evalNode(
       // 行转列（Pivot）：勾选为"行转列字段"（unpivot）的列，其去重值组合成横向表头列，原列不再保留；
       // 其余字段原样保留为行分组；由唯一「值字段」（pivotValue）填充表头下数值。
       const pivotCols = shown.filter((c) => c.unpivot === true);
-      const fixedCols = shown.filter((c) => c.unpivot !== true && c.pivotValue !== true);
+      const fixedCols = shown.filter((c) => c.pivotValue !== true);
       const valCfg = shown.find((c) => c.pivotValue === true) || fixedCols.find((c) => /数字|库存|金额|求和|数量|sales|qty|val|amount|sum/i.test(c.key || ''));
       const fixedKey = (r: Record<string, unknown>, c: { label?: string; key?: string }) => r[(c.label || c.key) as string] ?? '';
       let outRows: Array<Record<string, string>>;
       let outCols: string[];
       if (pivotCols.length) {
+        const pFirst = pivotCols[0] as { pivotLabels?: Record<string, string> } | undefined;
+        const dispName = (v: string) => { const l = pFirst && pFirst.pivotLabels ? pFirst.pivotLabels[v] : undefined; return l || v; };
         // 收集所有行该行转列字段的组合值（保持出现顺序去重），每个组合一列表头
         const combos: string[] = [];
         for (const r of sorted) {
-          const combo = pivotCols.map((c) => String(fixedKey(r, c) ?? '')).join('·');
+          const combo = pivotCols.map((c) => dispName(String(fixedKey(r, c) ?? ''))).join('·');
           if (!combos.includes(combo)) combos.push(combo);
         }
         // 若有已保存的横向顺序，按其重排（未在顺序中的组合追加到末尾）
@@ -2293,7 +2295,7 @@ function evalNode(
             for (const c of fixedCols) row[c.label || c.key] = String(fixedKey(r, c) ?? '');
             groups.set(gk, row);
           }
-          const combo = pivotCols.map((c) => String(fixedKey(r, c) ?? '')).join('·');
+          const combo = pivotCols.map((c) => dispName(String(fixedKey(r, c) ?? ''))).join('·');
           const raw = valKey ? r[valKey] : pivotCols.length === 1 ? r[pivotCols[0].label || pivotCols[0].key] : null;
           row[combo] = formatNumByConfig(raw, valCfg || pivotCols[0]);
         }

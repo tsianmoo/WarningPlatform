@@ -5955,6 +5955,13 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
                 : pivotDistinct;
               const shown = order.length ? order : (pivotDistinct.length ? pivotDistinct : ['（暂无数据）']);
               const setOrder = (arr: string[]) => setCol(pivotSortIdx, { pivotOrder: arr });
+              const curLabels = (cur.pivotLabels && typeof cur.pivotLabels === 'object' ? cur.pivotLabels : {}) as Record<string, string>;
+              const setLabel = (orig: string, name: string) => {
+                const next = { ...curLabels };
+                if (name.trim()) next[orig] = name.trim();
+                else delete next[orig];
+                setCol(pivotSortIdx, { pivotLabels: next });
+              };
               const move = (idx: number, dir: -1 | 1) => {
                 const j = idx + dir;
                 if (j < 0 || j >= shown.length) return;
@@ -5968,7 +5975,13 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
                   {shown.map((v, i) => (
                     <div key={`${v}-${i}`} className="flex items-center gap-1 rounded-md border border-gray-100 bg-gray-50/60 px-2 py-1">
                       <span className="w-5 text-center text-[10px] text-gray-400">{i + 1}</span>
-                      <span className="flex-1 truncate text-xs text-gray-700">{v}</span>
+                      <input
+                        value={curLabels[v] ?? ''}
+                        placeholder={v}
+                        onChange={(e) => setLabel(v, e.target.value)}
+                        title={`原值：${v}`}
+                        className="flex-1 min-w-0 rounded border border-transparent bg-transparent px-1 text-xs text-gray-700 focus:border-sky-300 focus:bg-white focus:outline-none"
+                      />
                       <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="text-[10px] text-gray-400 hover:text-sky-600 disabled:opacity-30" title="左移">◀</button>
                       <button type="button" onClick={() => move(i, 1)} disabled={i === shown.length - 1} className="text-[10px] text-gray-400 hover:text-sky-600 disabled:opacity-30" title="右移">▶</button>
                     </div>
