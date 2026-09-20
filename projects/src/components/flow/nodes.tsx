@@ -5335,15 +5335,15 @@ const LinkJoinNode = memo(function LinkJoinNode({ id, data }: NodeProps) {
     srcSource === 'node'
       ? (d.srcNode ? inferNodeCols(allNodes, tables, d.srcNode).map((c) => c.label || c.key) : [])
       : (srcTable?.fields.map((f) => f.alias || f.key) ?? []);
-  // 同名对同名：匹配键候选只需源表存在同名键即可在两侧使用；目标列候选取源表字段
-  const srcFieldSet = new Set(srcFields);
-  const matchCandidates = Array.from(new Set([...mainFields, ...srcFields])).filter((f) => srcFieldSet.has(f));
-  const keys = Array.isArray(d.matchKeys) ? d.matchKeys : [];
+  const keys = (Array.isArray(d.matchKeys) ? d.matchKeys : []).map((k) => ({
+    mainField: (((k as { mainField?: string }).mainField) ?? ((k as { field?: string }).field ?? '')),
+    srcField: (((k as { srcField?: string }).srcField) ?? ((k as { field?: string }).field ?? '')),
+  }));
   const addFields = Array.isArray(d.addFields) ? d.addFields : [];
 
-  const setKeyField = (i: number, field: string) => {
-    const arr = keys.slice();
-    arr[i] = { field };
+  const setKey = (i: number, side: 'main' | 'src', val: string) => {
+    const arr = keys.map((k) => ({ ...k }));
+    arr[i] = side === 'main' ? { ...arr[i], mainField: val } : { ...arr[i], srcField: val };
     update({ matchKeys: arr } as Partial<LinkJoinNodeData>);
   };
   const removeKey = (i: number) => {
@@ -5435,13 +5435,10 @@ const LinkJoinNode = memo(function LinkJoinNode({ id, data }: NodeProps) {
 
         <div className="rounded-md border border-gray-100 bg-gray-50/60 p-1.5">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-gray-600">③ 匹配方式（同名对同名）</span>
+            <span className="text-[11px] font-medium text-gray-600">③ 匹配方式（主表字段 ↔ 源表字段）</span>
             <button
               type="button"
-              onClick={() => {
-                const cand = matchCandidates.find((c) => !keys.some((k) => k.field === c)) ?? matchCandidates[0] ?? '';
-                if (cand) update({ matchKeys: [...keys, { field: cand }] } as Partial<LinkJoinNodeData>);
-              }}
+              onClick={() => update({ matchKeys: [...keys, { mainField: '', srcField: '' }] } as Partial<LinkJoinNodeData>)}
               className="text-[10px] text-purple-600 hover:text-purple-800"
             >
               + 添加匹配键
@@ -5454,17 +5451,34 @@ const LinkJoinNode = memo(function LinkJoinNode({ id, data }: NodeProps) {
           )}
           {keys.map((k, i) => (
             <div key={i} className="mt-1 flex items-center gap-1">
-              <select value={k.field} onChange={(e) => setKeyField(i, e.target.value)} className={`${inputCls} flex-1`}>
-                <option value="">选择同名键字段…</option>
-                {matchCandidates.map((f) => (
+              <select
+                value={k.mainField}
+                onChange={(e) => setKey(i, 'main', e.target.value)}
+                className={`${inputCls} flex-1`}
+                title="主表字段"
+              >
+                <option value="">主表字段…</option>
+                {mainFields.filter(Boolean).map((f) => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+              <span className="text-[10px] text-gray-400">↔</span>
+              <select
+                value={k.srcField}
+                onChange={(e) => setKey(i, 'src', e.target.value)}
+                className={`${inputCls} flex-1`}
+                title="源表字段"
+              >
+                <option value="">源表字段…</option>
+                {srcFields.filter(Boolean).map((f) => (
                   <option key={f} value={f}>{f}</option>
                 ))}
               </select>
               <button type="button" onClick={() => removeKey(i)} className="text-[10px] text-red-400 hover:text-red-600">删</button>
             </div>
           ))}
-          {keys.length > 0 && matchCandidates.length === 0 && (
-            <div className="mt-1 text-[10px] text-gray-400">主表与源表暂无同名字段，请先选择主表与源表。</div>
+          {(mainFields.length === 0 || srcFields.length === 0) && (
+            <div className="mt-1 text-[10px] text-gray-400">请先分别选择主表与源表，再为主表字段 ↔ 源表字段建立匹配。</div>
           )}
         </div>
 

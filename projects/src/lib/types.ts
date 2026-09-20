@@ -684,8 +684,8 @@ export interface LinkJoinNodeData {
   /** 源表为节点结果时的节点引用 */
   srcNode?: string;
   srcNodeLabel?: string;
-  /** 匹配键对：主表字段与源表字段同名（同名对同名），可配多对；为空=不匹配，源表当作单值逐行填充 */
-  matchKeys?: Array<{ field: string; }>;
+  /** 匹配键对：主表字段 ↔ 源表字段各自选择，可配多对；为空=不匹配，源表当作单值逐行填充 */
+  matchKeys?: Array<{ mainField?: string; srcField?: string }>;
   /** 从源表取哪些列追加到主表 */
   addFields?: Array<{ key: string; label: string }>;
   /** 结果命名（可选备注） */

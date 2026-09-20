@@ -1122,7 +1122,11 @@ function evalNode(
       if (!main || !src) {
         return { title: '其他表添加列', columns: [], rows: [], shape: 'table', note: '请分别选择主表与源表（数据表或节点结果），并配置匹配键与要添加的列。' };
       }
-      const keys = (Array.isArray(jd.matchKeys) ? jd.matchKeys : []).map((k) => k.field).filter((x) => x && x.trim());
+      // 匹配键对：主表字段(mainField) ↔ 源表字段(srcField)；兼容旧数据 {field}（同名匹配）
+      const pairs = (Array.isArray(jd.matchKeys) ? jd.matchKeys : [])
+        .map((k) => ({ m: (k.mainField || (k as { field?: string }).field || '').trim(), s: (k.srcField || (k as { field?: string }).field || '').trim() }))
+        .filter((p) => p.m && p.s);
+      const keys = pairs.map((p) => `${p.m}↔${p.s}`);
       const addFields = (Array.isArray(jd.addFields) ? jd.addFields : []).filter((f) => f && f.key);
       const mainRows = allRows(main.t);
       const srcRows = allRows(src.t);
@@ -1155,19 +1159,20 @@ function evalNode(
           note: `无匹配键：取源表「${src.from}」首行字段值逐行补入`,
         };
       }
-      const keyOf = (row: Record<string, unknown>) => keys.map((k) => String(row[k] ?? '').trim()).join('␟');
+      const keyOf = (row: Record<string, unknown>, pickKey: (p: { m: string; s: string }) => string) =>
+        pairs.map(pickKey).map((k) => String(row[k] ?? '').trim()).join('␟');
       const index = new Map<string, Record<string, unknown>>();
       for (const s of srcRows) {
-        const kk = keyOf(s);
+        const kk = keyOf(s, (p) => p.s);
         if (!index.has(kk)) index.set(kk, s);
       }
       const rows = mainRows.map((r) => {
         const o = { ...r } as Record<string, string | number>;
-        const hit = index.get(keyOf(r));
+        const hit = index.get(keyOf(r, (p) => p.m));
         for (const f of addFields) o[f.label || f.key] = pick(hit, f);
         return o;
       });
-      const matched = rows.filter((_, i) => index.has(keyOf(mainRows[i]))).length;
+      const matched = rows.filter((_, i) => index.has(keyOf(mainRows[i], (p) => p.m))).length;
       return {
         title: '其他表添加列',
         columns: joinColumns,
