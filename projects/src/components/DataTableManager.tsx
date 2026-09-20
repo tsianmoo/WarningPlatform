@@ -51,7 +51,7 @@ const TYPE_LABEL: Record<FieldType, string> = {
 };
 
 export function DataTableManager() {
-  const { state, addTable, updateTable, removeTable, setActiveTable, renameField, setFieldType, addTableGroup, updateTableGroup, removeTableGroup } = useStore();
+  const { state, addTable, updateTable, removeTable, saveTableRows, setActiveTable, renameField, setFieldType, addTableGroup, updateTableGroup, removeTableGroup } = useStore();
   const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
   const me = state.persons.find((p) => p.name === meName) ?? null;
   const perm = resolvePerm(me, state.config);
@@ -92,7 +92,8 @@ export function DataTableManager() {
       if (!next) return;
       const table: DataTable = { id: uid('tbl'), createdAt: Date.now(), group, ...next };
       addTable(table);
-      toast.success(`已导入「${table.name}」，共 ${table.rowCount} 行`);
+      const ok = await saveTableRows(table.id, (table.rows ?? []) as DataTable['rows']);
+      toast.success(ok ? `已导入「${table.name}」，共 ${table.rowCount} 行` : `已导入「${table.name}」，共 ${table.rowCount} 行（行数据云端写入失败）`);
     } catch (e) {
       toast.error('数据解析失败，请检查文件格式');
       console.error(e);
@@ -135,6 +136,7 @@ export function DataTableManager() {
       rows: next.rows,
       prev: { fileName: t.fileName, rowCount: t.rowCount, fields: t.fields, previewRows: t.previewRows, rows: t.rows },
     });
+    void saveTableRows(t.id, (next.rows ?? []) as DataTable['rows']);
     setOpenUpdate(null);
     toast.success(`已覆盖更新「${t.name}」，如需还原可点击“返回上一步”`);
   };
@@ -149,6 +151,7 @@ export function DataTableManager() {
       rows: t.prev.rows ?? [],
       prev: undefined,
     });
+    void saveTableRows(t.id, (t.prev.rows ?? []) as DataTable['rows']);
     toast.success(`已返回上一步，恢复「${t.name}」更新前的数据`);
   };
 

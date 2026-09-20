@@ -1,4 +1,4 @@
-import { pgTable, serial, timestamp, varchar, bigint, jsonb, index, text } from "drizzle-orm/pg-core"
+import { pgTable, serial, timestamp, varchar, bigint, jsonb, index, text, primaryKey } from "drizzle-orm/pg-core"
 
 // 系统健康检查表（禁止删除/修改）
 export const healthCheck = pgTable("health_check", {
@@ -27,6 +27,22 @@ export const dataTables = pgTable(
 	(table) => [
 		index("data_tables_data_gin").using("gin", table.data),
 		index("data_tables_created_idx").on(table.created_at),
+	]
+);
+
+// 上传数据表的行拆解存储：一数据行 = 一条记录（单 jsonb），
+// 用于支撑超大表（>20万行），避免整表塞进 data_tables.data 单 jsonb 超限。
+export const dataTablesRow = pgTable(
+	"data_tables_row",
+	{
+		id: varchar("id", { length: 64 }).notNull(),
+		seq: bigint("seq", { mode: "number" }).notNull(),
+		data: jsonb("data").notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.id, table.seq] }),
+		index("data_tables_row_id_idx").on(table.id, table.seq),
+		index("data_tables_row_id_gin").using("gin", table.data),
 	]
 );
 

@@ -416,8 +416,17 @@ export function buildAlertsForRule(
 
 const LS_KEY = 'alert-platform-v1';
 const STATE_API = '/api/state';
+const ROWS_API = (id: string) => `/api/tables/${encodeURIComponent(id)}/rows`;
 /** 远端持久化是否可用（首次拉取成功后置为 true） */
 let remoteAvailable = false;
+
+/** 客户端剥离 rows：/api/state 只同步元数据，rows 走独立行路由，避免超大请求体 */
+function stripRowsClient(t: DataTable): DataTable {
+  const { rows: _r, prev, ...meta } = t;
+  const next: DataTable = { ...meta };
+  if (prev) next.prev = { ...prev, rows: undefined };
+  return next;
+}
 
 /** 从服务端数据库拉取持久化数据 */
 async function fetchRemoteState(): Promise<Partial<AppState> | null> {
@@ -464,7 +473,7 @@ async function pushRemoteState(state: AppState, opts?: { clearAlertsAll?: boolea
     const res = await fetch(STATE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], tableGroups: state.tableGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] }, clearAlertsAll: opts?.clearAlertsAll }),
+      body: JSON.stringify({ tables: state.tables.map(stripRowsClient), rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], tableGroups: state.tableGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] }, clearAlertsAll: opts?.clearAlertsAll }),
     });
     if (!res.ok) {
       console.warn('[persist] 云端同步失败', res.status);
@@ -524,6 +533,8 @@ type StoreApi = {
   addTable: (t: DataTable) => void;
   updateTable: (id: string, patch: Partial<DataTable>) => void;
   removeTable: (id: string) => void;
+  /** 将某表全量行保存到 data_tables_row（覆盖式），异步落库 */
+  saveTableRows: (id: string, rows: DataTable['rows']) => Promise<boolean>;
   setActiveTable: (id: string) => void;
   setBuilderTables: (ids: string[]) => void;
   renameField: (tableId: string, fieldKey: string, alias: string) => void;
@@ -1043,9 +1054,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             });
           }
         }
+        // rows 已与元数据分离存储：为每张表拉取全量行回到内存，供求值使用（与旧行为一致）
+        const withRows = await Promise.all(
+          (tables ?? []).map(async (t) => {
+            if (Array.isArray(t.rows) && t.rows.length > 0) return t; // 本地缓存/示例表自带 rows，直接复用
+            try {
+              const res = await fetch(ROWS_API(t.id), { cache: 'no-store' });
+              if (res.ok) {
+                const json = (await res.json()) as { rows?: DataTable['rows'] };
+                if (Array.isArray(json.rows)) return { ...t, rows: json.rows };
+              }
+            } catch {
+              /* rows 拉取失败则降级为元数据（previewRows），不影响其余数据 */
+            }
+            return t;
+          })
+        );
         setState((s) => ({
           ...s,
-          tables: (tables ?? []).map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })),
+          tables: (withRows ?? []).map((t) => ({ ...t, fields: ensureFieldsComplete(t.fields ?? [], t.rows ?? []) })),
           rules,
           ruleGroups: remote.ruleGroups ?? [],
           tableGroups: remote.tableGroups ?? [],
@@ -1100,7 +1127,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (pushTimer.current) clearTimeout(pushTimer.current);
       try {
         const payload = JSON.stringify({
-          tables: state.tables, rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], tableGroups: state.tableGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] },
+          tables: state.tables.map(stripRowsClient), rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], tableGroups: state.tableGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] },
         });
         navigator.sendBeacon(STATE_API, new Blob([payload], { type: 'application/json' }));
       } catch { /* 忽略 */ }
@@ -1119,6 +1146,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addTable: (t) => dispatch('ADD_TABLE', t),
       updateTable: (id, patch) => dispatch('UPDATE_TABLE', { id, patch }),
       removeTable: (id) => dispatch('REMOVE_TABLE', id),
+      saveTableRows: async (id, rows) => {
+        try {
+          const res = await fetch(ROWS_API(id), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rows: rows ?? [] }),
+          });
+          return res.ok;
+        } catch {
+          return false;
+        }
+      },
       setActiveTable: (id) => dispatch('SET_ACTIVE_TABLE', id),
       setBuilderTables: (ids) => dispatch('SET_BUILDER_TABLES', ids),
       renameField: (tableId, fieldKey, alias) => dispatch('RENAME_FIELD', { tableId, fieldKey, alias }),

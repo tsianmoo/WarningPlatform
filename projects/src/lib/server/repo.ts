@@ -56,6 +56,16 @@ interface TableRow {
   updated_at?: string;
 }
 
+type TableDataRow = Record<string, string | number | boolean> | Record<string, unknown>;
+
+/** 剥离全量 rows（含 prev 快照里的 rows），只保留元数据，避免单 jsonb 超限 */
+function stripRows(t: DataTable): DataTable {
+  const { rows: _rows, prev, ...meta } = t;
+  const next: DataTable = { ...meta };
+  if (prev) next.prev = { ...prev, rows: undefined };
+  return next;
+}
+
 interface RuleRow {
   id: string;
   name: string;
@@ -174,11 +184,21 @@ export async function syncAlerts(alerts: AlertTask[], opts?: { clearAll?: boolea
   }
 }
 
-/** 读取所有数据表（按创建时间升序） */
+/** 读取所有数据表（按创建时间升序）。返回的元数据剥离全量 rows（rows 存 data_tables_row）。
+ *  首次遇到旧格式（data.rows 仍在元数据里且行表未迁移）时自动迁移到行表，保证存量数据不丢。 */
 export async function getAllTables(): Promise<DataTable[]> {
   const client = getSupabaseClient();
   const rows = await selectAllRows<TableRow>(client, 'data_tables', [['created_at', true]]);
-  return rows.map((r) => r.data as DataTable);
+  const out: DataTable[] = [];
+  for (const r of rows) {
+    const t = r.data as DataTable;
+    const legacyRows = t.rows as unknown as TableDataRow[] | undefined;
+    if (!(await hasTableRows(t.id)) && Array.isArray(legacyRows) && legacyRows.length > 0) {
+      await replaceTableRows(t.id, legacyRows);
+    }
+    out.push(stripRows(t));
+  }
+  return out;
 }
 
 /** 全量覆盖式保存数据表（以入参为准，删除库中多余的表） */
@@ -190,24 +210,68 @@ export async function syncTables(tables: DataTable[]): Promise<void> {
     file_name: t.fileName ?? '',
     row_count: t.rowCount ?? 0,
     created_at: ts(t.createdAt),
-    data: t,
+    data: stripRows(t),
   }));
 
   if (rows.length > 0) {
-    // 逐表 upsert：单张大表（含 rows 全量）一次全量提交易超限量而整体失败，改为逐表提交降低单请求体积
+    // 逐表 upsert：元数据已剥离全量 rows（rows 走 data_tables_row），单请求体积可控
     for (const r of rows) {
       const { error } = await client.from('data_tables').upsert([r], { onConflict: 'id' });
       if (error) throw new Error(`保存数据表失败: ${error.message}`);
     }
   }
 
-  // 删除已被前端移除的表
+  // 删除已被前端移除的表（并同步清理其行数据）
   const keep = new Set(tables.map((t) => t.id));
   const staleIds = await computeStale(client, 'data_tables', keep);
-  if (staleIds.length > 0) {
-    const { error: delErr } = await client.from('data_tables').delete().in('id', staleIds);
-    if (delErr) throw new Error(`删除数据表失败: ${delErr.message}`);
+  for (const id of staleIds) {
+    const [delMeta, delRows] = await Promise.all([
+      client.from('data_tables').delete().eq('id', id),
+      client.from('data_tables_row').delete().eq('id', id),
+    ]);
+    if (delMeta.error) throw new Error(`删除数据表失败: ${delMeta.error.message}`);
+    if (delRows.error) throw new Error(`删除数据表行失败: ${delRows.error.message}`);
   }
+}
+
+const ROW_BATCH = 500;
+
+/** 覆盖式保存某表全量行：清空旧行后按批写入 data_tables_row（一行一个 jsonb，规避单 jsonb 超限） */
+export async function replaceTableRows(tableId: string, rows: TableDataRow[]): Promise<void> {
+  const client = getSupabaseClient();
+  await client.from('data_tables_row').delete().eq('id', tableId);
+  for (let from = 0; from < rows.length; from += ROW_BATCH) {
+    const chunk = rows.slice(from, from + ROW_BATCH).map((r, i) => ({ id: tableId, seq: from + i, data: r }));
+    const { error } = await client.from('data_tables_row').insert(chunk);
+    if (error) throw new Error(`保存数据表行失败(${tableId} @${from}): ${error.message}`);
+  }
+}
+
+/** 读取某表全量行（按 seq 升序，分页取全量，避免超千行截断） */
+export async function getAllTableRows(tableId: string): Promise<TableDataRow[]> {
+  const client = getSupabaseClient();
+  const out: TableDataRow[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await client
+      .from('data_tables_row')
+      .select('seq,data')
+      .eq('id', tableId)
+      .order('seq', { ascending: true })
+      .range(from, from + 999);
+    if (error) throw new Error(`读取数据表行失败: ${error.message}`);
+    const batch = (data ?? []) as { seq: number; data: TableDataRow }[];
+    out.push(...batch.map((r) => r.data));
+    if (batch.length < 1000) break;
+  }
+  return out;
+}
+
+/** 某表是否已存在行数据（用于判断旧格式 rows 是否需要迁移） */
+async function hasTableRows(tableId: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from('data_tables_row').select('seq').eq('id', tableId).limit(1);
+  if (error) throw new Error(`校验数据表行失败: ${error.message}`);
+  return Array.isArray(data) && data.length > 0;
 }
 
 /** 读取所有规则 */
