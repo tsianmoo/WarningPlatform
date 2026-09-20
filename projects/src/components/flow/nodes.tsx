@@ -913,13 +913,14 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
       return outAll;
     }
     case 'rowsort': {
-      // 节点结果排序/格式化：输出列 = 已配置列里选中的列（顺序即表格列顺序）；未配置时透传上游列
+      // 节点结果排序/格式化：输出列 = 全部字段中勾选显示的列（顺序即表格列顺序）
       const rs = (data as Record<string, unknown>);
       const rsCols = Array.isArray(rs.cols) ? (rs.cols as RowSortCol[]) : [];
       const rsSrc = typeof rs.sourceNode === 'string' ? rs.sourceNode : '';
       const up = rsSrc ? inferNodeCols(allNodes, tables, rsSrc, seen) : [];
       if (rsCols.length) {
         return rsCols
+          .filter((c) => c.show !== false)
           .map((c) => {
             const base = up.find((b) => b.key === c.key) ?? { key: c.key, label: c.label };
             return { key: c.key, label: c.label || base.label || c.key };
@@ -5593,7 +5594,7 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
     return inferNodeCols(allNodes, tables, d.sourceNode);
   }, [d.sourceNode, allNodes, tables]);
   const [fmtFor, setFmtFor] = useState<number | null>(null);
-  // 选择节点后自动用其字段填充列配置（保留已有匹配项，追加新增字段）
+  // 选择节点后自动用其字段填充列配置（保留已有匹配项，追加新增字段；一律展示全部字段）
   const applySource = (nid: string, label = '') => {
     const colsOf = inferNodeCols(allNodes, tables, nid);
     update({
@@ -5601,7 +5602,7 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
       sourceNodeLabel: label,
       cols: colsOf.map((c) => {
         const exist = cols.find((x) => x.key === c.key);
-        return exist ?? { key: c.key, label: c.label || c.key, type: 'auto', sort: false };
+        return exist ?? { key: c.key, label: c.label || c.key, type: 'auto', show: true };
       }),
     } as Partial<RowSortNodeData>);
   };
@@ -5610,19 +5611,15 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
     arr[i] = { ...arr[i], ...patch };
     update({ cols: arr } as Partial<RowSortNodeData>);
   };
+  // 展示列在前、未展示沉底的显示列表；索引基于该列表，改配置时映射回原 cols 下标
+  const displayCols = [...cols].sort((a, b) => Number(a.show === false) - Number(b.show === false));
+  const idxOf = (colIdx: number) => cols.indexOf(displayCols[colIdx]);
   const moveCol = (i: number, dir: -1 | 1) => {
     const j = i + dir;
-    if (j < 0 || j >= cols.length) return;
-    const arr = cols.slice();
+    if (j < 0 || j >= displayCols.length) return;
+    const arr = displayCols.slice();
     const [it] = arr.splice(i, 1);
     arr.splice(j, 0, it);
-    update({ cols: arr } as Partial<RowSortNodeData>);
-  };
-  const setSort = (i: number) => {
-    // 排他：同一时间只允许一列排序；点击循环：无 → 升序 → 降序 → 无
-    const cur = cols[i]?.sort;
-    const next = cur === 'asc' ? 'desc' : cur === 'desc' ? undefined : 'asc';
-    const arr = cols.map((c, k) => ({ ...c, sort: k === i ? next : undefined }));
     update({ cols: arr } as Partial<RowSortNodeData>);
   };
   const fmt = fmtFor != null ? (cols[fmtFor] ?? null) : null;
@@ -5655,29 +5652,32 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
         {/* ② 字段/列配置 */}
         <div className={rowLabel}>② 字段列（可调整顺序、重命名、类型与数值格式）</div>
         <div className="max-h-[300px] space-y-1 overflow-y-scroll pr-0.5 [scrollbar-width:thin] [scrollbar-color:#bae6fd_transparent]">
-          {cols.map((c, i) => (
-            <div key={`${c.key}-${i}`} className="flex items-center gap-1 rounded-md border border-gray-100 bg-gray-50/60 px-1 py-1">
+          {displayCols.map((c, i) => (
+            <div key={`${c.key}-${i}`} className={`flex items-center gap-1 rounded-md border px-1 py-1 ${c.show === false ? 'border-dashed border-gray-200 bg-white opacity-80' : 'border-gray-100 bg-gray-50/60'}`}>
               <div className="flex flex-col">
                 <button type="button" onClick={() => moveCol(i, -1)} disabled={i === 0} className="text-[10px] text-gray-400 hover:text-sky-600 disabled:opacity-30" title="上移">▲</button>
-                <button type="button" onClick={() => moveCol(i, 1)} disabled={i === cols.length - 1} className="text-[10px] text-gray-400 hover:text-sky-600 disabled:opacity-30" title="下移">▼</button>
+                <button type="button" onClick={() => moveCol(i, 1)} disabled={i === displayCols.length - 1} className="text-[10px] text-gray-400 hover:text-sky-600 disabled:opacity-30" title="下移">▼</button>
               </div>
+              <label
+                title={c.show === false ? '已隐藏，不输出该列' : '勾选后在结果中显示该列'}
+                className="ml-1 flex cursor-pointer items-center text-[10px] text-gray-500"
+              >
+                <input
+                  type="checkbox"
+                  checked={c.show !== false}
+                  onChange={(e) => setCol(idxOf(i), { show: e.target.checked })}
+                  className="mr-0.5 h-3 w-3 accent-sky-600"
+                />
+                {c.show === false ? '显' : '隐'}
+              </label>
               <input
                 value={c.label}
-                onChange={(e) => setCol(i, { label: e.target.value })}
+                onChange={(e) => setCol(idxOf(i), { label: e.target.value })}
                 placeholder={c.key}
                 className={`${inputCls} flex-1`}
                 title={`源字段：${c.key}`}
               />
-              <button
-                type="button"
-                onClick={() => setSort(i)}
-                className={fmtCls(!!c.sort)}
-                title="点击切换：升序 → 降序 → 取消（排他）"
-              >
-                {c.sort === 'asc' ? '升序' : c.sort === 'desc' ? '降序' : '排序'}
-              </button>
-              <button type="button" onClick={() => setFmtFor(i)} className="rounded px-1.5 py-0.5 text-[10px] ring-1 ring-gray-200 bg-white text-gray-600 hover:bg-gray-100" title="数值格式设置">格式</button>
-              <button type="button" onClick={() => update({ cols: cols.filter((_, k) => k !== i) } as Partial<RowSortNodeData>)} className="text-[10px] text-red-400 hover:text-red-600" title="删除该列">删</button>
+              <button type="button" onClick={() => setFmtFor(idxOf(i))} className="rounded px-1.5 py-0.5 text-[10px] ring-1 ring-gray-200 bg-white text-gray-600 hover:bg-gray-100" title="数值格式设置">格式</button>
             </div>
           ))}
         </div>

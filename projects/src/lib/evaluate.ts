@@ -2199,39 +2199,44 @@ function evalNode(
         return { title: '节点结果排序', columns: [], rows: [], note: '请选择上游节点结果。' };
       const srcCols = src.columns;
       const cfgs = Array.isArray(rs.cols) ? rs.cols : [];
-      // 未显式配置列时：默认列出上游全部列（顺序不变）
-      const active = cfgs.length
+      // 全部字段列（顺序即表头顺序）；一律保留，不删除，show 控制是否输出
+      let all = cfgs.length
         ? cfgs.slice()
-        : srcCols.map((k) => ({ key: k, label: k, type: 'auto' as const, sort: false }));
-      // 排序键列（排他，最多一列）
-      const sortCfg = active.find((c) => c.sort === 'asc' || c.sort === 'desc');
-      const sortCol = sortCfg?.key || '';
-      const sortDir = sortCfg?.sort === 'desc' ? -1 : 1;
-      let rows = src.rows.slice();
-      if (sortCol) {
-        rows = rows.slice().sort((a, b) => {
-          const av = toNum(a[sortCol]);
-          const bv = toNum(b[sortCol]);
-          if (Number.isFinite(av) && Number.isFinite(bv)) return sortDir * (av - bv);
-          return sortDir * String(a[sortCol] ?? '').localeCompare(String(b[sortCol] ?? ''), 'zh');
-        });
+        : srcCols.map((k) => ({ key: k, label: k, type: 'auto' as const, show: true }));
+      // 补全上游新增/缺失的字段，保证"展示全部字段"
+      for (const k of srcCols) {
+        if (!all.some((c) => c.key === k)) all.push({ key: k, label: k, type: 'auto' as const, show: true });
       }
-      const outRows = rows.map((r) => {
+      // 输出列 = 勾选显示的列（保持面板顺序）；未显示的列不输出
+      const shown = all.filter((c) => c.show !== false && src.columns.includes(c.key));
+      // 多级分组聚集：按输出列顺序逐列稳定排序，使首列值相同放一起，组内再按次列值相同聚集
+      const sorted = src.rows.slice().sort((a, b) => {
+        for (const c of shown) {
+          const k = c.key;
+          const av = toNum(a[k]);
+          const bv = toNum(b[k]);
+          let cmp = 0;
+          if (Number.isFinite(av) && Number.isFinite(bv)) cmp = av - bv;
+          else cmp = String(a[k] ?? '').localeCompare(String(b[k] ?? ''), 'zh');
+          if (cmp !== 0) return cmp;
+        }
+        return 0;
+      });
+      const outRows = sorted.map((r) => {
         const o: Record<string, string> = {};
-        for (const c of active) {
+        for (const c of shown) {
           o[c.label || c.key] = formatNumByConfig(r[c.key], c);
         }
         return o;
       });
-      const outCols = active.map((c) => c.label || c.key);
+      const outCols = shown.map((c) => c.label || c.key);
       return {
         title: '节点结果排序',
         columns: outCols,
         rows: cap(outRows),
         shape: 'table',
         note:
-          `来自「${src.title || '上游节点'}」共 ${src.rows.length} 行` +
-          (sortCol ? `，按「${sortCol}」${sortDir === -1 ? '降序' : '升序'}排列。` : '，未排序。'),
+          `来自「${src.title || '上游节点'}」共 ${src.rows.length} 行，输出 ${outCols.length} 列；按列顺序分组聚集展示（首列相同值归并，组内按后续列归并）。`,
         allCols: outCols,
       };
     }
