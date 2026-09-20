@@ -42,6 +42,7 @@ import { useStore } from '@/lib/store';
 import { resolvePerm, resolveAuthAccount, canView } from '@/lib/perm';
 import { BuildCtx, createNodeData, nodeTypes, DupNodeCtx } from './nodes';
 import { NodePreviewProvider } from './NodePreview';
+import { getDirtyNodeId, isLocked, useDirtyVersion } from './draftStore';
 
 type DragPayload = {
   kind: FlowNode['kind'];
@@ -66,6 +67,13 @@ function toRfEdges(edges: FlowEdge[]): Edge[] {
     markerEnd: { type: MarkerType.ArrowClosed },
     style: { stroke: '#94A3B8', strokeWidth: 1.6 },
   }));
+}
+
+/** 锁定守卫：存在未保存草稿时，仅放行对 dirty 节点自身的操作（保存/预览/删除），其余操作一律阻止 */
+function guardLocked(nodeId?: string): boolean {
+  if (!isLocked()) return false;
+  if (nodeId && nodeId === getDirtyNodeId()) return false;
+  return true;
 }
 
 // ---------- 画布内部组件（本地状态驱动，拖拽流畅） ----------
@@ -109,6 +117,15 @@ function CanvasInner({
         else if (c.type === 'replace' && c.item) replaceMap.set(c.id, c.item);
         else if (c.type === 'remove') removes.push(c.id);
       }
+      // 锁定守卫：存在未保存草稿时，不允许拖动/删除非 dirty 节点（replace 为保存提交路径，放行）
+      if (isLocked()) {
+        if (posMap.size) {
+          for (const id of posMap.keys()) if (guardLocked(id)) return;
+        }
+        if (removes.length) {
+          for (const id of removes) if (guardLocked(id)) return;
+        }
+      }
       let needCommit = false;
       if (posMap.size) {
         // 拖动过程中不提交，仅更新本地位置保证流畅
@@ -151,6 +168,7 @@ function CanvasInner({
   // 拖动结束 → 提交位置到父级
   const onNodeDragStop = useCallback(
     (_: unknown, node: RFNode) => {
+      if (guardLocked(node.id)) return;
       synced.current = true;
       onFlowChange(
         localNodes.map((n) => (n.id === node.id ? { ...n, position: node.position } : n)),
@@ -163,6 +181,7 @@ function CanvasInner({
   const onConnect = useCallback(
     (conn: Connection) => {
       if (!conn.source || !conn.target) return;
+      if (guardLocked(conn.source) || guardLocked(conn.target)) return;
       const es = [...localEdges, { id: uid('edge'), source: conn.source, target: conn.target }];
       setLocalEdges(es);
       onFlowChange(localNodes, es);
@@ -175,6 +194,7 @@ function CanvasInner({
       const l = changes as { type: string; id: string }[];
       for (const c of l) {
         if (c.type === 'remove') {
+          if (isLocked()) return;
           const es = localEdges.filter((e) => e.id !== c.id);
           setLocalEdges(es);
           onFlowChange(localNodes, es);
@@ -188,6 +208,7 @@ function CanvasInner({
 
   const onReconnect = useCallback(
     (oldEdge: { id: string }, newConn: { source: string | null; target: string | null }) => {
+      if (isLocked()) return;
       setSelectedEdge(null);
       let next = localEdges.map((e) =>
         e.id === oldEdge.id
@@ -211,6 +232,7 @@ function CanvasInner({
 
   const deleteSelectedEdge = useCallback(() => {
     if (!selectedEdge) return;
+    if (isLocked()) return;
     const es = localEdges.filter((e) => e.id !== selectedEdge);
     setLocalEdges(es);
     onFlowChange(localNodes, es);
@@ -220,6 +242,7 @@ function CanvasInner({
   const onDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
+      if (guardLocked()) return;
       const raw = e.dataTransfer.getData('application/json');
       if (!raw) return;
       try {
@@ -252,6 +275,7 @@ function CanvasInner({
 
   const handleDeleteNode = useCallback(
     (_: unknown, node: RFNode) => {
+      if (guardLocked(node.id)) return;
       const ns = localNodes.filter((n) => n.id !== node.id);
       const es = localEdges.filter((e) => e.source !== node.id && e.target !== node.id);
       setLocalNodes(ns);
@@ -266,6 +290,7 @@ function CanvasInner({
 
   const duplicateNode = useCallback(
     (node: FlowNode) => {
+      if (guardLocked()) return;
       const data = JSON.parse(JSON.stringify(node.data)) as FlowNode['data'];
       const dup: FlowNode = {
         id: uid('node'),
@@ -383,8 +408,12 @@ export function FlowEditor({
 
 // ---------- 拖拽组件库面板 ----------
 const draggable = (payload: DragPayload) => ({
-  draggable: true,
+  draggable: !isLocked(),
   onDragStart: (e: React.DragEvent) => {
+    if (isLocked()) {
+      e.preventDefault();
+      return;
+    }
     e.dataTransfer.setData('application/json', JSON.stringify(payload));
     e.dataTransfer.effectAllowed = 'move';
   },
@@ -408,6 +437,8 @@ export function PalettePanel({
 }) {
   const { state } = useStore();
   const [showAdd, setShowAdd] = useState(false);
+  useDirtyVersion();
+  const locked = isLocked();
   // 预警关联展示-全量 为独立权限组件：无权限用户不显示/不可添加
   const meName = typeof window !== 'undefined' ? (localStorage.getItem('dn_auth') ?? '') : '';
   const me = state.persons?.find((p) => p.name === meName) ?? null;
@@ -480,6 +511,11 @@ export function PalettePanel({
   return (
     <div className="w-60 shrink-0 overflow-y-auto border-r bg-white p-3">
       {/* 规则使用数据表：仅显示已选，可通过「添加数据表」加入 */}
+      {locked && (
+        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-700">
+          当前有组件尚未保存（保存后可继续添加 / 编辑）。请先在画布组件上点击「保存本组件」。
+        </div>
+      )}
       <div className="mb-4">
         <div className="mb-1.5 flex items-center justify-between text-xs font-semibold text-gray-600">
           <span>规则使用数据表</span>

@@ -62,6 +62,16 @@ import { useStore } from '@/lib/store';
 import TimeComponent from './TimeComponent';
 import { useNodePreview } from './NodePreview';
 import { evaluateFlow } from '@/lib/evaluate';
+import {
+  useDraftVersion,
+  useDirtyVersion,
+  getDraft,
+  getDirtyNodeId,
+  isLocked,
+  writeDraft,
+  commitDraft,
+  discardDraft,
+} from './draftStore';
 
 type AnyData =
   | FieldNodeData
@@ -113,9 +123,17 @@ const KIND_ICON: Record<FlowNode['kind'], React.ReactNode> = {
   rowsort: <ListFilter size={13} strokeWidth={2.5} />,
 };
 
+/** 读取/写入节点草稿与锁定状态（方案甲：选中节点后保存才提交） */
 function useNodeUpdater(id: string) {
-  const { updateNodeData } = useReactFlow();
-  return (patch: Partial<AnyData>) => updateNodeData(id, patch as never);
+  useDraftVersion();
+  return (patch: Partial<AnyData>) => writeDraft(id, patch as unknown as Record<string, unknown>);
+}
+
+/** 节点展示数据：草稿优先合并，编辑期本地生效、不触发 flow 重算 */
+function useNodeData(id: string, base: AnyData): AnyData {
+  useDraftVersion();
+  const draft = getDraft(id);
+  return draft ? ({ ...base, ...draft } as AnyData) : base;
 }
 
 /** 读取本规则用到的表（来自构建上下文） */
@@ -275,20 +293,40 @@ function nodeTitle(fnode: FlowNode) {
 function NodeShell({ fnode, children, width = 300 }: { fnode: FlowNode; children: React.ReactNode; width?: number }) {
   const color = KIND_COLOR[fnode.kind];
   const hasSource = true; // 所有节点（含开始）都开放右侧出口，用于连向后继
-  const { deleteElements, getNodes, getEdges } = useReactFlow();
+  const { deleteElements, getNodes, getEdges, updateNodeData } = useReactFlow();
+  useDirtyVersion();
+  const isDirty = getDirtyNodeId() === fnode.id;
+  const locked = isLocked() && !isDirty;
   const tables = useRuleTables();
   const preview = useNodePreview();
   const handlePreview = (e: React.MouseEvent) => {
     e.stopPropagation();
-    preview.open(fnode, getNodes() as unknown as FlowNode[], getEdges() as unknown as FlowEdge[], tables);
+    const draft = getDraft(fnode.id);
+    const merged = draft ? ({ ...fnode.data, ...draft } as FlowNode['data']) : fnode.data;
+    preview.open({ ...fnode, data: merged }, getNodes() as unknown as FlowNode[], getEdges() as unknown as FlowEdge[], tables);
   };
   const duplicateNode = useContext(DupNodeCtx);
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (duplicateNode) duplicateNode(fnode);
   };
+  const handleSave = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const draft = getDraft(fnode.id);
+    if (!draft) return;
+    const merged = { ...fnode.data, ...draft } as FlowNode['data'];
+    updateNodeData(fnode.id, merged as never);
+    commitDraft(fnode.id);
+  };
+  const handleDiscard = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    discardDraft(fnode.id);
+  };
   return (
-    <div className="w-[300px] max-w-[300px] rounded-xl border bg-white shadow-sm" style={{ borderColor: color.border, width, maxWidth: width }}>
+    <div
+      className={`w-[300px] max-w-[300px] rounded-xl border bg-white shadow-sm transition ${locked ? 'pointer-events-none cursor-not-allowed opacity-50 saturate-75' : ''}`}
+      style={{ borderColor: color.border, width, maxWidth: width }}
+    >
       <div
         className="group/head flex items-center gap-1.5 rounded-t-[11px] px-3 py-1.5"
         style={{ backgroundColor: color.bg }}
@@ -302,6 +340,11 @@ function NodeShell({ fnode, children, width = 300 }: { fnode: FlowNode; children
         <span className="min-w-0 flex-1 truncate text-xs font-semibold" style={{ color: color.text }}>
           {nodeTitle(fnode)}
         </span>
+        {isDirty && (
+          <span className="flex h-4 items-center rounded-full bg-amber-100 px-1.5 text-[9px] font-semibold text-amber-700">
+            未保存
+          </span>
+        )}
         <button
           type="button"
           title="复制该组件"
@@ -331,6 +374,25 @@ function NodeShell({ fnode, children, width = 300 }: { fnode: FlowNode; children
         </button>
       </div>
       <div className="nodrag px-3 py-2">{children}</div>
+      {isDirty && (
+        <div className="flex items-center gap-2 border-t px-3 py-2">
+          <button
+            type="button"
+            onClick={handleSave}
+            className="flex-1 rounded-md bg-amber-500 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-600"
+          >
+            保存本组件
+          </button>
+          <button
+            type="button"
+            onClick={handleDiscard}
+            className="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-500 transition hover:bg-gray-50"
+          >
+            取消
+          </button>
+          <div className="text-[10px] text-gray-400">保存后更新后续组件</div>
+        </div>
+      )}
       <Handle type="target" position={Position.Left} style={{ background: color.dot, width: 10, height: 10 }} />
       {hasSource && (
         <Handle type="source" position={Position.Right} style={{ background: color.dot, width: 10, height: 10 }} />
@@ -514,7 +576,7 @@ const TriggerNode = memo(({ id, data }: NodeProps) => {
 // ---------- 字段节点 ----------
 const FieldNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'field' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as FieldNodeData;
+  const d = useNodeData(id, data) as unknown as FieldNodeData;
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   return (
@@ -1012,7 +1074,7 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
 
 const ConditionNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'condition' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as ConditionNodeData;
+  const d = useNodeData(id, data) as unknown as ConditionNodeData;
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const op = OPERATOR_OPTIONS.find((o) => o.value === d.operator);
@@ -1567,7 +1629,7 @@ const ConditionNode = memo(({ id, data }: NodeProps) => {
 // ---------- 计算节点（聚合 + 对比） ----------
 const ComputeNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'compute' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as ComputeNodeData;
+  const d = useNodeData(id, data) as unknown as ComputeNodeData;
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const expr = d.expr ?? null;
@@ -1984,7 +2046,7 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
 // ---------- 基础数据节点（取一列去重值，维度全集，如店仓表→店仓） ----------
 const BaseNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'base' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as BaseNodeData;
+  const d = useNodeData(id, data) as unknown as BaseNodeData;
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
@@ -2121,7 +2183,7 @@ const BaseNode = memo(({ id, data }: NodeProps) => {
 // ---------- 查找节点（跨表匹配） ----------
 const LookupNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'lookup' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as LookupNodeData;
+  const d = useNodeData(id, data) as unknown as LookupNodeData;
   const mode = d.mode ?? 'field';
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
@@ -2378,7 +2440,7 @@ const LookupNode = memo(({ id, data }: NodeProps) => {
 // ---------- 关联节点 ----------
 const RelationNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'relation' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as RelationNodeData;
+  const d = useNodeData(id, data) as unknown as RelationNodeData;
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const upd = (patch: Partial<RelationNodeData>) => update({ ...d, ...patch });
@@ -2448,7 +2510,7 @@ const RelationNode = memo(({ id, data }: NodeProps) => {
 // ---------- 时间窗口节点 ----------
 const TimeNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'time' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as TimeNodeData;
+  const d = useNodeData(id, data) as unknown as TimeNodeData;
   const update = useNodeUpdater(id);
   return (
     <NodeShell fnode={fnode}>
@@ -2464,7 +2526,7 @@ const TimeNode = memo(({ id, data }: NodeProps) => {
 // ---------- 已过天数节点 ----------
 const ElapsedNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'elapsed' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as ElapsedNodeData;
+  const d = useNodeData(id, data) as unknown as ElapsedNodeData;
   const update = useNodeUpdater(id);
   const scope = d.scope || 'month';
   const scopeLabel =
@@ -2545,7 +2607,7 @@ const ACTION_PRIORITIES = [
 ] as const;
 
 const ActionNode = memo(({ id, data }: NodeProps) => {
-  const d = data as unknown as ActionNodeData;
+  const d = useNodeData(id, data) as unknown as ActionNodeData;
   const update = useNodeUpdater(id);
   const allNodes = useNodes();
   const tables = useRuleTables();
@@ -3006,7 +3068,7 @@ function TargetPanel({ targets, onChange }: { targets: TargetSetting; onChange: 
 
 // ---------- 排名取数（TopN）节点 ----------
 const TopNNode = memo(({ id, data }: NodeProps) => {  const fnode = { id, kind: 'topn' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as TopNNodeData;
+  const d = useNodeData(id, data) as unknown as TopNNodeData;
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const curTable = tables.find((t) => t.id === d.tableId);
@@ -3137,7 +3199,7 @@ const TopNNode = memo(({ id, data }: NodeProps) => {  const fnode = { id, kind: 
 // ---------- 反匹配/差集（Diff）节点 ----------
 const DiffNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'diff' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as DiffNodeData;
+  const d = useNodeData(id, data) as unknown as DiffNodeData;
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const baseTable = tables.find((t) => t.id === d.baseTableId);
@@ -3289,7 +3351,7 @@ const LogicNode = memo(({ id, data }: NodeProps) => {
     data: data as unknown as FlowNode['data'],
     position: { x: 0, y: 0 },
   } as FlowNode;
-  const d = data as unknown as LogicNodeData;
+  const d = useNodeData(id, data) as unknown as LogicNodeData;
   const update = useNodeUpdater(id);
   return (
     <NodeShell fnode={fnode}>
@@ -3320,7 +3382,7 @@ const LogicNode = memo(({ id, data }: NodeProps) => {
 // ---------- 分组聚合节点（搭积木原子：按维度分组，对指标聚合，输出每组的值） ----------
 const GroupByNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'groupby' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as GroupByNodeData;
+  const d = useNodeData(id, data) as unknown as GroupByNodeData;
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
@@ -3745,7 +3807,7 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
 // ---------- 过滤节点（多条件：字段 + 算子 + 可搜索多选/单选值） ----------
 const FilterNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'filter' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as FilterNodeData;
+  const d = useNodeData(id, data) as unknown as FilterNodeData;
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
@@ -4213,7 +4275,7 @@ function ComboSelect({ value, options, placeholder, onChange }: { value: string;
 // ---------- 基准统计节点（搭积木原子：对一组数值统计 平均/中位/最高/最低） ----------
 const BaselineNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'baseline' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as BaselineNodeData;
+  const d = useNodeData(id, data) as unknown as BaselineNodeData;
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
@@ -4445,7 +4507,7 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
 // ---------- 左关联补全节点（搭积木原子：全集表 ⟕ 事实结果，缺失键补固定值） ----------
 const FillJoinNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'filljoin' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as FillJoinNodeData;
+  const d = useNodeData(id, data) as unknown as FillJoinNodeData;
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
@@ -4767,7 +4829,7 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
 // ---------- 排名节点（对若干指标列按升/降序算排名，并生成可配置的 TOP 分档） ----------
 const RankNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'rank' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as RankNodeData;
+  const d = useNodeData(id, data) as unknown as RankNodeData;
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
@@ -5360,7 +5422,7 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
 
 const LinkJoinNode = memo(function LinkJoinNode({ id, data }: NodeProps) {
   const fnode = { id, kind: 'linkjoin' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as LinkJoinNodeData;
+  const d = useNodeData(id, data) as unknown as LinkJoinNodeData;
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
@@ -5590,7 +5652,7 @@ function fmtFixedLocal(n: number, decimals?: number): string {
 
 const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
   const fnode = { id, kind: 'rowsort' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as RowSortNodeData;
+  const d = useNodeData(id, data) as unknown as RowSortNodeData;
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
@@ -6001,7 +6063,7 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
 
 const LinkViewNode = memo(function LinkViewNode({ id, data }: NodeProps) {
   const fnode = { id, kind: 'linkview' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as LinkViewNodeData;
+  const d = useNodeData(id, data) as unknown as LinkViewNodeData;
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
@@ -6175,7 +6237,7 @@ const LinkViewNode = memo(function LinkViewNode({ id, data }: NodeProps) {
 
 const LinkViewAllNode = memo(function LinkViewAllNode({ id, data }: NodeProps) {
   const fnode = { id, kind: 'linkview_all' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = data as unknown as LinkViewAllNodeData;
+  const d = useNodeData(id, data) as unknown as LinkViewAllNodeData;
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
