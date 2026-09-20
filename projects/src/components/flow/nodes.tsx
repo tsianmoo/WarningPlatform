@@ -5601,7 +5601,18 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
       sourceNode: nid,
       sourceNodeLabel: label,
       cols: colsOf.map((c) => {
-        const exist = cols.find((x) => x.key === c.key);
+        const exist = cols.find((x) => x && x.key === c.key);
+        return exist ?? { key: c.key, label: c.label || c.key, type: 'auto', show: true };
+      }),
+    } as Partial<RowSortNodeData>);
+  };
+  // 重新按上游(当前选中节点)的全部字段填充列配置：保留已有列的格式/显示配置，补齐新增字段
+  const refreshCols = () => {
+    if (!d.sourceNode) return;
+    const colsOf = inferNodeCols(allNodes, tables, d.sourceNode);
+    update({
+      cols: colsOf.map((c) => {
+        const exist = cols.find((x) => x && x.key === c.key);
         return exist ?? { key: c.key, label: c.label || c.key, type: 'auto', show: true };
       }),
     } as Partial<RowSortNodeData>);
@@ -5650,7 +5661,18 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
         )}
 
         {/* ② 字段/列配置 */}
-        <div className={rowLabel}>② 字段列（可调整顺序、重命名、类型与数值格式）</div>
+        <div className="flex items-center justify-between">
+          <div className={rowLabel}>② 字段列（可调整顺序、重命名、类型与数值格式）</div>
+          <button
+            type="button"
+            onClick={refreshCols}
+            disabled={!d.sourceNode}
+            className="rounded bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-600 ring-1 ring-sky-200 transition hover:bg-sky-100 disabled:opacity-40"
+            title="按当前所选节点的全部字段重新填充字段列（保留已配置的显示与格式）"
+          >
+            ⟳ 填充全部字段
+          </button>
+        </div>
         <div className="max-h-[300px] space-y-1 overflow-y-scroll pr-0.5 [scrollbar-width:thin] [scrollbar-color:#bae6fd_transparent]">
           {displayCols.map((c, i) => (
             <div key={`${c.key}-${i}`} className={`flex items-center gap-1 rounded-md border px-1 py-1 ${c.show === false ? 'border-dashed border-gray-200 bg-white opacity-80' : 'border-gray-100 bg-gray-50/60'}`}>
