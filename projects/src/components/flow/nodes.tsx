@@ -5632,9 +5632,10 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
     arr[i] = { ...arr[i], ...patch };
     update({ cols: arr } as Partial<RowSortNodeData>);
   };
-  // 行转列值字段：设为指定 merged 下标为值字段，互斥清空其它字段的值字段标记
-  const chooseValue = (colIdx: number) => {
-    const arr = mergeCols().map((c, i) => ({ ...c, pivotValue: i === colIdx ? true : undefined }));
+  // 行转列值字段：设为指定字段为值字段，互斥清空其它字段的值字段标记
+  const chooseValue = (col: RowSortCol) => {
+    const keyOf = (c: RowSortCol) => (c.label != null && c.label !== '' ? c.label : c.key) ?? '';
+    const arr = mergeCols().map((c) => ({ ...c, pivotValue: keyOf(c) === keyOf(col) ? true : undefined }));
     update({ cols: arr } as Partial<RowSortNodeData>);
     setValOpen(false);
   };
@@ -5860,22 +5861,27 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
               <div className="text-sm font-semibold text-gray-800">选择值字段</div>
               <button type="button" onClick={() => setValOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
             </div>
-            <div className="mb-2 text-[11px] leading-4 text-gray-500">作为行转列表头下填充的数值来源；选定后该字段将从②字段列移除，不再作为普通列展示。</div>
+            <div className="mb-2 text-[11px] leading-4 text-gray-500">作为行转列表头下填充的数值来源；选定后该字段将从②字段列移除。</div>
             {(() => {
-              const cur = merged.findIndex((c) => c.pivotValue);
+              const keyOf = (k?: string, l?: string) => (l != null && l !== '' ? l : k) ?? '';
+              const mapCfg = (c: ColOpt): RowSortCol =>
+                merged.find((m) => keyOf(m.key, m.label) === keyOf(c.key, c.label)) ??
+                ({ key: c.key, label: c.label || c.key, type: 'auto', show: true } as RowSortCol);
+              const cur = merged.find((c) => c.pivotValue);
               return (
-                <div className="max-h-[260px] space-y-1 overflow-y-auto pr-0.5">
-                  {merged.map((c, i) => {
-                    if (c.unpivot === true) return null;
-                    const on = i === cur;
+                <div className="max-h-[300px] space-y-1 overflow-y-auto pr-0.5">
+                  {upCols.map((c, i) => {
+                    const cfg = mapCfg(c);
+                    if (cfg.unpivot === true) return null;
+                    const on = cur != null && keyOf(cur.key, cur.label) === keyOf(cfg.key, cfg.label);
                     return (
                       <button
                         key={`${c.key}-${i}`}
                         type="button"
-                        onClick={() => chooseValue(i)}
+                        onClick={() => chooseValue(cfg)}
                         className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs ring-1 transition ${on ? 'bg-rose-500 text-white ring-rose-500' : 'bg-white text-gray-700 ring-gray-200 hover:bg-gray-100'}`}
                       >
-                        <span className="truncate">{c.label || c.key}</span>
+                        <span className="truncate">{cfg.label || cfg.key}</span>
                         <span className="shrink-0 opacity-70">{on ? '当前值字段' : '选为值'}</span>
                       </button>
                     );
