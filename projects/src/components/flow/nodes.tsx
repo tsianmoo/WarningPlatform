@@ -136,11 +136,16 @@ function useNodeData(id: string, base: AnyData): AnyData {
   return draft ? ({ ...base, ...draft } as AnyData) : base;
 }
 
-/** 读取本规则用到的表（来自构建上下文） */
+/** 读取本规则用到的表（来自构建上下文）。表集合变化才返回新数组引用，
+ *  避免每次渲染 filter 出新数组导致依赖 tables 的 useMemo 级联失效、全量 evaluate 卡顿 */
 function useRuleTables(): DataTable[] {
   const { state } = useStore();
   const ids = state.builderTableIds;
-  return ids.length ? state.tables.filter((t) => ids.includes(t.id)) : state.tables;
+  const list = ids.length ? state.tables.filter((t) => ids.includes(t.id)) : state.tables;
+  const sig = list.map((t) => t.id).join('\x1f');
+  const prev = useRef<{ sig: string; list: DataTable[] }>({ sig: '', list });
+  if (prev.current.sig !== sig) prev.current = { sig, list };
+  return prev.current.list;
 }
 
 /** 规则级配置（触发调度 / 通知对象）构建上下文，供开始、预警动作节点内嵌配置 */
@@ -3812,8 +3817,6 @@ const FilterNode = memo(({ id, data }: NodeProps) => {
   const tables = useRuleTables();
   const allNodes = useNodes();
   const allEdges = useEdges();
-  const runtimeNodes = useMemo(() => allNodes as unknown as FlowNode[], [allNodes]);
-  const runtimeEdges = useMemo(() => allEdges as unknown as FlowEdge[], [allEdges]);
   const source = d.source ?? 'table';
   const nodeOutputs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'column');
 
@@ -3850,10 +3853,20 @@ const FilterNode = memo(({ id, data }: NodeProps) => {
   };
 
   // 取某字段的去重候选值：数据表用全量行；节点结果用上游节点运行输出行
+  // 只依赖"其它节点的配置 data + edges 结构"，用内容签名缓存：拖动/自身输入不触发全量 evaluate
+  const nodeEvalSig = useMemo(
+    () =>
+      JSON.stringify(
+        allNodes
+          .filter((n) => (n as unknown as FlowNode).id !== id)
+          .map((n) => ((n as unknown as FlowNode).data ?? {}))
+      ) + '|' + JSON.stringify(allEdges.map((e) => [e.source, e.target])),
+    [allNodes, allEdges, id]
+  );
   const nodeDistinct = useMemo(() => {
     if (source !== 'node' || !d.sourceNode) return new Map<string, string[]>();
     try {
-      const outputs = evaluateFlow(runtimeNodes, runtimeEdges, tables);
+      const outputs = evaluateFlow(allNodes as unknown as FlowNode[], allEdges as unknown as FlowEdge[], tables);
       const out = outputs[d.sourceNode];
       const rows = out && out.rows ? out.rows : [];
       const map = new Map<string, Set<string>>();
@@ -3872,7 +3885,7 @@ const FilterNode = memo(({ id, data }: NodeProps) => {
     } catch {
       return new Map();
     }
-  }, [source, d.sourceNode, runtimeNodes, runtimeEdges, tables]);
+  }, [source, d.sourceNode, nodeEvalSig, tables]);
 
   const distinctValues = (fieldKey: string): string[] => {
     if (source === 'node') return nodeDistinct.get(fieldKey) ?? [];
@@ -5720,6 +5733,16 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
   const displayCols = [...merged].filter((c) => !c.pivotValue).sort((a, b) => Number(a.show === false) - Number(b.show === false));
   const idxOf = (colIdx: number) => merged.indexOf(displayCols[colIdx]);
   // 取某个行转列字段的去重值（来自上游节点运行输出行），供「转」弹窗排序列表使用
+  // 只依赖"其它节点的配置 data + edges 结构"，内容签名缓存：拖动/自身输入不触发全量 evaluate
+  const pivotEvalSig = useMemo(
+    () =>
+      JSON.stringify(
+        allNodes
+          .filter((n) => (n as unknown as FlowNode).id !== id)
+          .map((n) => ((n as unknown as FlowNode).data ?? {}))
+      ) + '|' + JSON.stringify(allEdges.map((e) => [e.source, e.target])),
+    [allNodes, allEdges, id]
+  );
   const pivotDistinct = useMemo(() => {
     if (pivotSortIdx == null) return [] as string[];
     const src = d.sourceNode;
@@ -5743,7 +5766,7 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
       return [] as string[];
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pivotSortIdx, d.sourceNode, allNodes, allEdges, tables]);
+  }, [pivotSortIdx, d.sourceNode, pivotEvalSig, tables]);
   const moveCol = (i: number, dir: -1 | 1) => {
     const j = i + dir;
     if (j < 0 || j >= displayCols.length) return;
