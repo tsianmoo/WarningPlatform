@@ -2416,18 +2416,32 @@ function evalNode(
       // 无单据店铺缺失匹配时，这些列取自事实结果首行（真实周期值）而非 fillVal，便于统一按周期统计
       const WINDOW_COLS = new Set(['开始日期', '结束日期', '已过天数', '本周天数', '本季天数', '本年天数', '本月天数', '本日天数', '当前日期', '周几', '第几周', '剩余天数']);
       const factSeed: Record<string, unknown> = factNode?.rows?.[0] ?? {};
+      // 事实侧补全列唯一化：factCols 可能与集键列(uniLabels)/返回列(retFields)重名，导致列覆盖/错乱
+      const usedLabs = new Set([...uniLabels, ...retFields.map((f) => f.label)]);
+      const labCounter = new Map<string, number>();
+      const factOutPairs = factCols.map((c) => {
+        let lab = c;
+        let n = labCounter.get(lab) ?? 0;
+        while (usedLabs.has(lab) || labCounter.has(lab)) {
+          n += 1;
+          lab = `${c}${n}`;
+        }
+        labCounter.set(lab, n);
+        return { key: c, label: lab };
+      });
+      const factOutLabels = factOutPairs.map((p) => p.label);
       const rows = uniCombos.map(({ key, row }) => {
         const hit = factMap.get(key);
         const r: Record<string, string | number> = { ...row };
-        for (const c of factCols) {
+        factOutPairs.forEach(({ key: c, label: outLab }) => {
           if (!hit && WINDOW_COLS.has(c)) {
             const sv = factSeed[c];
-            if (sv != null) { r[c] = typeof sv === 'number' || typeof sv === 'string' ? (sv as string | number) : String(sv); continue; }
+            if (sv != null) { r[outLab] = typeof sv === 'number' || typeof sv === 'string' ? (sv as string | number) : String(sv); return; }
           }
           const v = hit ? (hit[c] ?? fillVal) : fillVal;
-          if (typeof v === 'number' || typeof v === 'string') r[c] = v;
-          else r[c] = String(v);
-        }
+          if (typeof v === 'number' || typeof v === 'string') r[outLab] = v;
+          else r[outLab] = String(v);
+        });
         return r;
       });
       const firstCol = uniLabels[0];
@@ -2436,10 +2450,10 @@ function evalNode(
       }
       return {
         title: '左关联补全',
-        columns: [...uniLabels, ...retFields.map((f) => f.label), ...factCols],
+        columns: [...uniLabels, ...retFields.map((f) => f.label), ...factOutLabels],
         rows: cap(rows),
         shape: 'table',
-        scalar: { kind: 'column', col: factCols[factCols.length - 1] },
+        scalar: { kind: 'column', col: factOutLabels[factOutLabels.length - 1] },
         note: `以「${uniName}」的 ${uniCombos.length} 个「${uniLabels.join('+')}」组合为全集，左关联 ${factName}，缺失补「${fillVal}」（共 ${rows.length} 行）。`,
       };
     }
