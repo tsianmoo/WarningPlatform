@@ -434,6 +434,21 @@ function cap<T>(arr: T[]): T[] {
   return arr.slice(0, PREVIEW_LIMIT);
 }
 
+/** 将事实行按匹配键分组（保留同键多行，用于 filljoin 1..n 左关联展开） */
+function buildFactGroups(
+  rows: Record<string, string | number | boolean>[],
+  keys: string[],
+): Map<string, Array<Record<string, string | number | boolean>>> {
+  const m = new Map<string, Array<Record<string, string | number | boolean>>>();
+  for (const r of rows) {
+    const k = keys.map((c) => String(r[c] ?? '')).join('\u0001');
+    const arr = m.get(k);
+    if (arr) arr.push(r);
+    else m.set(k, [r]);
+  }
+  return m;
+}
+
 /** 取某节点输出的标量值（基准统计） */
 function scalarOf(out?: NodePreview): number {
   if (!out?.scalar) return NaN;
@@ -2436,7 +2451,7 @@ function evalNode(
           : undefined;
 
       let factCols: string[] = [];
-      let factMap = new Map<string, Record<string, string | number | boolean>>();
+      let factMap = new Map<string, Array<Record<string, string | number | boolean>>>();
       let factName = fd.factTableName || '事实结果';
       // 事实侧仅带回的指标列（多选 factReturnFields 优先，兼容旧单列 factReturnField）：指定后 factCols 只保留所选列
       const retCol = fd.factReturnField || '';
@@ -2455,7 +2470,7 @@ function evalNode(
         if (retCols.length) factCols = factCols.filter((c) => retCols.includes(c));
         else if (retCol && factNode.columns.includes(retCol)) factCols = [retCol];
         factName = fd.factNodeLabel || factNode.title || '节点结果';
-        factMap = new Map(factNode.rows.map((r) => [fKeys.map((c) => String(r[c] ?? '')).join('\u0001'), r]));
+        factMap = buildFactGroups(factNode.rows, fKeys);
       } else {
         const ft = tableById(tables, fd.factTableId);
         if (ft && fd.factKeyField) {
@@ -2464,7 +2479,7 @@ function evalNode(
           factCols = ft.fields.map((f) => f.alias || f.key).filter((c) => !fKeys.includes(c));
           if (retCols.length) factCols = factCols.filter((c) => retCols.includes(c));
           else if (retCol) factCols = factCols.filter((c) => c === retCol || c === fd.factReturnField);
-          factMap = new Map(allRows(ft).map((r) => [fKeys.map((c) => String(r[c] ?? '')).join('\u0001'), r]));
+          factMap = buildFactGroups(allRows(ft), fKeys);
         } else {
           return { title: '左关联补全', columns: [], rows: [], shape: 'table', note: factSource === 'node' ? '请在「事实结果」里选择一个节点结果（如分组聚合/计算），或将其连到本节点。' : '请选择事实结果表与匹配键。' };
         }
@@ -2488,20 +2503,31 @@ function evalNode(
         return { key: c, label: lab };
       });
       const factOutLabels = factOutPairs.map((p) => p.label);
-      const rows = uniCombos.map(({ key, row }) => {
-        const hit = factMap.get(key);
-        const r: Record<string, string | number> = { ...row };
-        factOutPairs.forEach(({ key: c, label: outLab }) => {
-          if (!hit && WINDOW_COLS.has(c)) {
-            const sv = factSeed[c];
-            if (sv != null) { r[outLab] = typeof sv === 'number' || typeof sv === 'string' ? (sv as string | number) : String(sv); return; }
+      const rows: Record<string, string | number>[] = [];
+      for (const { key, row } of uniCombos) {
+        const hits = factMap.get(key) ?? [];
+        if (hits.length) {
+          for (const hit of hits) {
+            const r: Record<string, string | number> = { ...row };
+            factOutPairs.forEach(({ key: c, label: outLab }) => {
+              const v = hit[c] ?? fillVal;
+              if (typeof v === 'number' || typeof v === 'string') r[outLab] = v;
+              else r[outLab] = String(v);
+            });
+            rows.push(r);
           }
-          const v = hit ? (hit[c] ?? fillVal) : fillVal;
-          if (typeof v === 'number' || typeof v === 'string') r[outLab] = v;
-          else r[outLab] = String(v);
-        });
-        return r;
-      });
+        } else {
+          const r: Record<string, string | number> = { ...row };
+          factOutPairs.forEach(({ key: c, label: outLab }) => {
+            if (WINDOW_COLS.has(c)) {
+              const sv = factSeed[c];
+              if (sv != null) { r[outLab] = typeof sv === 'number' || typeof sv === 'string' ? (sv as string | number) : String(sv); return; }
+            }
+            r[outLab] = typeof fillVal === 'number' ? fillVal : String(fillVal);
+          });
+          rows.push(r);
+        }
+      }
       const firstCol = uniLabels[0];
       if (firstCol) {
         rows.sort((a, b) => String(a[firstCol] ?? '').localeCompare(String(b[firstCol] ?? ''), 'zh'));
