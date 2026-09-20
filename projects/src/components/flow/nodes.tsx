@@ -5607,31 +5607,6 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
   // 「转」弹窗：对行转列字段的横排（去重值）顺序排序
   const [pivotSortIdx, setPivotSortIdx] = useState<number | null>(null);
   const allEdges = useEdges();
-  // 取某个行转列字段的去重值（来自上游节点运行输出行），供「转」弹窗排序列表使用
-  const pivotDistinct = useMemo(() => {
-    if (pivotSortIdx == null) return [] as string[];
-    const src = d.sourceNode;
-    if (!src) return [] as string[];
-    const cfg = mergeCols()[pivotSortIdx];
-    if (!cfg || cfg.unpivot !== true) return [] as string[];
-    const key = cfg.key;
-    try {
-      const outs = evaluateFlow(allNodes as unknown as FlowNode[], allEdges as unknown as FlowEdge[], tables);
-      const rows: Record<string, unknown>[] = (outs[src]?.rows ?? []) as Record<string, unknown>[];
-      const seen: string[] = [];
-      for (const r of rows) {
-        const v = r[key];
-        if (v != null && v !== '') {
-          const sv = String(v);
-          if (!seen.includes(sv)) seen.push(sv);
-        }
-      }
-      return seen;
-    } catch {
-      return [] as string[];
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pivotSortIdx, d.sourceNode, allNodes, allEdges, tables]);
   // 选择节点后自动用其字段填充列配置（保留已有匹配项，追加新增字段；一律展示全部字段）
   const applySource = (nid: string, label = '') => {
     const colsOf = inferNodeCols(allNodes, tables, nid);
@@ -5682,6 +5657,31 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
   // 展示列在前、未展示沉底的显示列表；值字段列已占用(行转列表头下填充)故从②字段列移除不展示；索引基于该列表，改配置时映射回 merged 下标
   const displayCols = [...merged].filter((c) => !c.pivotValue).sort((a, b) => Number(a.show === false) - Number(b.show === false));
   const idxOf = (colIdx: number) => merged.indexOf(displayCols[colIdx]);
+  // 取某个行转列字段的去重值（来自上游节点运行输出行），供「转」弹窗排序列表使用
+  const pivotDistinct = useMemo(() => {
+    if (pivotSortIdx == null) return [] as string[];
+    const src = d.sourceNode;
+    if (!src) return [] as string[];
+    const cfg = mergeCols()[pivotSortIdx];
+    if (!cfg || cfg.unpivot !== true) return [] as string[];
+    const key = cfg.key;
+    try {
+      const outs = evaluateFlow(allNodes as unknown as FlowNode[], allEdges as unknown as FlowEdge[], tables);
+      const rows: Record<string, unknown>[] = (outs[src]?.rows ?? []) as Record<string, unknown>[];
+      const seen: string[] = [];
+      for (const r of rows) {
+        const v = r[key];
+        if (v != null && v !== '') {
+          const sv = String(v);
+          if (!seen.includes(sv)) seen.push(sv);
+        }
+      }
+      return seen;
+    } catch {
+      return [] as string[];
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pivotSortIdx, d.sourceNode, allNodes, allEdges, tables]);
   const moveCol = (i: number, dir: -1 | 1) => {
     const j = i + dir;
     if (j < 0 || j >= displayCols.length) return;
