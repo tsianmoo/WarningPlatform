@@ -2252,6 +2252,19 @@ function evalNode(
           const combo = pivotCols.map((c) => String(fixedKey(r, c) ?? '')).join('·');
           if (!combos.includes(combo)) combos.push(combo);
         }
+        // 若有已保存的横向顺序，按其重排（未在顺序中的组合追加到末尾）
+        const orderCol = pivotCols[0] as { pivotOrder?: string[] } | undefined;
+        if (orderCol && orderCol.pivotOrder && orderCol.pivotOrder.length) {
+          const desired = orderCol.pivotOrder;
+          combos.sort((a, b) => {
+            const ia = desired.indexOf(a);
+            const ib = desired.indexOf(b);
+            if (ia === -1 && ib === -1) return 0;
+            if (ia === -1) return 1;
+            if (ib === -1) return -1;
+            return ia - ib;
+          });
+        }
         const valKey = valCfg ? valCfg.label || valCfg.key : '';
         // 固定列各自成列；每个固定组一行，各组合列填值字段数值
         const outHead: string[] = [...fixedCols.map((c) => c.label || c.key), ...combos];

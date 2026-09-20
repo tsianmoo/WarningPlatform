@@ -5604,6 +5604,34 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
   }, [d.sourceNode, allNodes, tables]);
   const [fmtFor, setFmtFor] = useState<number | null>(null);
   const [valOpen, setValOpen] = useState(false);
+  // 「转」弹窗：对行转列字段的横排（去重值）顺序排序
+  const [pivotSortIdx, setPivotSortIdx] = useState<number | null>(null);
+  const allEdges = useEdges();
+  // 取某个行转列字段的去重值（来自上游节点运行输出行），供「转」弹窗排序列表使用
+  const pivotDistinct = useMemo(() => {
+    if (pivotSortIdx == null) return [] as string[];
+    const src = d.sourceNode;
+    if (!src) return [] as string[];
+    const cfg = mergeCols()[pivotSortIdx];
+    if (!cfg || cfg.unpivot !== true) return [] as string[];
+    const key = cfg.key;
+    try {
+      const outs = evaluateFlow(allNodes as unknown as FlowNode[], allEdges as unknown as FlowEdge[], tables);
+      const rows: Record<string, unknown>[] = (outs[src]?.rows ?? []) as Record<string, unknown>[];
+      const seen: string[] = [];
+      for (const r of rows) {
+        const v = r[key];
+        if (v != null && v !== '') {
+          const sv = String(v);
+          if (!seen.includes(sv)) seen.push(sv);
+        }
+      }
+      return seen;
+    } catch {
+      return [] as string[];
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pivotSortIdx, d.sourceNode, allNodes, allEdges, tables]);
   // 选择节点后自动用其字段填充列配置（保留已有匹配项，追加新增字段；一律展示全部字段）
   const applySource = (nid: string, label = '') => {
     const colsOf = inferNodeCols(allNodes, tables, nid);
@@ -5735,7 +5763,14 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
                 <input
                   type="checkbox"
                   checked={c.unpivot === true}
-                  onChange={(e) => setCol(idxOf(i), { unpivot: e.target.checked })}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setCol(idxOf(i), { unpivot: true });
+                      setPivotSortIdx(i);
+                    } else {
+                      setCol(idxOf(i), { unpivot: false, pivotOrder: undefined });
+                    }
+                  }}
                   className="mr-0.5 h-3 w-3 accent-violet-600"
                 />
                 转
@@ -5889,6 +5924,52 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
                 </div>
               );
             })()}
+          </div>
+        </div>
+      )}
+
+      {/* 行转列「转」弹窗：对横排表头（去重值）排序 */}
+      {pivotSortIdx != null && merged[pivotSortIdx]?.unpivot === true && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4" onClick={() => setPivotSortIdx(null)}>
+          <div className="w-[340px] rounded-xl bg-white p-4 shadow-2xl" onClick={(e) => { e.stopPropagation(); }}>
+            <div className="mb-3 flex items-center justify-between">
+              <div className="text-sm font-semibold text-gray-800">行转列字段排序</div>
+              <button type="button" onClick={() => setPivotSortIdx(null)} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
+            </div>
+            <div className="mb-2 text-[11px] leading-4 text-gray-500">
+              字段「<span className="font-medium text-violet-600">{merged[pivotSortIdx]?.label || merged[pivotSortIdx]?.key}</span>」的不同取值将横向展开为表头列，可调整其左右顺序。
+            </div>
+            {(() => {
+              const cur = merged[pivotSortIdx];
+              const order = Array.isArray(cur.pivotOrder) && cur.pivotOrder.length
+                ? cur.pivotOrder
+                : pivotDistinct;
+              const shown = order.length ? order : (pivotDistinct.length ? pivotDistinct : ['（暂无数据）']);
+              const setOrder = (arr: string[]) => setCol(pivotSortIdx, { pivotOrder: arr });
+              const move = (idx: number, dir: -1 | 1) => {
+                const j = idx + dir;
+                if (j < 0 || j >= shown.length) return;
+                const arr = shown.slice();
+                const [it] = arr.splice(idx, 1);
+                arr.splice(j, 0, it);
+                setOrder(arr);
+              };
+              return (
+                <div className="max-h-[300px] space-y-1 overflow-y-auto pr-0.5">
+                  {shown.map((v, i) => (
+                    <div key={`${v}-${i}`} className="flex items-center gap-1 rounded-md border border-gray-100 bg-gray-50/60 px-2 py-1">
+                      <span className="w-5 text-center text-[10px] text-gray-400">{i + 1}</span>
+                      <span className="flex-1 truncate text-xs text-gray-700">{v}</span>
+                      <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="text-[10px] text-gray-400 hover:text-sky-600 disabled:opacity-30" title="左移">◀</button>
+                      <button type="button" onClick={() => move(i, 1)} disabled={i === shown.length - 1} className="text-[10px] text-gray-400 hover:text-sky-600 disabled:opacity-30" title="右移">▶</button>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+            <div className="mt-3 flex justify-end gap-2">
+              <button type="button" onClick={() => setPivotSortIdx(null)} className="rounded-md px-3 py-1 text-xs text-gray-500 ring-1 ring-gray-200 hover:bg-gray-100">完成</button>
+            </div>
           </div>
         </div>
       )}

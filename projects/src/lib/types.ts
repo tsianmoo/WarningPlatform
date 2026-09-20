@@ -862,6 +862,8 @@ export interface RowSortCol {
   unpivot?: boolean;
   /** 该字段是否为「值字段」：行转列/普通视图下填充数值的列（多字段行转列时唯一值列） */
   pivotValue?: boolean;
+  /** 行转列（Pivot）表头的横排组合顺序（由「转」弹窗调整；缺省时按上游出现顺序） */
+  pivotOrder?: string[];
 }
 
 /** 节点结果排序/格式化 节点数据 */
