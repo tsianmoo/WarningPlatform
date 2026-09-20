@@ -1,6 +1,51 @@
 import { getSupabaseClient } from '@/storage/database/supabase-client';
 import type { AlertRule, AlertStatus, AlertTask, AttrCategory, DataTable, DataTableGroup, Dealer, Employee, HomeConfig, HrAttribute, Organization, Person, RuleGroup, Store } from '@/lib/types';
 
+// 时间戳强制整型（毫秒），避免浮点值写入 bigint 列失败导致整批同步中断
+const ts = (v?: number | null, fb = Date.now()) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.floor(n) : fb;
+};
+
+// Supabase-js select 单次默认最多返回 1000 行，需按 range 分页取全量，否则超千行会被静默截断、
+// 再经全量同步把库中超出的行当 stale 删掉（真丢数据）。
+async function selectAllRows<T>(
+  client: ReturnType<typeof getSupabaseClient>,
+  table: string,
+  orders: ReadonlyArray<[string, boolean]>, // [column, ascending]
+  limit = 1000,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += limit) {
+    let q = client.from(table).select('*').range(from, from + limit - 1);
+    for (const [col, asc] of orders) q = q.order(col, { ascending: asc });
+    const { data, error } = await q;
+    if (error) throw new Error(`读取${table}失败: ${error.message}`);
+    const batch = (data ?? []) as T[];
+    rows.push(...batch);
+    if (batch.length < limit) break;
+  }
+  return rows;
+}
+
+async function selectAllIds(client: ReturnType<typeof getSupabaseClient>, table: string, limit = 1000): Promise<string[]> {
+  const rows: string[] = [];
+  for (let from = 0; ; from += limit) {
+    const { data, error } = await client.from(table).select('id').range(from, from + limit - 1);
+    if (error) throw new Error(`读取${table}的ID失败: ${error.message}`);
+    const batch = (data as { id: string }[] | null) ?? [];
+    rows.push(...batch.map((r) => r.id));
+    if (batch.length < limit) break;
+  }
+  return rows;
+}
+
+// 库中存在但本次提交集合里没有的行 = 待删除的 stale（分页取全量 id 后再差集，避免超千行误删）
+async function computeStale(client: ReturnType<typeof getSupabaseClient>, table: string, keep: Set<string>): Promise<string[]> {
+  const existing = await selectAllIds(client, table);
+  return existing.filter((id) => !keep.has(id));
+}
+
 interface TableRow {
   id: string;
   name: string;
@@ -76,12 +121,8 @@ function toAlertTask(r: AlertRow): AlertTask {
 /** 读取全部预警（按创建时间倒序） */
 export async function getAllAlerts(): Promise<AlertTask[]> {
   const client = getSupabaseClient();
-  const { data, error } = await client
-    .from('alert_tasks')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (error) throw new Error(`读取预警失败: ${error.message}`);
-  return (data as AlertRow[] | null)?.map(toAlertTask) ?? [];
+  const rows = await selectAllRows<AlertRow>(client, 'alert_tasks', [['created_at', false]]);
+  return rows.map(toAlertTask);
 }
 
 /** 全量覆盖式保存预警（以入参为准，删除库中多余的预警） */
@@ -108,8 +149,8 @@ export async function syncAlerts(alerts: AlertTask[], opts?: { clearAll?: boolea
     failed_reason: a.failedReason ?? null,
     plan: a.plan ?? null,
     comments: a.comments ?? null,
-    created_at: a.createdAt ?? Date.now(),
-    updated_at: a.updatedAt ?? Date.now(),
+    created_at: ts(a.createdAt),
+    updated_at: ts(a.updatedAt),
   }));
 
   if (rows.length > 0) {
@@ -125,12 +166,8 @@ export async function syncAlerts(alerts: AlertTask[], opts?: { clearAll?: boolea
     return;
   }
 
-  const { data: existing, error: selErr } = await client.from('alert_tasks').select('id');
-  if (selErr) throw new Error(`读取预警ID失败: ${selErr.message}`);
   const keep = new Set(rows.map((r) => r.id));
-  const staleIds = ((existing as { id: string }[] | null) ?? [])
-    .map((r) => r.id)
-    .filter((id) => !keep.has(id));
+  const staleIds = await computeStale(client, 'alert_tasks', keep);
   if (staleIds.length > 0) {
     const { error: delErr } = await client.from('alert_tasks').delete().in('id', staleIds);
     if (delErr) throw new Error(`删除预警失败: ${delErr.message}`);
@@ -140,12 +177,8 @@ export async function syncAlerts(alerts: AlertTask[], opts?: { clearAll?: boolea
 /** 读取所有数据表（按创建时间升序） */
 export async function getAllTables(): Promise<DataTable[]> {
   const client = getSupabaseClient();
-  const { data, error } = await client
-    .from('data_tables')
-    .select('id,name,file_name,row_count,created_at,data')
-    .order('created_at', { ascending: true });
-  if (error) throw new Error(`读取数据表失败: ${error.message}`);
-  return (data as TableRow[] | null)?.map((r) => r.data as DataTable) ?? [];
+  const rows = await selectAllRows<TableRow>(client, 'data_tables', [['created_at', true]]);
+  return rows.map((r) => r.data as DataTable);
 }
 
 /** 全量覆盖式保存数据表（以入参为准，删除库中多余的表） */
@@ -156,7 +189,7 @@ export async function syncTables(tables: DataTable[]): Promise<void> {
     name: t.name,
     file_name: t.fileName ?? '',
     row_count: t.rowCount ?? 0,
-    created_at: t.createdAt ?? Date.now(),
+    created_at: ts(t.createdAt),
     data: t,
   }));
 
@@ -169,12 +202,8 @@ export async function syncTables(tables: DataTable[]): Promise<void> {
   }
 
   // 删除已被前端移除的表
-  const { data: existing, error: selErr } = await client.from('data_tables').select('id');
-  if (selErr) throw new Error(`读取数据表ID失败: ${selErr.message}`);
   const keep = new Set(tables.map((t) => t.id));
-  const staleIds = ((existing as { id: string }[] | null) ?? [])
-    .map((r) => r.id)
-    .filter((id) => !keep.has(id));
+  const staleIds = await computeStale(client, 'data_tables', keep);
   if (staleIds.length > 0) {
     const { error: delErr } = await client.from('data_tables').delete().in('id', staleIds);
     if (delErr) throw new Error(`删除数据表失败: ${delErr.message}`);
@@ -184,12 +213,8 @@ export async function syncTables(tables: DataTable[]): Promise<void> {
 /** 读取所有规则 */
 export async function getAllRules(): Promise<AlertRule[]> {
   const client = getSupabaseClient();
-  const { data, error } = await client
-    .from('alert_rules')
-    .select('id,name,status,created_at,updated_at_ms,data')
-    .order('created_at', { ascending: true });
-  if (error) throw new Error(`读取规则失败: ${error.message}`);
-  return (data as RuleRow[] | null)?.map((r) => r.data as AlertRule) ?? [];
+  const rows = await selectAllRows<RuleRow>(client, 'alert_rules', [['created_at', true]]);
+  return rows.map((r) => r.data as AlertRule);
 }
 
 /** 全量覆盖式保存规则 */
@@ -199,7 +224,7 @@ export async function syncRules(rules: AlertRule[]): Promise<void> {
     id: r.id,
     name: r.name,
     status: r.status,
-    created_at: r.createdAt ?? Date.now(),
+    created_at: ts(r.createdAt),
     updated_at_ms: r.updatedAt ?? Date.now(),
     data: r,
   }));
@@ -209,12 +234,8 @@ export async function syncRules(rules: AlertRule[]): Promise<void> {
     if (error) throw new Error(`保存规则失败: ${error.message}`);
   }
 
-  const { data: existing, error: selErr } = await client.from('alert_rules').select('id');
-  if (selErr) throw new Error(`读取规则ID失败: ${selErr.message}`);
   const keep = new Set(rules.map((r) => r.id));
-  const staleIds = ((existing as { id: string }[] | null) ?? [])
-    .map((r) => r.id)
-    .filter((id) => !keep.has(id));
+  const staleIds = await computeStale(client, 'alert_rules', keep);
   if (staleIds.length > 0) {
     const { error: delErr } = await client.from('alert_rules').delete().in('id', staleIds);
     if (delErr) throw new Error(`删除规则失败: ${delErr.message}`);
@@ -233,12 +254,8 @@ function toRuleGroup(row: RuleGroupRow): RuleGroup {
 
 export async function getAllRuleGroups(): Promise<RuleGroup[]> {
   const client = getSupabaseClient();
-  const { data, error } = await client
-    .from('rule_groups')
-    .select('id,name,created_at')
-    .order('created_at', { ascending: true });
-  if (error) throw new Error(`读取分组失败: ${error.message}`);
-  return ((data as RuleGroupRow[] | null) ?? []).map(toRuleGroup);
+  const rows = await selectAllRows<RuleGroupRow>(client, 'rule_groups', [['created_at', true]]);
+  return rows.map(toRuleGroup);
 }
 
 export async function syncRuleGroups(groups: RuleGroup[]): Promise<void> {
@@ -246,18 +263,14 @@ export async function syncRuleGroups(groups: RuleGroup[]): Promise<void> {
   const rows = groups.map((g) => ({
     id: g.id,
     name: g.name,
-    created_at: g.createdAt ?? Date.now(),
+    created_at: ts(g.createdAt),
   }));
   if (rows.length > 0) {
     const { error } = await client.from('rule_groups').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存分组失败: ${error.message}`);
   }
-  const { data: existing, error: selErr } = await client.from('rule_groups').select('id');
-  if (selErr) throw new Error(`读取分组ID失败: ${selErr.message}`);
   const keep = new Set(groups.map((g) => g.id));
-  const staleIds = ((existing as { id: string }[] | null) ?? [])
-    .map((r) => r.id)
-    .filter((id) => !keep.has(id));
+  const staleIds = await computeStale(client, 'rule_groups', keep);
   if (staleIds.length > 0) {
     const { error: delErr } = await client.from('rule_groups').delete().in('id', staleIds);
     if (delErr) throw new Error(`删除分组失败: ${delErr.message}`);
@@ -267,27 +280,20 @@ export async function syncRuleGroups(groups: RuleGroup[]): Promise<void> {
 /** 读取所有数据表分组 */
 export async function getAllTableGroups(): Promise<DataTableGroup[]> {
   const client = getSupabaseClient();
-  const { data, error } = await client.from('table_groups').select('*').order('created_at', { ascending: true });
-  if (error) throw new Error(`读取数据表分组失败: ${error.message}`);
-  return ((data as { id: string; name: string; created_at: number }[] | null) ?? []).map((g) => ({
-    id: g.id,
-    name: g.name,
-    createdAt: g.created_at ?? Date.now(),
-  }));
+  const rows = await selectAllRows<{ id: string; name: string; created_at: number }>(client, 'table_groups', [['created_at', true]]);
+  return rows.map((g) => ({ id: g.id, name: g.name, createdAt: g.created_at ?? Date.now() }));
 }
 
 /** 全量覆盖式保存数据表分组 */
 export async function syncTableGroups(groups: DataTableGroup[]): Promise<void> {
   const client = getSupabaseClient();
-  const rows = groups.map((g) => ({ id: g.id, name: g.name, created_at: g.createdAt ?? Date.now() }));
+  const rows = groups.map((g) => ({ id: g.id, name: g.name, created_at: ts(g.createdAt) }));
   if (rows.length > 0) {
     const { error } = await client.from('table_groups').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存数据表分组失败: ${error.message}`);
   }
-  const { data: existing, error: selErr } = await client.from('table_groups').select('id');
-  if (selErr) throw new Error(`读取数据表分组ID失败: ${selErr.message}`);
   const keep = new Set(groups.map((g) => g.id));
-  const staleIds = ((existing as { id: string }[] | null) ?? []).map((r) => r.id).filter((id) => !keep.has(id));
+  const staleIds = await computeStale(client, 'table_groups', keep);
   if (staleIds.length > 0) {
     const { error: delErr } = await client.from('table_groups').delete().in('id', staleIds);
     if (delErr) throw new Error(`删除数据表分组失败: ${delErr.message}`);
@@ -316,13 +322,8 @@ function toOrg(r: OrgRow): Organization {
 
 export async function getAllOrganizations(): Promise<Organization[]> {
   const client = getSupabaseClient();
-  const { data, error } = await client
-    .from('organizations')
-    .select('*')
-    .order('sort', { ascending: true })
-    .order('created_at', { ascending: true });
-  if (error) throw new Error(`读取组织架构失败: ${error.message}`);
-  return ((data as OrgRow[] | null) ?? []).map(toOrg);
+  const rows = await selectAllRows<OrgRow>(client, 'organizations', [['sort', true], ['created_at', true]]);
+  return rows.map(toOrg);
 }
 
 export async function syncOrganizations(orgs: Organization[]): Promise<void> {
@@ -333,17 +334,13 @@ export async function syncOrganizations(orgs: Organization[]): Promise<void> {
     kind: o.kind,
     parent_id: o.parentId ?? null,
     sort: o.sort ?? 0,
-    created_at: o.createdAt ?? Date.now(),
+    created_at: ts(o.createdAt),
   }));
   if (rows.length > 0) {
     const { error } = await client.from('organizations').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存组织架构失败: ${error.message}`);
-    const { data: existing, error: selErr } = await client.from('organizations').select('id');
-    if (selErr) throw new Error(`读取组织ID失败: ${selErr.message}`);
     const keep = new Set(orgs.map((o) => o.id));
-    const staleIds = ((existing as { id: string }[] | null) ?? [])
-      .map((r) => r.id)
-      .filter((id) => !keep.has(id));
+    const staleIds = await computeStale(client, 'organizations', keep);
     if (staleIds.length > 0) {
       const { error: delErr } = await client.from('organizations').delete().in('id', staleIds);
       if (delErr) throw new Error(`删除组织失败: ${delErr.message}`);
@@ -399,13 +396,8 @@ function toPerson(r: PersonRow): Person {
 
 export async function getAllPersons(): Promise<Person[]> {
   const client = getSupabaseClient();
-  const { data, error } = await client
-    .from('persons')
-    .select('*')
-    .order('sort', { ascending: true })
-    .order('created_at', { ascending: true });
-  if (error) throw new Error(`读取人事架构失败: ${error.message}`);
-  return ((data as PersonRow[] | null) ?? []).map(toPerson);
+  const rows = await selectAllRows<PersonRow>(client, 'persons', [['sort', true], ['created_at', true]]);
+  return rows.map(toPerson);
 }
 
 export async function syncPersons(persons: Person[]): Promise<void> {
@@ -429,17 +421,13 @@ export async function syncPersons(persons: Person[]): Promise<void> {
     password: p.password ?? null,
     enabled: p.enabled ?? true,
     sort: p.sort ?? 0,
-    created_at: p.createdAt ?? Date.now(),
+    created_at: ts(p.createdAt),
   }));
   if (rows.length > 0) {
     const { error } = await client.from('persons').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存人事架构失败: ${error.message}`);
-    const { data: existing, error: selErr } = await client.from('persons').select('id');
-    if (selErr) throw new Error(`读取人员ID失败: ${selErr.message}`);
     const keep = new Set(persons.map((p) => p.id));
-    const staleIds = ((existing as { id: string }[] | null) ?? [])
-      .map((r) => r.id)
-      .filter((id) => !keep.has(id));
+    const staleIds = await computeStale(client, 'persons', keep);
     if (staleIds.length > 0) {
       const { error: delErr } = await client.from('persons').delete().in('id', staleIds);
       if (delErr) throw new Error(`删除人员失败: ${delErr.message}`);
@@ -449,9 +437,8 @@ export async function syncPersons(persons: Person[]): Promise<void> {
 
 export async function getAllHrAttributes(): Promise<HrAttribute[]> {
   const client = getSupabaseClient();
-  const { data, error } = await client.from('hr_attributes').select('*').order('sort', { ascending: true });
-  if (error) throw new Error(`读取人事属性失败: ${error.message}`);
-  return ((data as unknown as HrAttribute[]) ?? []).map((a) => ({
+  const rows = await selectAllRows<HrAttribute>(client, 'hr_attributes', [['sort', true]]);
+  return rows.map((a) => ({
     id: a.id,
     name: a.name,
     items: a.items ?? [],
@@ -469,17 +456,13 @@ export async function syncHrAttributes(attributes: HrAttribute[]): Promise<void>
     items: a.items ?? [],
     sort: a.sort ?? 0,
     category: a.category ?? 'person',
-    created_at: a.createdAt ?? Date.now(),
+    created_at: ts(a.createdAt),
   }));
   if (rows.length > 0) {
     const { error } = await client.from('hr_attributes').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存人事属性失败: ${error.message}`);
-    const { data: existing, error: selErr } = await client.from('hr_attributes').select('id');
-    if (selErr) throw new Error(`读取属性ID失败: ${selErr.message}`);
     const keep = new Set(attributes.map((a) => a.id));
-    const staleIds = ((existing as { id: string }[] | null) ?? [])
-      .map((r) => r.id)
-      .filter((id) => !keep.has(id));
+    const staleIds = await computeStale(client, 'hr_attributes', keep);
     if (staleIds.length > 0) {
       const { error: delErr } = await client.from('hr_attributes').delete().in('id', staleIds);
       if (delErr) throw new Error(`删除属性失败: ${delErr.message}`);
@@ -560,9 +543,8 @@ function toStore(r: DictRow): Store {
 
 export async function getAllDealers(): Promise<Dealer[]> {
   const client = getSupabaseClient();
-  const { data, error } = await client.from('dealers').select('*').order('sort', { ascending: true });
-  if (error) throw new Error(`读取经销商失败: ${error.message}`);
-  return ((data as DictRow[] | null) ?? []).map(toDealer);
+  const rows = await selectAllRows<DictRow>(client, 'dealers', [['sort', true]]);
+  return rows.map(toDealer);
 }
 
 export async function syncDealers(dealers: Dealer[]): Promise<void> {
@@ -571,7 +553,7 @@ export async function syncDealers(dealers: Dealer[]): Promise<void> {
     id: d.id,
     name: d.name,
     sort: d.sort ?? 0,
-    created_at: d.createdAt ?? Date.now(),
+    created_at: ts(d.createdAt),
     code: d.code ?? null,
     contact: d.contact ?? null,
     phone: d.phone ?? null,
@@ -587,10 +569,8 @@ export async function syncDealers(dealers: Dealer[]): Promise<void> {
   if (rows.length > 0) {
     const { error } = await client.from('dealers').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存经销商失败: ${error.message}`);
-    const { data: existing, error: selErr } = await client.from('dealers').select('id');
-    if (selErr) throw new Error(`读取经销商ID失败: ${selErr.message}`);
     const keep = new Set(dealers.map((d) => d.id));
-    const staleIds = ((existing as { id: string }[] | null) ?? []).map((r) => r.id).filter((id) => !keep.has(id));
+    const staleIds = await computeStale(client, 'dealers', keep);
     if (staleIds.length > 0) {
       const { error: delErr } = await client.from('dealers').delete().in('id', staleIds);
       if (delErr) throw new Error(`删除经销商失败: ${delErr.message}`);
@@ -600,9 +580,8 @@ export async function syncDealers(dealers: Dealer[]): Promise<void> {
 
 export async function getAllStores(): Promise<Store[]> {
   const client = getSupabaseClient();
-  const { data, error } = await client.from('stores').select('*').order('sort', { ascending: true });
-  if (error) throw new Error(`读取店仓失败: ${error.message}`);
-  return ((data as DictRow[] | null) ?? []).map(toStore);
+  const rows = await selectAllRows<DictRow>(client, 'stores', [['sort', true]]);
+  return rows.map(toStore);
 }
 
 export async function syncStores(stores: Store[]): Promise<void> {
@@ -611,7 +590,7 @@ export async function syncStores(stores: Store[]): Promise<void> {
     id: s.id,
     name: s.name,
     sort: s.sort ?? 0,
-    created_at: s.createdAt ?? Date.now(),
+    created_at: ts(s.createdAt),
     code: s.code ?? null,
     contact: s.contact ?? null,
     phone: s.phone ?? null,
@@ -633,10 +612,8 @@ export async function syncStores(stores: Store[]): Promise<void> {
     if (error) throw new Error(`保存店仓失败: ${error.message}`);
   }
   if (rows.length > 0) {
-    const { data: existing, error: selErr } = await client.from('stores').select('id');
-    if (selErr) throw new Error(`读取店仓ID失败: ${selErr.message}`);
     const keep = new Set(stores.map((s) => s.id));
-    const staleIds = ((existing as { id: string }[] | null) ?? []).map((r) => r.id).filter((id) => !keep.has(id));
+    const staleIds = await computeStale(client, 'stores', keep);
     if (staleIds.length > 0) {
       const { error: delErr } = await client.from('stores').delete().in('id', staleIds);
       if (delErr) throw new Error(`删除店仓失败: ${delErr.message}`);
@@ -663,9 +640,8 @@ function toEmployee(r: DictRow): Employee {
 
 export async function getAllEmployees(): Promise<Employee[]> {
   const client = getSupabaseClient();
-  const { data, error } = await client.from('employees').select('*').order('sort', { ascending: true });
-  if (error) throw new Error(`读取员工失败: ${error.message}`);
-  return ((data as DictRow[] | null) ?? []).map(toEmployee);
+  const rows = await selectAllRows<DictRow>(client, 'employees', [['sort', true]]);
+  return rows.map(toEmployee);
 }
 
 export async function syncEmployees(employees: Employee[]): Promise<void> {
@@ -682,15 +658,13 @@ export async function syncEmployees(employees: Employee[]): Promise<void> {
     password: e.password ?? null,
     attrs: e.attrs ?? null,
     sort: e.sort ?? 0,
-    created_at: e.createdAt ?? 0,
+    created_at: ts(e.createdAt, 0),
   }));
   if (rows.length > 0) {
     const { error } = await client.from('employees').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存员工失败: ${error.message}`);
-    const { data: existing, error: selErr } = await client.from('employees').select('id');
-    if (selErr) throw new Error(`读取员工ID失败: ${selErr.message}`);
     const keep = new Set(employees.map((e) => e.id));
-    const staleIds = ((existing as { id: string }[] | null) ?? []).map((r) => r.id).filter((id) => !keep.has(id));
+    const staleIds = await computeStale(client, 'employees', keep);
     if (staleIds.length > 0) {
       const { error: delErr } = await client.from('employees').delete().in('id', staleIds);
       if (delErr) throw new Error(`删除员工失败: ${delErr.message}`);
@@ -708,7 +682,7 @@ export async function getHomeConfig(): Promise<HomeConfig | null> {
 export async function saveHomeConfig(config: HomeConfig): Promise<void> {
   const client = getSupabaseClient();
   const { error } = await client.from('home_config').upsert(
-    { id: 'home', config, updated_at: Date.now() },
+    { id: 'home', config, updated_at: ts(undefined, Date.now()) },
     { onConflict: 'id' }
   );
   if (error) throw new Error(`保存首页配置失败: ${error.message}`);

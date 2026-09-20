@@ -470,6 +470,11 @@ async function pushRemoteState(state: AppState, opts?: { clearAlertsAll?: boolea
       console.warn('[persist] 云端同步失败', res.status);
       return false;
     }
+    // 部分实体同步失败（返回体 errors 非空）也可视为未完全落库，透出供日志排查
+    const resp = (await res.json().catch(() => null)) as { errors?: string[] } | null;
+    if (resp && Array.isArray(resp.errors) && resp.errors.length > 0) {
+      console.warn('[persist] 部分实体未落库:', resp.errors);
+    }
     return true;
   } catch (err) {
     console.warn('[persist] 云端同步异常', err);

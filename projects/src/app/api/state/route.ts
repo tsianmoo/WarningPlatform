@@ -33,9 +33,26 @@ export async function POST(req: Request) {
     const dealers = Array.isArray(body.dealers) ? body.dealers : [];
     const stores = Array.isArray(body.stores) ? body.stores : [];
     const employees = Array.isArray(body.employees) ? body.employees : [];
-    await Promise.all([syncTables(tables), syncRules(rules), syncAlerts(alerts, { clearAll: !!body.clearAlertsAll }), syncRuleGroups(groups), syncTableGroups(tableGroups), syncOrganizations(orgs), syncPersons(persons), syncHrAttributes(hrAttributes), syncDealers(dealers), syncStores(stores), syncEmployees(employees)]);
-    if (body.config) await saveHomeConfig(body.config);
-    return NextResponse.json({ success: true, tableCount: tables.length, ruleCount: rules.length, alertCount: alerts.length, groupCount: groups.length, tableGroupCount: tableGroups.length, orgCount: orgs.length, personCount: persons.length, attrCount: hrAttributes.length, dealerCount: dealers.length, storeCount: stores.length, employeeCount: employees.length });
+    // 各实体独立同步：单个实体（或某条脏数据）失败不拖垮整批其他实体落库，避免"新增用户"因别处报错而静默丢失
+    const syncs = [
+      ['tables', () => syncTables(tables)],
+      ['rules', () => syncRules(rules)],
+      ['alerts', () => syncAlerts(alerts, { clearAll: !!body.clearAlertsAll })],
+      ['groups', () => syncRuleGroups(groups)],
+      ['tableGroups', () => syncTableGroups(tableGroups)],
+      ['orgs', () => syncOrganizations(orgs)],
+      ['persons', () => syncPersons(persons)],
+      ['hrAttributes', () => syncHrAttributes(hrAttributes)],
+      ['dealers', () => syncDealers(dealers)],
+      ['stores', () => syncStores(stores)],
+      ['employees', () => syncEmployees(employees)],
+    ] as const;
+    const results = await Promise.allSettled(syncs.map(([, fn]) => Promise.resolve().then(fn)));
+    if (body.config) {
+      try { await saveHomeConfig(body.config); } catch (err) { results.push({ status: 'rejected', reason: err instanceof Error ? err.message : String(err) }); }
+    }
+    const errors = results.map((r, i) => (r.status === 'rejected' ? `${syncs[i] ? syncs[i][0] : 'config'}: ${r.reason && (r.reason as Error).message ? (r.reason as Error).message : r.reason}` : null)).filter(Boolean);
+    return NextResponse.json({ success: true, errors, tableCount: tables.length, ruleCount: rules.length, alertCount: alerts.length, groupCount: groups.length, tableGroupCount: tableGroups.length, orgCount: orgs.length, personCount: persons.length, attrCount: hrAttributes.length, dealerCount: dealers.length, storeCount: stores.length, employeeCount: employees.length });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });
