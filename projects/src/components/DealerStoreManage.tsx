@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import { ChevronDown, ChevronUp, Database, Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useStore } from '@/lib/store';
@@ -36,6 +36,8 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [srcOpen, setSrcOpen] = useState(false);
+  const [pageSize, setPageSize] = useState(20);
+  const [page, setPage] = useState(0);
 
   // 经销商数据源驱动：仅展示来源表勾选显示的字段列（未配置时为 null 走基础列兜底）
   const [srcTick, setSrcTick] = useState(0);
@@ -48,7 +50,13 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
   const dealerColVal = (d: Dealer | Store, c: NonNullable<typeof srcCols>[number]) => srcValue(kind, d, c);
   const q = kw.trim().toLowerCase();
   const filtered = q ? list.filter((d) => (d.name || '').toLowerCase().includes(q) || (d.code || '').toLowerCase().includes(q)) : list;
+  const total = filtered.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, pageCount - 1);
+  const paged = filtered.slice(safePage * pageSize, safePage * pageSize + pageSize);
   const unit = META[kind].unit;
+
+  useEffect(() => { setPage(0); }, [kw, pageSize]);
 
   const categoryAttrs = hrAttributes.filter((a) => (a.category ?? 'person') === KIND_CATEGORY[kind]);
 
@@ -224,11 +232,12 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((d, idx) => {
+              {paged.map((d, idx) => {
                 const s = d as Store;
+                const rowNo = safePage * pageSize + idx + 1;
                 return (
                   <tr key={d.id} onClick={() => setActiveId(d.id)} className={`cursor-pointer border-b border-gray-100 ${activeId === d.id ? 'bg-blue-50' : 'text-gray-700 hover:bg-gray-50'}`}>
-                    <td className="px-3 py-2.5 text-gray-400">{idx + 1}</td>
+                    <td className="px-3 py-2.5 text-gray-400">{rowNo}</td>
                     {srcCols ? (
                       srcCols.map((c) => <td key={c.key} className="px-3 py-2.5">{dealerColVal(d as Dealer, c)}</td>)
                     ) : (
@@ -264,6 +273,28 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
             </tbody>
           </table>
           {filtered.length === 0 && <div className="px-4 py-8 text-center text-sm text-gray-400">暂无{unit}，点击右上角新增{unit}</div>}
+          {filtered.length > 0 && (
+            <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2 text-xs text-gray-500">
+              <div className="flex items-center gap-1.5">
+                共 <span className="font-medium text-gray-700">{total}</span> 行
+                <span className="mx-1 text-gray-300">|</span>
+                每页
+                <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }} className="rounded border border-gray-200 bg-white px-1 py-0.5 outline-none">
+                  {[10, 20, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+                行
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button disabled={safePage === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} className="rounded border border-gray-200 bg-white px-2 py-0.5 disabled:opacity-40 hover:enabled:bg-gray-50">
+                  上一页
+                </button>
+                <span>{safePage + 1} / {pageCount}</span>
+                <button disabled={safePage >= pageCount - 1} onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))} className="rounded border border-gray-200 bg-white px-2 py-0.5 disabled:opacity-40 hover:enabled:bg-gray-50">
+                  下一页
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </aside>
 

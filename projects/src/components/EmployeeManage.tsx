@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Database, Pencil, Trash2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { toast } from 'sonner';
@@ -30,6 +30,8 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
 
   const [editing, setEditing] = useState<Employee | null>(null);
   const [open, setOpen] = useState(false);
+  const [pageSize, setPageSize] = useState(20);
+  const [page, setPage] = useState(0);
   const [form, setForm] = useState<{ code: string; name: string; dealerId: string; storeId: string; post: string; onDuty: boolean; enabled: boolean; password: string; attrs: Record<string, string> }>({ code: '', name: '', dealerId: '', storeId: '', post: '', onDuty: true, enabled: true, password: '', attrs: {} });
   const openEdit = (e: Employee) => { setEditing(e); setForm({ code: e.code ?? '', name: e.name, dealerId: e.dealerId ?? '', storeId: e.storeId ?? '', post: e.post ?? '', onDuty: e.onDuty !== false, enabled: e.enabled !== false, password: e.password ?? '', attrs: e.attrs ?? {} }); setOpen(true); };
 
@@ -41,6 +43,13 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
   };
 
   const del = (e: Employee) => { if (confirm(`确认删除员工「${e.name}」？`)) removeEmployee(e.id); };
+
+  const total = filtered.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, pageCount - 1);
+  const paged = filtered.slice(safePage * pageSize, safePage * pageSize + pageSize);
+
+  useEffect(() => { setPage(0); }, [filtered, pageSize]);
 
   const input = 'w-full rounded border border-gray-300 px-2.5 py-1.5 text-sm';
   const label = 'mb-1 block text-xs font-medium text-gray-600';
@@ -113,9 +122,9 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((e, i) => (
+            {paged.map((e, i) => (
               <tr key={e.id} className="hover:bg-gray-50">
-                <td className={td}>{i + 1}</td>
+                <td className={td}>{safePage * pageSize + i + 1}</td>
                 {srcCols ? srcCols.map((c) => <td key={c.key} className={td}>{srcValue('employee', e, c)}</td>) : (
                   <>
                     <td className={td}>{e.code}</td>
@@ -141,6 +150,25 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
           </tbody>
         </table>
       </div>
+
+      {filtered.length > 0 && (
+        <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+          <div className="flex items-center gap-1.5">
+            共 <span className="font-medium text-gray-700">{total}</span> 行
+            <span className="mx-1 text-gray-300">|</span>
+            每页
+            <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }} className="rounded border border-gray-200 bg-white px-1 py-0.5 outline-none">
+              {[10, 20, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+            行
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button disabled={safePage === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} className="rounded border border-gray-200 bg-white px-2 py-0.5 disabled:opacity-40 hover:enabled:bg-gray-50">上一页</button>
+            <span>{safePage + 1} / {pageCount}</span>
+            <button disabled={safePage >= pageCount - 1} onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))} className="rounded border border-gray-200 bg-white px-2 py-0.5 disabled:opacity-40 hover:enabled:bg-gray-50">下一页</button>
+          </div>
+        </div>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setOpen(false)}>
