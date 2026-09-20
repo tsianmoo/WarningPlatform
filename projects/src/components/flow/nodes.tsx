@@ -848,9 +848,12 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
       const factExtraFields = extras.map((k) => s(k.factField)).filter(Boolean);
       const factKeys = [factKey, ...factExtraFields].filter(Boolean);
       const factRet = s(data.factReturnField);
+      const factRetCols = (Array.isArray(data.factReturnFields) ? data.factReturnFields as Record<string, unknown>[] : [])
+        .map((f) => s(f.key)).filter(Boolean) as string[];
       const allowFact = (key: string) => {
         if (!key) return false;
         if (factKeys.includes(key)) return false;
+        if (factRetCols.length) return factRetCols.includes(key);
         if (factRet && key !== factRet && key !== s(data.factReturnLabel)) return false;
         return true;
       };
@@ -4718,24 +4721,41 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
           const nodeCols = d.factNode ? inferNodeCols(allNodes, tables, d.factNode) : [];
           return nodeCols.length > 0 ? (
             <>
-              <div className={rowLabel}>事实带回指标列（默认带回全部非键列；只需库存等单列时在此指定）</div>
-              <select
-                value={d.factReturnField || ''}
-                onChange={(e) => {
-                  const c = nodeCols.find((x) => x.key === e.target.value);
-                  update({ factReturnField: e.target.value || undefined, factReturnLabel: c?.label || e.target.value || undefined } as Partial<FillJoinNodeData>);
-                }}
-                className={inputCls}
-              >
-                <option value="">带回全部列</option>
+              <div className="mb-1 mt-2 flex items-center gap-1">
+                <span className="shrink-0 text-[11px] text-gray-400">事实带回指标列（默认带回全部非键列；需指定单列/多列时在此勾选）</span>
+              </div>
+              <div className="max-h-36 overflow-y-auto rounded-md border border-gray-200 p-1 field-list-scroll">
+                <label className="flex cursor-pointer items-center gap-1.5 px-1 py-0.5 text-[12px]">
+                  <input
+                    type="checkbox"
+                    checked={!(d.factReturnFields && d.factReturnFields.length > 0) && !d.factReturnField}
+                    onChange={() => update({ factReturnFields: [], factReturnField: undefined, factReturnLabel: undefined } as any)}
+                  />
+                  <span className="text-gray-600">带回全部列</span>
+                </label>
                 {nodeCols
                   .filter((c) => c.key !== d.factKeyField)
-                  .map((c) => (
-                    <option key={c.key} value={c.key}>
-                      {c.label}
-                    </option>
-                  ))}
-              </select>
+                  .map((f) => {
+                    const checked = (d.factReturnFields || [])
+                      .map((x) => x.key)
+                      .concat(d.factReturnField ? [d.factReturnField] : [])
+                      .includes(f.key);
+                    return (
+                      <label key={f.key} className="flex cursor-pointer items-center gap-1.5 px-1 py-0.5 text-[12px]">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            const cur = (d.factReturnFields || []).filter((x) => x.key !== f.key);
+                            if (!checked) cur.push({ key: f.key, label: f.label });
+                            update({ factReturnFields: cur, factReturnField: undefined, factReturnLabel: undefined } as any);
+                          }}
+                        />
+                        <span className="text-gray-700">{f.label}</span>
+                      </label>
+                    );
+                  })}
+              </div>
             </>
           ) : null;
         })()}

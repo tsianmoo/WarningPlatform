@@ -2383,8 +2383,9 @@ function evalNode(
       let factCols: string[] = [];
       let factMap = new Map<string, Record<string, string | number | boolean>>();
       let factName = fd.factTableName || '事实结果';
-      // 事实侧仅带回的指标列（如「库存」）：指定后 factCols 只保留该列
+      // 事实侧仅带回的指标列（多选 factReturnFields 优先，兼容旧单列 factReturnField）：指定后 factCols 只保留所选列
       const retCol = fd.factReturnField || '';
+      const retCols = (Array.isArray(fd.factReturnFields) ? fd.factReturnFields : []).filter((f) => f.key).map((f) => f.key);
       if (factNode) {
         // 节点结果：手动指定匹配键；缺失时提示，不自动兜底首列
         if (!fd.factKeyField) {
@@ -2396,7 +2397,8 @@ function evalNode(
         }
         const fKeys = [pk, ...extraKeys.map((k) => k.factField)];
         factCols = factNode.columns.filter((c) => !fKeys.includes(c));
-        if (retCol && factNode.columns.includes(retCol)) factCols = [retCol];
+        if (retCols.length) factCols = factCols.filter((c) => retCols.includes(c));
+        else if (retCol && factNode.columns.includes(retCol)) factCols = [retCol];
         factName = fd.factNodeLabel || factNode.title || '节点结果';
         factMap = new Map(factNode.rows.map((r) => [fKeys.map((c) => String(r[c] ?? '')).join('\u0001'), r]));
       } else {
@@ -2405,7 +2407,8 @@ function evalNode(
           factName = ft.name;
           const fKeys = [fd.factKeyField, ...extraKeys.map((k) => k.factField)];
           factCols = ft.fields.map((f) => f.alias || f.key).filter((c) => !fKeys.includes(c));
-          if (retCol) factCols = factCols.filter((c) => c === retCol || c === fd.factReturnField);
+          if (retCols.length) factCols = factCols.filter((c) => retCols.includes(c));
+          else if (retCol) factCols = factCols.filter((c) => c === retCol || c === fd.factReturnField);
           factMap = new Map(allRows(ft).map((r) => [fKeys.map((c) => String(r[c] ?? '')).join('\u0001'), r]));
         } else {
           return { title: '左关联补全', columns: [], rows: [], shape: 'table', note: factSource === 'node' ? '请在「事实结果」里选择一个节点结果（如分组聚合/计算），或将其连到本节点。' : '请选择事实结果表与匹配键。' };

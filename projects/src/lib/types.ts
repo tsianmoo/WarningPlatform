@@ -664,6 +664,8 @@ export interface FillJoinNodeData {
   /** 事实侧仅带回的指标列（如「库存」）。不填则带回事实侧所有非键列；填了则只保留该列，避免冗余杂列 */
   factReturnField?: string;
   factReturnLabel?: string;
+  /** 事实侧带回指标列的多选：为空（且无 factReturnField）时带回全部非键列；勾选后只带回所选列 */
+  factReturnFields?: Array<{ key: string; label: string }>;
 }
 
 /** 其他表添加列节点数据：把另一张表/另一个节点的结果，按匹配键对齐后取列附加到主表 */
