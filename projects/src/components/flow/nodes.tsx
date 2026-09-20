@@ -5766,7 +5766,7 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
                   onChange={(e) => {
                     if (e.target.checked) {
                       setCol(idxOf(i), { unpivot: true });
-                      setPivotSortIdx(i);
+                      setPivotSortIdx(idxOf(i));
                     } else {
                       setCol(idxOf(i), { unpivot: false, pivotOrder: undefined });
                     }
