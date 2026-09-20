@@ -29,6 +29,7 @@ import type {
   LinkViewTab,
   LinkViewAllNodeData,
   LinkViewAllTab,
+  RowSortNodeData,
 } from './types';
 import { resolveTimeWindow, resolveElapsedDays, compareModes, computeCompareWindow } from './time';
 import type { TimeWindow } from './types';
@@ -127,6 +128,49 @@ function toNum(v: unknown): number {
 function fmtNum(n: number): string {
   if (!Number.isFinite(n)) return '—';
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
+/** 数值格式缩放单位：空=无，否则按 千/万/百万/亿 缩放 */
+const UNIT_SCALE: Record<string, number> = { 千: 1e3, 万: 1e4, 百万: 1e6, 亿: 1e8 };
+
+/**
+ * 按列的展示配置格式化一个值（节点结果排序/格式化 用）。
+ * type: percent → 值×100 并追加 %；unit → 数值按单位缩放并追加单位字；decimals 控制小数位；thousandSep 加千分位。
+ */
+function formatNumByConfig(v: unknown, cfg?: { type?: string; unit?: string; decimals?: number; suffix?: string; thousandSep?: boolean }): string {
+  const type = cfg?.type || 'auto';
+  if (type === 'percent') {
+    const n = toNum(v);
+    if (!Number.isFinite(n)) return String(v ?? '');
+    const scaled = n * 100;
+    let out = fmtFixed(scaled, cfg?.decimals);
+    if (cfg?.thousandSep) out = out.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return type === 'percent' ? `${out}%` : out;
+  }
+  if (type === 'number') {
+    const n = toNum(v);
+    if (!Number.isFinite(n)) return String(v ?? '');
+    let scaled = n;
+    let unitSuffix = cfg?.suffix || '';
+    const unit = cfg?.unit || '';
+    if (unit && UNIT_SCALE[unit] !== undefined) {
+      scaled = scaled / UNIT_SCALE[unit];
+      unitSuffix = unit + unitSuffix;
+    } else if (unit) {
+      unitSuffix = unit + unitSuffix;
+    }
+    let out = fmtFixed(scaled, cfg?.decimals);
+    if (cfg?.thousandSep) out = out.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return `${out}${unitSuffix}`;
+  }
+  // auto：保持原值（仅字符串化），不做数值缩放/小数处理
+  return String(v ?? '');
+}
+
+function fmtFixed(n: number, decimals?: number): string {
+  if (!Number.isFinite(n)) return '—';
+  if (decimals == null) return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
+  return n.toFixed(Math.max(0, Math.min(decimals, 6)));
 }
 
 /** 将时间戳还原为 YYYY-MM-DD（用于日期字段的 min/max 聚合结果） */
@@ -2144,6 +2188,49 @@ function evalNode(
           `来自「${rs.from}」共 ${rows0.length} 行，命中 ${rows.length} 行 → 过滤条件 ${fd.conditions!.length} 个。`,
         scalar: { kind: 'table' },
         allCols: cols,
+      };
+    }
+
+    case 'rowsort': {
+      // 节点结果排序/格式化：选上游节点，按配置调整列顺序/重命名/类型/数值格式，可选择一列升序排序
+      const rs = d as unknown as RowSortNodeData;
+      const src = pickColumnOutput(outputs, incoming, rs.sourceNode);
+      if (!src || !src.rows.length)
+        return { title: '节点结果排序', columns: [], rows: [], note: '请选择上游节点结果。' };
+      const srcCols = src.columns;
+      const cfgs = Array.isArray(rs.cols) ? rs.cols : [];
+      // 未显式配置列时：默认列出上游全部列（顺序不变）
+      const active = cfgs.length
+        ? cfgs.slice()
+        : srcCols.map((k) => ({ key: k, label: k, type: 'auto' as const, sort: false }));
+      // 排序键列（排他，最多一列）
+      const sortCol = active.find((c) => c.sort)?.key || '';
+      let rows = src.rows.slice();
+      if (sortCol) {
+        rows = rows.slice().sort((a, b) => {
+          const av = toNum(a[sortCol]);
+          const bv = toNum(b[sortCol]);
+          if (Number.isFinite(av) && Number.isFinite(bv)) return av - bv;
+          return String(a[sortCol] ?? '').localeCompare(String(b[sortCol] ?? ''), 'zh');
+        });
+      }
+      const outRows = rows.map((r) => {
+        const o: Record<string, string> = {};
+        for (const c of active) {
+          o[c.label || c.key] = formatNumByConfig(r[c.key], c);
+        }
+        return o;
+      });
+      const outCols = active.map((c) => c.label || c.key);
+      return {
+        title: '节点结果排序',
+        columns: outCols,
+        rows: cap(outRows),
+        shape: 'table',
+        note:
+          `来自「${src.title || '上游节点'}」共 ${src.rows.length} 行` +
+          (sortCol ? `，按「${sortCol}」升序排列。` : '，未排序。'),
+        allCols: outCols,
       };
     }
 

@@ -75,6 +75,7 @@ export type NodeKind =
   | 'linkjoin' // 其他表添加列（把另一张表/节点结果按匹配键对齐后，取列附加到当前表）
   | 'linkview' // 预警关联展示（把相关的其他表/节点结果，用同名匹配键关联到命中数据，供查看预警弹窗以标签页展示）
   | 'linkview_all' // 预警关联展示-全量（展示来源数据表/节点的全部行，不受基础表过滤；独立组件，按权限控制使用与数据可见）
+  | 'rowsort' // 节点结果排序/格式化（选择上游节点结果，调整列顺序、重命名、改类型，并配置数值格式：单位/小数位/百分比/千分符，可指定一列升序排序）
 
 /** 比较运算符 */
 export type Operator =
@@ -835,7 +836,38 @@ export interface CalcNodeData {
   columns: CalcColumn[];
 }
 
+/** 节点结果排序/格式化 的列格式 */
+export interface RowSortCol {
+  /** 源字段 key（来自上游节点结果列） */
+  key: string;
+  /** 显示列名（可修改，默认=源字段名） */
+  label: string;
+  /** 数值类型：auto=自动 / number=数字 / percent=百分比 */
+  type?: 'auto' | 'number' | 'percent';
+  /** 数量单位：''（无）/ 千 / 万 / 百万 / 亿（数值按此缩放展示） */
+  unit?: string;
+  /** 小数位数 */
+  decimals?: number;
+  /** 单位后缀（自定义，如 元/件） */
+  suffix?: string;
+  /** 千分符 */
+  thousandSep?: boolean;
+  /** 是否在表格表头显示单位 */
+  showUnit?: boolean;
+  /** 升序排序键（同一节点结果最多一列启用） */
+  sort?: boolean;
+}
 
+/** 节点结果排序/格式化 节点数据 */
+export interface RowSortNodeData {
+  /** 引用的上游节点 id */
+  sourceNode?: string;
+  sourceNodeLabel?: string;
+  /** 各列的展示配置（顺序即表格列顺序） */
+  cols: RowSortCol[];
+  /** 结果命名 */
+  resultLabel?: string;
+}
 
 /** 流程节点 */
 export interface FlowNode {
@@ -863,6 +895,7 @@ export interface FlowNode {
     | LinkJoinNodeData
     | LinkViewNodeData
     | LinkViewAllNodeData
+    | RowSortNodeData
     | Record<string, unknown>;
   position: { x: number; y: number };
 }
@@ -1032,6 +1065,7 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   linkjoin: '其他表添加列',
   linkview: '预警关联展示',
   linkview_all: '预警关联展示-全量',
+  rowsort: '节点结果排序',
 };
 
 /** 节点分类色 */
@@ -1061,6 +1095,7 @@ export const KIND_COLOR: Record<
   linkjoin: { bg: '#FAF5FF', border: '#9333EA', text: '#6B21A8', dot: '#9333EA' },
   linkview: { bg: '#FDF2F8', border: '#EC4899', text: '#BE185D', dot: '#EC4899' },
   linkview_all: { bg: '#FDF4FF', border: '#A855F7', text: '#7E22CE', dot: '#A855F7' },
+  rowsort: { bg: '#F8FAFC', border: '#0EA5E9', text: '#0369A1', dot: '#0EA5E9' },
 };
 
 /** 预警类型（级别→类型：提醒/预警） */

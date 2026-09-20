@@ -54,6 +54,8 @@ import {
   type LinkViewTab,
   type LinkViewAllNodeData,
   type LinkViewAllTab,
+  type RowSortCol,
+  type RowSortNodeData,
 } from '@/lib/types';
 import { uid } from '@/lib/types';
 import { useStore } from '@/lib/store';
@@ -82,7 +84,8 @@ type AnyData =
   | CalcNodeData
   | LinkJoinNodeData
   | LinkViewNodeData
-  | LinkViewAllNodeData;
+  | LinkViewAllNodeData
+  | RowSortNodeData;
 
 const KIND_ICON: Record<FlowNode['kind'], React.ReactNode> = {
   trigger: <Play size={13} strokeWidth={2.5} />,
@@ -107,6 +110,7 @@ const KIND_ICON: Record<FlowNode['kind'], React.ReactNode> = {
   linkjoin: <Link2 size={13} strokeWidth={2.5} />,
   linkview: <Search size={13} strokeWidth={2.5} />,
   linkview_all: <SearchCheck size={13} strokeWidth={2.5} />,
+  rowsort: <ListFilter size={13} strokeWidth={2.5} />,
 };
 
 function useNodeUpdater(id: string) {
@@ -254,6 +258,7 @@ function nodeKindCn(kind: FlowNode['kind']) {
     linkjoin: '其他表添加列',
     linkview: '预警关联展示',
     linkview_all: '预警关联展示-全量',
+    rowsort: '节点结果排序',
   };
   return map[kind];
 }
@@ -632,6 +637,20 @@ function getNodeOutputs(allNodes: ReturnType<typeof useNodes>, selfId: string): 
         out.push({ ref: { nodeId: n.id, nodeKind: 'linkview_all', outputKind: 'column', label: rl || '预警关联展示-全量' } });
         break;
       }
+      case 'rowsort': {
+        const rs = n.data as unknown as RowSortNodeData;
+        const rcols = Array.isArray(rs.cols) ? rs.cols : [];
+        const rl = rs.resultLabel;
+        out.push({
+          ref: {
+            nodeId: n.id,
+            nodeKind: 'rowsort',
+            outputKind: 'column',
+            label: rl || (rcols.length ? `节点结果排序(${rcols.map((c) => c.label || c.key).join('、')})` : '节点结果排序'),
+          },
+        });
+        break;
+      }
       case 'diff': {
         const df = n.data as unknown as DiffNodeData;
         out.push({ ref: { nodeId: n.id, nodeKind: 'diff', outputKind: 'column', label: str(df.resultLabel) || '反匹配结果' } });
@@ -892,6 +911,22 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
         }
       }
       return outAll;
+    }
+    case 'rowsort': {
+      // 节点结果排序/格式化：输出列 = 已配置列里选中的列（顺序即表格列顺序）；未配置时透传上游列
+      const rs = (data as Record<string, unknown>);
+      const rsCols = Array.isArray(rs.cols) ? (rs.cols as RowSortCol[]) : [];
+      const rsSrc = typeof rs.sourceNode === 'string' ? rs.sourceNode : '';
+      const up = rsSrc ? inferNodeCols(allNodes, tables, rsSrc, seen) : [];
+      if (rsCols.length) {
+        return rsCols
+          .map((c) => {
+            const base = up.find((b) => b.key === c.key) ?? { key: c.key, label: c.label };
+            return { key: c.key, label: c.label || base.label || c.key };
+          })
+          .filter((c) => c.key);
+      }
+      return up;
     }
     case 'filter': {
       const src = s(data.source);
@@ -5517,6 +5552,232 @@ const LinkJoinNode = memo(function LinkJoinNode({ id, data }: NodeProps) {
   );
 });
 
+function formatNumByConfigSafe(v: number, cfg: RowSortCol): string {
+  const type = cfg.type || 'auto';
+  if (type === 'percent') {
+    let out = fmtFixedLocal(v * 100, cfg.decimals);
+    if (cfg.thousandSep) out = out.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return `${out}%`;
+  }
+  if (type === 'number') {
+    let scaled = v;
+    let suf = cfg.suffix || '';
+    const unit = cfg.unit || '';
+    const scale = { 千: 1e3, 万: 1e4, 百万: 1e6, 亿: 1e8 }[unit];
+    if (scale) { scaled = scaled / scale; suf = unit + suf; }
+    else if (unit) suf = unit + suf;
+    let out = fmtFixedLocal(scaled, cfg.decimals);
+    if (cfg.thousandSep) out = out.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return `${out}${suf}`;
+  }
+  return fmtFixedLocal(v, cfg.decimals);
+}
+function fmtFixedLocal(n: number, decimals?: number): string {
+  if (!Number.isFinite(n)) return '—';
+  if (decimals == null) return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
+  return n.toFixed(Math.max(0, Math.min(decimals, 6)));
+}
+
+const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
+  const fnode = { id, kind: 'rowsort' as const, data, position: { x: 0, y: 0 } } as FlowNode;
+  const d = data as unknown as RowSortNodeData;
+  const update = useNodeUpdater(id);
+  const tables = useRuleTables();
+  const allNodes = useNodes();
+  const inputCls = 'w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-sky-400';
+  const rowLabel = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
+  const nodeOutputs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'column');
+  const cols = Array.isArray(d.cols) ? d.cols : [];
+  const upCols = useMemo(() => {
+    if (!d.sourceNode) return [];
+    return inferNodeCols(allNodes, tables, d.sourceNode);
+  }, [d.sourceNode, allNodes, tables]);
+  const [fmtFor, setFmtFor] = useState<number | null>(null);
+  // 选择节点后自动用其字段填充列配置（保留已有匹配项，追加新增字段）
+  const applySource = (nid: string, label = '') => {
+    const colsOf = inferNodeCols(allNodes, tables, nid);
+    update({
+      sourceNode: nid,
+      sourceNodeLabel: label,
+      cols: colsOf.map((c) => {
+        const exist = cols.find((x) => x.key === c.key);
+        return exist ?? { key: c.key, label: c.label || c.key, type: 'auto', sort: false };
+      }),
+    } as Partial<RowSortNodeData>);
+  };
+  const setCol = (i: number, patch: Partial<RowSortCol>) => {
+    const arr = cols.slice();
+    arr[i] = { ...arr[i], ...patch };
+    update({ cols: arr } as Partial<RowSortNodeData>);
+  };
+  const moveCol = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= cols.length) return;
+    const arr = cols.slice();
+    const [it] = arr.splice(i, 1);
+    arr.splice(j, 0, it);
+    update({ cols: arr } as Partial<RowSortNodeData>);
+  };
+  const setSort = (i: number) => {
+    // 排他：同一时间只允许一列升序
+    const arr = cols.map((c, k) => ({ ...c, sort: k === i ? !c.sort : false }));
+    update({ cols: arr } as Partial<RowSortNodeData>);
+  };
+  const fmt = fmtFor != null ? (cols[fmtFor] ?? null) : null;
+  const exampleVal = 21000.04;
+  const fmtCls = (on: boolean) => `rounded px-1.5 py-0.5 text-[10px] ring-1 transition ${on ? 'bg-sky-600 text-white ring-sky-600' : 'bg-white text-gray-600 ring-gray-200 hover:bg-gray-100'}`;
+  return (
+    <NodeShell fnode={fnode}>
+      <div className="space-y-1.5">
+        {/* ① 选择节点结果 */}
+        <div className={rowLabel}>① 选择节点结果（展示其全部字段）</div>
+        <select
+          value={d.sourceNode ?? ''}
+          onChange={(e) => {
+            const opt = nodeOutputs.find((o) => o.ref.nodeId === e.target.value);
+            if (opt) applySource(opt.ref.nodeId, opt.ref.label);
+          }}
+          className={inputCls}
+        >
+          <option value="">— 选择上游节点结果 —</option>
+          {nodeOutputs.map((o) => (
+            <option key={o.ref.nodeId} value={o.ref.nodeId}>
+              {o.ref.label}
+            </option>
+          ))}
+        </select>
+        {d.sourceNode && upCols.length === 0 && (
+          <div className="text-[10px] text-amber-500">所选节点暂无可用字段（重新选择一个节点以自动带出字段）。</div>
+        )}
+
+        {/* ② 字段/列配置 */}
+        <div className={rowLabel}>② 字段列（可调整顺序、重命名、类型与数值格式）</div>
+        <div className="max-h-[300px] space-y-1 overflow-y-scroll pr-0.5 [scrollbar-width:thin] [scrollbar-color:#bae6fd_transparent]">
+          {cols.map((c, i) => (
+            <div key={`${c.key}-${i}`} className="flex items-center gap-1 rounded-md border border-gray-100 bg-gray-50/60 px-1 py-1">
+              <div className="flex flex-col">
+                <button type="button" onClick={() => moveCol(i, -1)} disabled={i === 0} className="text-[10px] text-gray-400 hover:text-sky-600 disabled:opacity-30" title="上移">▲</button>
+                <button type="button" onClick={() => moveCol(i, 1)} disabled={i === cols.length - 1} className="text-[10px] text-gray-400 hover:text-sky-600 disabled:opacity-30" title="下移">▼</button>
+              </div>
+              <input
+                value={c.label}
+                onChange={(e) => setCol(i, { label: e.target.value })}
+                placeholder={c.key}
+                className={`${inputCls} flex-1`}
+                title={`源字段：${c.key}`}
+              />
+              <button
+                type="button"
+                onClick={() => setSort(i)}
+                className={fmtCls(!!c.sort)}
+                title="该列升序排序（排他）"
+              >
+                {c.sort ? '✓升序' : '升序'}
+              </button>
+              <button type="button" onClick={() => setFmtFor(i)} className="rounded px-1.5 py-0.5 text-[10px] ring-1 ring-gray-200 bg-white text-gray-600 hover:bg-gray-100" title="数值格式设置">格式</button>
+              <button type="button" onClick={() => update({ cols: cols.filter((_, k) => k !== i) } as Partial<RowSortNodeData>)} className="text-[10px] text-red-400 hover:text-red-600" title="删除该列">删</button>
+            </div>
+          ))}
+        </div>
+        {cols.length === 0 && <div className="text-[10px] text-gray-400">选择节点结果后自动带出全部字段，可在此调整顺序与格式。</div>}
+
+        {/* ③ 结果命名（可选） */}
+        <div>
+          <div className={rowLabel}>④ 结果命名（可选）</div>
+          <input
+            value={d.resultLabel ?? ''}
+            onChange={(e) => update({ resultLabel: e.target.value } as Partial<RowSortNodeData>)}
+            placeholder="如：排序后的结果"
+            className={inputCls}
+          />
+        </div>
+      </div>
+
+      {/* 数值格式弹窗 */}
+      {fmt && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4" onClick={() => setFmtFor(null)}>
+          <div
+            className="w-[340px] rounded-xl bg-white p-4 shadow-2xl"
+            onClick={(e) => { e.stopPropagation(); }}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <div className="text-sm font-semibold text-gray-800">数值格式 · {fmt.label || fmt.key}</div>
+              <button type="button" onClick={() => setFmtFor(null)} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <div className={rowLabel}>数值类型</div>
+                <div className="flex gap-1">
+                  {(['auto', 'number', 'percent'] as const).map((t) => (
+                    <button key={t} type="button" onClick={() => setCol(fmtFor!, { type: t })} className={fmtCls((fmt.type ?? 'auto') === t)}>
+                      {t === 'auto' ? '自动' : t === 'number' ? '数字' : '百分比'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {(fmt.type === 'number' || fmt.type === 'auto') && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <div className={rowLabel}>数量单位</div>
+                    <select
+                      value={fmt.unit ?? ''}
+                      onChange={(e) => setCol(fmtFor!, { unit: e.target.value })}
+                      className={inputCls}
+                    >
+                      <option value="">无</option>
+                      <option value="千">千</option>
+                      <option value="万">万</option>
+                      <option value="百万">百万</option>
+                      <option value="亿">亿</option>
+                    </select>
+                  </div>
+                  <div>
+                    <div className={rowLabel}>小数位数</div>
+                    <input
+                      type="number"
+                      min={0}
+                      max={6}
+                      value={fmt.decimals ?? ''}
+                      onChange={(e) => setCol(fmtFor!, { decimals: e.target.value === '' ? undefined : Number(e.target.value) })}
+                      placeholder="2"
+                      className={inputCls}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <div className={rowLabel}>单位后缀（自定义）</div>
+                  <input
+                    value={fmt.suffix ?? ''}
+                    onChange={(e) => setCol(fmtFor!, { suffix: e.target.value })}
+                    placeholder="如：元/件"
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-1 text-[10px] text-gray-600">
+                  <input type="checkbox" checked={!!fmt.thousandSep} onChange={(e) => setCol(fmtFor!, { thousandSep: e.target.checked })} />
+                  千分符
+                </label>
+              </div>
+
+              <div className="rounded-md bg-sky-50 px-2 py-1.5 text-[11px] text-sky-700">
+                示例：{21000.04} → {formatNumByConfigSafe(exampleVal, fmt)}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </NodeShell>
+  );
+});
+
 const LinkViewNode = memo(function LinkViewNode({ id, data }: NodeProps) {
   const fnode = { id, kind: 'linkview' as const, data, position: { x: 0, y: 0 } } as FlowNode;
   const d = data as unknown as LinkViewNodeData;
@@ -5890,6 +6151,7 @@ export const nodeTypes = {
   linkjoin: LinkJoinNode,
   linkview: LinkViewNode,
   linkview_all: LinkViewAllNode,
+  rowsort: RowSortNode,
 };
 
 TopNNode.displayName = 'TopNNode';
@@ -5914,6 +6176,7 @@ RankNode.displayName = 'RankNode';
 LinkJoinNode.displayName = 'LinkJoinNode';
 LinkViewNode.displayName = 'LinkViewNode';
 LinkViewAllNode.displayName = 'LinkViewAllNode';
+RowSortNode.displayName = 'RowSortNode';
 
 /** 依据 kind 创建默认数据 */
 export function createNodeData(
@@ -6118,6 +6381,8 @@ export function createNodeData(
       return { tabs: [], resultLabel: '关联展示' };
     case 'linkview_all':
       return { tabs: [], resultLabel: '预警关联展示-全量' };
+    case 'rowsort':
+      return { sourceNode: '', sourceNodeLabel: '', cols: [], resultLabel: '' };
     default:
       return {};
   }
