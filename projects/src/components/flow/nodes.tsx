@@ -4468,9 +4468,7 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
       : []
     : uniFields.map((f) => ({ key: f.key, label: f.alias || f.key }));
 
-  const factNodeRef =
-    factNodeOptions.find((o) => o.ref.nodeId === d.factNode)?.ref ??
-    (d.factNode ? { nodeId: d.factNode, nodeKind: 'groupby' as const, outputKind: 'column' as const, label: d.factNodeLabel || '节点结果' } : undefined);
+  
 
   return (
     <NodeShell fnode={fnode}>
@@ -4491,7 +4489,7 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
 
       {d.universeSource === 'node' ? (
         <>
-          <div className={rowLabel}>① 全集节点（作为全集，如：第一个补全结果）</div>
+          <div className={rowLabel}>① 全集节点</div>
           <select
             value={d.universeNodeId || ''}
             onChange={(e) => update({ universeNodeId: e.target.value || undefined, universeField: '', universeFieldLabel: '' })}
@@ -4507,7 +4505,7 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
         </>
       ) : (
         <>
-          <div className={rowLabel}>① 全集表（主数据，含所有店仓）</div>
+          <div className={rowLabel}>① 全集表</div>
           <select
             value={d.universeTableId}
             onChange={(e) => {
@@ -4516,7 +4514,7 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
             }}
             className={inputCls}
           >
-            <option value="">选择全集表，如：店仓表…</option>
+            <option value="">选择全集表…</option>
             {tables.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
@@ -4526,12 +4524,8 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
         </>
       )}
 
-      <div className="mt-1.5 rounded-md bg-slate-50 px-2 py-1 text-[10px] leading-relaxed text-slate-500">
-        匹配键请在下方「④ 匹配字段」中成对选择（全集键 = 事实键，支持店仓 + 款色等多个字段同时匹配）。
-      </div>
-
       <div className="mb-1 mt-2 flex items-center gap-1">
-        <span className="shrink-0 text-[11px] text-gray-400">全集返回列(可选，空=返回全部)</span>
+        <span className="shrink-0 text-[11px] text-gray-400">全集返回列</span>
       </div>
       <div className="max-h-36 overflow-y-auto rounded-md border border-gray-200 p-1 field-list-scroll">
         <label className="flex cursor-pointer items-center gap-1.5 px-1 py-0.5 text-[12px]">
@@ -4573,11 +4567,11 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
           onNodeChange={(ref) =>
             update({ factNode: ref?.nodeId ?? '', factNodeLabel: ref?.label ?? '', factKeyField: '', factKeyFieldLabel: '' } as Partial<FillJoinNodeData>)
           }
-          nodeLabel="③ 事实结果节点（取其逐行结果左关联，如：9月店仓开单天数 / 计算·未开单天数）"
-          nodePlaceholder="选择上一步节点结果，如：分组聚合/计算…"
+          nodeLabel="③ 事实结果节点"
+          nodePlaceholder="选择节点结果…"
           tableBlock={
             <>
-              <div className={rowLabel}>③ 事实结果表（数据表）</div>
+              <div className={rowLabel}>③ 事实结果表</div>
               <select
                 value={d.factTableId}
                 onChange={(e) => {
@@ -4586,7 +4580,7 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
                 }}
                 className={inputCls}
               >
-                <option value="">选择事实结果表，如：零售工作薄…</option>
+                <option value="">选择事实结果表…</option>
                 {tables.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}
@@ -4598,7 +4592,7 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
         />
       </div>
 
-      <div className={rowLabel}>④ 匹配字段（全集键 = 事实键，可多对，如：店仓 + 款色）</div>
+      <div className={rowLabel}>④ 匹配字段</div>
       {(() => {
         const uniCols: Array<{ key: string; label: string }> =
           d.universeSource === 'node' && d.universeNodeId
@@ -4613,11 +4607,7 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
         const exKeys: NonNullable<FillJoinNodeData['extraKeys']> = Array.isArray(d.extraKeys) ? d.extraKeys : [];
 
         if (!uniCols.length && !factCols.length) {
-          return (
-            <div className="rounded-md bg-slate-50 px-2 py-1 text-[10px] text-slate-400">
-              请先在上面选择全集与事实数据来源；节点结果列由上游计算确定（如过滤）时默认取结果首列作为匹配键。
-            </div>
-          );
+          return null;
         }
 
         const uniLabel = (key: string) => uniCols.find((c) => c.key === key)?.label || key;
@@ -4643,7 +4633,7 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
               onChange={(e) => onUni(e.target.value)}
               className="min-w-0 flex-1 rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
             >
-              <option value="">{isPrimary ? '全集主匹配键（如：店仓名称）' : '全集键…'}</option>
+              <option value="">{isPrimary ? '全集主匹配键' : '全集键…'}</option>
               {uniCols.map((c) => (
                 <option key={c.key} value={c.key}>
                   {c.label}
@@ -4656,7 +4646,7 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
               onChange={(e) => onFact(e.target.value)}
               className="min-w-0 flex-1 rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
             >
-              <option value="">{isPrimary ? '事实主匹配键（如：店仓名称）' : '事实键…'}</option>
+              <option value="">{isPrimary ? '事实主匹配键' : '事实键…'}</option>
               {factCols.map((c) => (
                 <option key={c.key} value={c.key}>
                   {c.label}
@@ -4709,9 +4699,6 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
             >
               + 追加匹配字段
             </button>
-            <div className="mt-1 rounded-md bg-slate-50 px-2 py-1 text-[10px] leading-relaxed text-slate-500">
-              多对字段会同时参与匹配（如：全集.店仓名称 = 事实.店仓名称 且 全集.款色 = 事实.款色）；缺失匹配的事实侧按下方填充值补行。
-            </div>
           </div>
         );
       })()}
@@ -4722,7 +4709,7 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
           return nodeCols.length > 0 ? (
             <>
               <div className="mb-1 mt-2 flex items-center gap-1">
-                <span className="shrink-0 text-[11px] text-gray-400">事实带回指标列（默认带回全部非键列；需指定单列/多列时在此勾选）</span>
+                <span className="shrink-0 text-[11px] text-gray-400">事实带回指标列</span>
               </div>
               <div className="max-h-36 overflow-y-auto rounded-md border border-gray-200 p-1 field-list-scroll">
                 <label className="flex cursor-pointer items-center gap-1.5 px-1 py-0.5 text-[12px]">
@@ -4764,7 +4751,6 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
       <input
         value={d.fillValue}
         onChange={(e) => update({ fillValue: e.target.value })}
-        placeholder="缺成交的店按 0 计入"
         className={inputCls}
       />
 
@@ -4772,17 +4758,8 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
       <input
         value={d.resultLabel}
         onChange={(e) => update({ resultLabel: e.target.value })}
-        placeholder="如：含 0 成交的全部门店"
         className={inputCls}
       />
-
-      {d.universeField && (factSource === 'node' ? d.factNode : d.factKeyField) && (
-        <div className="mt-2 rounded-md bg-slate-100 px-2 py-1.5 text-[10px] leading-relaxed text-slate-600">
-          以「{d.universeTableName}」的全部{d.universeFieldLabel}为全集，左关联{' '}
-          {factSource === 'node' ? `节点「${factNodeRef?.label || d.factNodeLabel || '上一步'}」` : `${d.factTableName}（按${d.factKeyFieldLabel}匹配）`}
-          ，缺失键按 {d.fillValue || 0} 补全
-        </div>
-      )}
     </NodeShell>
   );
 });
