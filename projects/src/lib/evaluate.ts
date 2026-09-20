@@ -173,6 +173,19 @@ function fmtFixed(n: number, decimals?: number): string {
   return n.toFixed(Math.max(0, Math.min(decimals, 6)));
 }
 
+/** 对候选列出重名去重：同名列追加 1/2/3…（首个保留原名），并返回与候选一一对应的唯一列名 */
+function dedupeLabels(cands: string[]): { labels: string[]; used: Set<string> } {
+  const used = new Set<string>();
+  const labels = cands.map((raw) => {
+    let lab = raw;
+    let n = 1;
+    while (used.has(lab)) lab = `${raw}${++n}`;
+    used.add(lab);
+    return lab;
+  });
+  return { labels, used };
+}
+
 /** 将时间戳还原为 YYYY-MM-DD（用于日期字段的 min/max 聚合结果） */
 function fmtTsDate(ts: number): string {
   const d = new Date(ts);
@@ -1175,8 +1188,10 @@ function evalNode(
       const mainRows = allRows(main.t);
       const srcRows = allRows(src.t);
       const mainCols = main.t.fields.map((f) => f.key);
+      // 补全列名去重：addFields 的展示名若与主表列或其他补全列重名，追加 1/2/3…，避免输出列名重复/串列
       const addLabels = addFields.map((f) => f.label || f.key);
-      const joinColumns = [...mainCols, ...addLabels];
+      const addOutLabels = dedupeLabels([...mainCols, ...addLabels]).labels.slice(mainCols.length);
+      const joinColumns = [...mainCols, ...addOutLabels];
       // 取值兼容：优先按字段键，其次在该行内按 names 匹配（列名 trim 后一致也算命中）
       const pick = (hit: Record<string, unknown> | undefined, f: { key: string }): string | number => {
         if (!hit) return '';
@@ -1192,7 +1207,7 @@ function evalNode(
         const single = (srcRows[0] || {}) as Record<string, unknown>;
         const rows = mainRows.map((r) => {
           const o = { ...r } as Record<string, string | number>;
-          for (const f of addFields) o[f.label || f.key] = pick(single, f);
+          addFields.forEach((f, fi) => { o[addOutLabels[fi]] = pick(single, f); });
           return o;
         });
         return {
@@ -1213,7 +1228,7 @@ function evalNode(
       const rows = mainRows.map((r) => {
         const o = { ...r } as Record<string, string | number>;
         const hit = index.get(keyOf(r, (p) => p.m));
-        for (const f of addFields) o[f.label || f.key] = pick(hit, f);
+        addFields.forEach((f, fi) => { o[addOutLabels[fi]] = pick(hit, f); });
         return o;
       });
       const matched = rows.filter((_, i) => index.has(keyOf(mainRows[i], (p) => p.m))).length;
