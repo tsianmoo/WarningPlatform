@@ -70,28 +70,23 @@ function Shell() {
     brandcfg: ['工作台', '系统管理', '基础信息管理'],
     perms: ['工作台', '系统管理', '权限管理'],
   };
-  const [view, setView] = useState<View>(() => {
-    if (typeof window === 'undefined') return 'home';
-    const h = window.location.hash.replace(/^#/, '');
-    return (VIEWS as readonly string[]).includes(h) ? (h as View) : 'home';
-  });
+  // view 初始恒为 'home'（避免 SSR 与客户端首次渲染哈希不一致导致 hydration 告警），挂载后再按 URL hash 恢复视图
+  const [view, setView] = useState<View>('home');
   useEffect(() => {
-    const onHash = () => {
+    const applyHash = () => {
       const h = window.location.hash.replace(/^#/, '');
       if ((VIEWS as readonly string[]).includes(h)) setView(h as View);
     };
-    window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
+    applyHash(); // 挂载后按当前 URL hash 恢复视图，确保 SSR 首帧与客户端一致
+    window.addEventListener('hashchange', applyHash);
+    return () => window.removeEventListener('hashchange', applyHash);
   }, []);
   const navigate = (v: View) => {
     setView(v);
     if (typeof window !== 'undefined' && window.location.hash !== '#' + v) window.location.hash = v;
   };
-  // editingId 持久化到 sessionStorage：刷新/edit 时恢复编辑上下文，避免掉进无侧边栏/页头的裸列表
-  const [editingId, setEditingId] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    return sessionStorage.getItem('dn_editing_rule');
-  });
+  // editingId 初始恒为 null（避免 SSR 与客户端读取 sessionStorage 不一致），挂载后再恢复；刷新/edit 恢复编辑上下文
+  const [editingId, setEditingId] = useState<string | null>(null);
   const router = useRouter();
   const [fsOn, setFsOn] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
