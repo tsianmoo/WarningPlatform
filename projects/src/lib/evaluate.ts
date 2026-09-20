@@ -2216,7 +2216,7 @@ function evalNode(
       const cfgs = Array.isArray(rs.cols) ? rs.cols : [];
       // 全部字段列 = 上游真实输出列（权威基准，保证"展示全部字段"不缺失）；
       // rowsort 已保存的 cols 仅作配置覆层（show/type/unit/decimals/…），按展示名 label||key 对齐。
-      const all: Array<{ key: string; label?: string; type?: string; show?: boolean; unit?: string; decimals?: number; suffix?: string; thousandSep?: boolean; sort?: string }> = srcCols.map((k) => {
+      const all: Array<{ key: string; label?: string; type?: string; show?: boolean; unit?: string; decimals?: number; suffix?: string; thousandSep?: boolean; unpivot?: boolean; sort?: string }> = srcCols.map((k) => {
         const cfg = cfgs.find((c) => (c.label || c.key) === k);
         return cfg
           ? { ...cfg }
@@ -2237,22 +2237,49 @@ function evalNode(
         }
         return 0;
       });
-      const outRows = sorted.map((r) => {
-        const o: Record<string, string> = {};
-        for (const c of shown) {
-          const k = c.label || c.key;
-          o[k] = formatNumByConfig(r[k], c);
+      // 列转行（Unpivot）：勾选为"值字段"的列纵向展开成行，配「指标名 + 值」两列；
+      // 非值字段列原样保留。有无转行字段决定是否启用。
+      const valueCols = shown.filter((c) => c.unpivot === true);
+      const fixedCols = shown.filter((c) => c.unpivot !== true);
+      const pivotName = rs.unpivotLabel || '指标';
+      const pivotVal = rs.unpivotValueLabel || '值';
+      let outRows: Array<Record<string, string>>;
+      let outCols: string[];
+      if (valueCols.length) {
+        outCols = [...fixedCols.map((c) => c.label || c.key), pivotName, pivotVal];
+        outRows = [];
+        for (const r of sorted) {
+          for (const c of valueCols) {
+            const o: Record<string, string> = {};
+            for (const f of fixedCols) {
+              const k = f.label || f.key;
+              o[k] = formatNumByConfig(r[k], f);
+            }
+            o[pivotName] = c.label || c.key;
+            o[pivotVal] = formatNumByConfig(r[c.label || c.key], c);
+            outRows.push(o);
+          }
         }
-        return o;
-      });
-      const outCols = shown.map((c) => c.label || c.key);
+      } else {
+        outCols = shown.map((c) => c.label || c.key);
+        outRows = sorted.map((r) => {
+          const o: Record<string, string> = {};
+          for (const c of shown) {
+            const k = c.label || c.key;
+            o[k] = formatNumByConfig(r[k], c);
+          }
+          return o;
+        });
+      }
       return {
         title: '节点结果排序',
         columns: outCols,
         rows: cap(outRows),
         shape: 'table',
         note:
-          `来自「${src.title || '上游节点'}」共 ${src.rows.length} 行，输出 ${outCols.length} 列；按列顺序分组聚集展示（首列相同值归并，组内按后续列归并）。`,
+          valueCols.length
+            ? `来自「${src.title || '上游节点'}」共 ${src.rows.length} 行；已将 ${valueCols.length} 个值字段列转行为「${pivotName} + ${pivotVal}」${src.rows.length * valueCols.length} 行（非值字段列原样保留）。`
+            : `来自「${src.title || '上游节点'}」共 ${src.rows.length} 行，输出 ${outCols.length} 列；按列顺序分组聚集展示（首列相同值归并，组内按后续列归并）。`,
         allCols: outCols,
       };
     }

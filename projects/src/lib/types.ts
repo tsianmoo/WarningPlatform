@@ -858,6 +858,8 @@ export interface RowSortCol {
   showUnit?: boolean;
   /** 是否在结果中显示（勾选控制；未显示的列在面板中沉底） */
   show?: boolean;
+  /** 是否作为列转行（Unpivot）的值字段：勾选后该列的值纵向展开成行，配「指标名 + 值」两列 */
+  unpivot?: boolean;
 }
 
 /** 节点结果排序/格式化 节点数据 */
@@ -869,6 +871,10 @@ export interface RowSortNodeData {
   cols: RowSortCol[];
   /** 结果命名 */
   resultLabel?: string;
+  /** 列转行：指标列名（默认「指标」） */
+  unpivotLabel?: string;
+  /** 列转行：值列名（默认「值」） */
+  unpivotValueLabel?: string;
 }
 
 /** 流程节点 */

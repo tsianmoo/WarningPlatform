@@ -5720,10 +5720,42 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
                 className={`${inputCls} flex-1`}
                 title={`源字段：${c.key}`}
               />
+              <label
+                title={c.unpivot ? '已作为值字段：该列纵向展开成行（指标名+值）' : '勾选后该列作为值字段列转行（逆透视）'}
+                className="flex cursor-pointer items-center text-[10px] text-violet-600"
+              >
+                <input
+                  type="checkbox"
+                  checked={c.unpivot === true}
+                  onChange={(e) => setCol(idxOf(i), { unpivot: e.target.checked })}
+                  className="mr-0.5 h-3 w-3 accent-violet-600"
+                />
+                转
+              </label>
               <button type="button" onClick={() => setFmtFor(idxOf(i))} className="rounded px-1.5 py-0.5 text-[10px] ring-1 ring-gray-200 bg-white text-gray-600 hover:bg-gray-100" title="数值格式设置">格式</button>
             </div>
           ))}
         </div>
+        {displayCols.some((c) => c.unpivot === true) && (
+          <div className="flex items-center gap-2 rounded-md border border-violet-100 bg-violet-50/50 px-2 py-1">
+            <span className="whitespace-nowrap text-[10px] text-violet-600">列转行新列名</span>
+            <input
+              value={d.unpivotLabel ?? ''}
+              onChange={(e) => update({ unpivotLabel: e.target.value } as Partial<RowSortNodeData>)}
+              placeholder="指标"
+              className={`${inputCls} w-20`}
+              title="指标名列名（勾选的值字段其名称所在列）"
+            />
+            <span className="text-[10px] text-gray-400">+</span>
+            <input
+              value={d.unpivotValueLabel ?? ''}
+              onChange={(e) => update({ unpivotValueLabel: e.target.value } as Partial<RowSortNodeData>)}
+              placeholder="值"
+              className={`${inputCls} w-20`}
+              title="值列名（勾选的值字段的取值所在列）"
+            />
+          </div>
+        )}
         {cols.length === 0 && <div className="text-[10px] text-gray-400">选择节点结果后自动带出全部字段，可在此调整顺序与格式。</div>}
 
         {/* ③ 结果命名（可选） */}
