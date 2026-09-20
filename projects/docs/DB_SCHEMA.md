@@ -9,30 +9,32 @@
 | # | 表名 | 说明 | 主键 |
 |---|------|------|------|
 | 1 | `health_check` | 系统健康检查表（禁止删除/修改） | `id` |
-| 2 | `data_tables` | 上传的数据表（字段标签 + 预览行） | `id` |
-| 3 | `table_groups` | 数据表分组 | `id` |
-| 4 | `rule_groups` | 预警规则分组 | `id` |
-| 5 | `alert_rules` | 预警规则（含画布 nodes/edges、调度、适用对象、执行记录） | `id` |
-| 6 | `alert_tasks` | 预警工单（由规则触发产生的待处理告警，一行一条） | `id` |
-| 7 | `dealers` | 经销商字典 | `id` |
-| 8 | `stores` | 店仓字典 | `id` |
-| 9 | `employees` | 员工字典 | `id` |
-| 10 | `organizations` | 组织架构（总部/分公司/部门/区域/门店） | `id` |
-| 11 | `persons` | 人员（挂在组织节点下） | `id` |
-| 12 | `hr_attributes` | 人事属性字典（职位/岗位/部门/经销商属性/店仓属性） | `id` |
-| 13 | `home_config` | 登录页/首页管理配置 | `id` |
-| 14 | `sync_lock` | 数据同步分布式锁 | `lock_name` |
-| 15 | `sync_tasks` | 数据同步任务 | `id` |
-| 16 | `sync_instances` | 数据同步实例 | `id` |
-| 17 | `sync_data_sources` | 数据同步数据源 | `id` |
-| 18 | `sync_datasets` | 数据同步数据集 | `id` |
-| 19 | `sync_channels` | 数据同步通道 | `id` |
-| 20 | `sync_meta_cache` | 数据同步元数据缓存 | `id` |
-| 21 | `sync_watermark` | 数据同步水位（增量标记） | `id` |
-| 22 | `sync_audit` | 数据同步审计日志 | `id` |
+| 2 | `data_tables` | 上传的数据表（元数据：字段标签 + 预览行） | `id` |
+| 3 | `data_tables_row` | 上传数据表的行级存储（一数据行 = 一条 jsonb 记录，支撑超大表） | `(id, seq)` |
+| 4 | `table_groups` | 数据表分组 | `id` |
+| 5 | `rule_groups` | 预警规则分组 | `id` |
+| 6 | `alert_rules` | 预警规则（含画布 nodes/edges、调度、适用对象、执行记录） | `id` |
+| 7 | `alert_tasks` | 预警工单（由规则触发产生的待处理告警，一行一条） | `id` |
+| 8 | `dealers` | 经销商字典 | `id` |
+| 9 | `stores` | 店仓字典 | `id` |
+| 10 | `employees` | 员工字典 | `id` |
+| 11 | `organizations` | 组织架构（总部/分公司/部门/区域/门店） | `id` |
+| 12 | `persons` | 人员（挂在组织节点下） | `id` |
+| 13 | `hr_attributes` | 人事属性字典（职位/岗位/部门/经销商属性/店仓属性） | `id` |
+| 14 | `home_config` | 登录页/首页管理配置 | `id` |
+| 15 | `sync_lock` | 数据同步分布式锁 | `lock_name` |
+| 16 | `sync_tasks` | 数据同步任务 | `id` |
+| 17 | `sync_instances` | 数据同步实例 | `id` |
+| 18 | `sync_data_sources` | 数据同步数据源 | `id` |
+| 19 | `sync_datasets` | 数据同步数据集 | `id` |
+| 20 | `sync_channels` | 数据同步通道 | `id` |
+| 21 | `sync_meta_cache` | 数据同步元数据缓存 | `id` |
+| 22 | `sync_watermark` | 数据同步水位（增量标记） | `id` |
+| 23 | `sync_audit` | 数据同步审计日志 | `id` |
 
 所有业务表均遵循「聚合根 + JSONB」持久化模式：前端直接读写整份对象，
 结构化列（如 `id/name/status/created_at`）用于索引与检索，业务明细存于 `data`/`attrs`/`config`/`preview` 等 JSONB 字段。
+⚠️ 例外：`data_tables` 的全量行数据已拆到 `data_tables_row`（一行一个 jsonb），`data_tables.data` 只保留元数据，以支撑超大表（>20 万行）；其余表整对象仍存于自身 JSONB 字段。
 对应前端类型见 `src/lib/types.ts`。
 
 ---
@@ -49,7 +51,9 @@ CREATE TABLE IF NOT EXISTS public.health_check (
 );
 ```
 
-### 2. data_tables — 上传的数据表
+### 2. data_tables — 上传的数据表（元数据）
+
+> 仅存元数据（字段标签 + 预览行 + 行数）；全量行数据拆到 `data_tables_row` 行级表。
 
 ```sql
 CREATE TABLE IF NOT EXISTS public.data_tables (
@@ -58,14 +62,30 @@ CREATE TABLE IF NOT EXISTS public.data_tables (
     file_name  varchar(255) NOT NULL DEFAULT '',
     row_count  bigint NOT NULL DEFAULT 0,
     created_at bigint NOT NULL,
-    data       jsonb NOT NULL,
+    data       jsonb NOT NULL,   -- DataTable（不含 rows），含 fields/previewRows/group/prev 等
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS data_tables_data_gin   ON public.data_tables USING gin (data);
 CREATE INDEX IF NOT EXISTS data_tables_created_idx ON public.data_tables USING btree (created_at);
 ```
 
-### 3. table_groups — 数据表分组
+### 3. data_tables_row — 上传数据表的行级存储
+
+> 一数据行 = 一条记录（单个 jsonb），用于支撑超大表（>20 万行），
+> 避免把整表塞进 `data_tables.data` 单个 jsonb 超限。`seq` 为该行在表内的 0 起始序号。
+
+```sql
+CREATE TABLE IF NOT EXISTS public.data_tables_row (
+    id   varchar(64) NOT NULL,   -- 归属 data_tables.id
+    seq  bigint     NOT NULL,    -- 行序号（0 起始，唯一）
+    data jsonb      NOT NULL     -- 单行数据（键为列名）
+);
+ALTER TABLE ONLY public.data_tables_row ADD CONSTRAINT data_tables_row_pkey PRIMARY KEY (id, seq);
+CREATE INDEX IF NOT EXISTS data_tables_row_id_gin ON public.data_tables_row USING gin (data);
+CREATE INDEX IF NOT EXISTS data_tables_row_id_idx ON public.data_tables_row USING btree (id, seq);
+```
+
+### 4. table_groups — 数据表分组
 
 ```sql
 CREATE TABLE IF NOT EXISTS public.table_groups (
@@ -76,7 +96,7 @@ CREATE TABLE IF NOT EXISTS public.table_groups (
 );
 ```
 
-### 4. rule_groups — 预警规则分组
+### 5. rule_groups — 预警规则分组
 
 ```sql
 CREATE TABLE IF NOT EXISTS public.rule_groups (
@@ -86,7 +106,7 @@ CREATE TABLE IF NOT EXISTS public.rule_groups (
 );
 ```
 
-### 5. alert_rules — 预警规则
+### 6. alert_rules — 预警规则
 
 ```sql
 CREATE TABLE IF NOT EXISTS public.alert_rules (
@@ -101,7 +121,7 @@ CREATE INDEX IF NOT EXISTS alert_rules_status_idx ON public.alert_rules USING bt
 CREATE INDEX IF NOT EXISTS alert_rules_data_gin   ON public.alert_rules USING gin (data);
 ```
 
-### 6. alert_tasks — 预警工单
+### 7. alert_tasks — 预警工单
 
 ```sql
 CREATE TABLE IF NOT EXISTS public.alert_tasks (
@@ -133,7 +153,7 @@ CREATE INDEX IF NOT EXISTS alert_tasks_status_idx ON public.alert_tasks USING bt
 CREATE INDEX IF NOT EXISTS alert_tasks_rule_idx   ON public.alert_tasks USING btree (rule_id);
 ```
 
-### 7. dealers — 经销商
+### 8. dealers — 经销商
 
 ```sql
 CREATE TABLE IF NOT EXISTS public.dealers (
@@ -155,7 +175,7 @@ CREATE TABLE IF NOT EXISTS public.dealers (
 );
 ```
 
-### 8. stores — 店仓
+### 9. stores — 店仓
 
 ```sql
 CREATE TABLE IF NOT EXISTS public.stores (
@@ -181,7 +201,7 @@ CREATE TABLE IF NOT EXISTS public.stores (
 );
 ```
 
-### 9. employees — 员工
+### 10. employees — 员工
 
 ```sql
 CREATE TABLE IF NOT EXISTS public.employees (
@@ -200,7 +220,7 @@ CREATE TABLE IF NOT EXISTS public.employees (
 );
 ```
 
-### 10. organizations — 组织架构
+### 11. organizations — 组织架构
 
 ```sql
 CREATE TABLE IF NOT EXISTS public.organizations (
@@ -213,7 +233,7 @@ CREATE TABLE IF NOT EXISTS public.organizations (
 );
 ```
 
-### 11. persons — 人员
+### 12. persons — 人员
 
 ```sql
 CREATE TABLE IF NOT EXISTS public.persons (
@@ -239,7 +259,7 @@ CREATE TABLE IF NOT EXISTS public.persons (
 );
 ```
 
-### 12. hr_attributes — 人事属性字典
+### 13. hr_attributes — 人事属性字典
 
 ```sql
 CREATE TABLE IF NOT EXISTS public.hr_attributes (
@@ -252,7 +272,7 @@ CREATE TABLE IF NOT EXISTS public.hr_attributes (
 );
 ```
 
-### 13. home_config — 登录页/首页管理配置
+### 14. home_config — 登录页/首页管理配置
 
 ```sql
 CREATE TABLE IF NOT EXISTS public.home_config (
@@ -262,7 +282,7 @@ CREATE TABLE IF NOT EXISTS public.home_config (
 );
 ```
 
-### 14. sync_lock — 数据同步分布式锁
+### 15. sync_lock — 数据同步分布式锁
 
 ```sql
 CREATE TABLE IF NOT EXISTS public.sync_lock (
@@ -272,7 +292,7 @@ CREATE TABLE IF NOT EXISTS public.sync_lock (
 );
 ```
 
-### 15-22. 数据同步元数据表（统一「id + data jsonb + updated_at」结构）
+### 16-23. 数据同步元数据表（统一「id + data jsonb + updated_at」结构）
 
 ```sql
 CREATE TABLE IF NOT EXISTS public.sync_tasks       (id varchar(64) PRIMARY KEY, data jsonb NOT NULL DEFAULT '{}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now());
