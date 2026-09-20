@@ -5936,8 +5936,17 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
               <div className="text-sm font-semibold text-gray-800">行转列字段排序</div>
               <button type="button" onClick={() => setPivotSortIdx(null)} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
             </div>
-            <div className="mb-2 text-[11px] leading-4 text-gray-500">
-              字段「<span className="font-medium text-violet-600">{merged[pivotSortIdx]?.label || merged[pivotSortIdx]?.key}</span>」的不同取值将横向展开为表头列，可调整其左右顺序。
+            <div className="mb-2">
+              <label className="mb-1 block text-[11px] font-medium text-gray-500">字段名称</label>
+              <input
+                value={merged[pivotSortIdx]?.label ?? ''}
+                onChange={(e) => setCol(pivotSortIdx, { label: e.target.value })}
+                placeholder={merged[pivotSortIdx]?.key ?? '字段名称'}
+                className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+              />
+              <div className="mt-2 text-[11px] leading-4 text-gray-500">
+                字段不同取值将横向展开为表头列；此处修改的名称将同步到字段列与预览。
+              </div>
             </div>
             {(() => {
               const cur = merged[pivotSortIdx];
