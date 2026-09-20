@@ -2204,14 +2204,16 @@ function evalNode(
         ? cfgs.slice()
         : srcCols.map((k) => ({ key: k, label: k, type: 'auto' as const, sort: false }));
       // 排序键列（排他，最多一列）
-      const sortCol = active.find((c) => c.sort)?.key || '';
+      const sortCfg = active.find((c) => c.sort === 'asc' || c.sort === 'desc');
+      const sortCol = sortCfg?.key || '';
+      const sortDir = sortCfg?.sort === 'desc' ? -1 : 1;
       let rows = src.rows.slice();
       if (sortCol) {
         rows = rows.slice().sort((a, b) => {
           const av = toNum(a[sortCol]);
           const bv = toNum(b[sortCol]);
-          if (Number.isFinite(av) && Number.isFinite(bv)) return av - bv;
-          return String(a[sortCol] ?? '').localeCompare(String(b[sortCol] ?? ''), 'zh');
+          if (Number.isFinite(av) && Number.isFinite(bv)) return sortDir * (av - bv);
+          return sortDir * String(a[sortCol] ?? '').localeCompare(String(b[sortCol] ?? ''), 'zh');
         });
       }
       const outRows = rows.map((r) => {
@@ -2229,7 +2231,7 @@ function evalNode(
         shape: 'table',
         note:
           `来自「${src.title || '上游节点'}」共 ${src.rows.length} 行` +
-          (sortCol ? `，按「${sortCol}」升序排列。` : '，未排序。'),
+          (sortCol ? `，按「${sortCol}」${sortDir === -1 ? '降序' : '升序'}排列。` : '，未排序。'),
         allCols: outCols,
       };
     }

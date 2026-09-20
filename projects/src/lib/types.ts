@@ -854,8 +854,8 @@ export interface RowSortCol {
   thousandSep?: boolean;
   /** 是否在表格表头显示单位 */
   showUnit?: boolean;
-  /** 升序排序键（同一节点结果最多一列启用） */
-  sort?: boolean;
+  /** 排序键（同一节点结果最多一列启用）：'asc'升序 | 'desc'降序 */
+  sort?: 'asc' | 'desc';
 }
 
 /** 节点结果排序/格式化 节点数据 */

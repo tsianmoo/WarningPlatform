@@ -5619,8 +5619,10 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
     update({ cols: arr } as Partial<RowSortNodeData>);
   };
   const setSort = (i: number) => {
-    // 排他：同一时间只允许一列升序
-    const arr = cols.map((c, k) => ({ ...c, sort: k === i ? !c.sort : false }));
+    // 排他：同一时间只允许一列排序；点击循环：无 → 升序 → 降序 → 无
+    const cur = cols[i]?.sort;
+    const next = cur === 'asc' ? 'desc' : cur === 'desc' ? undefined : 'asc';
+    const arr = cols.map((c, k) => ({ ...c, sort: k === i ? next : undefined }));
     update({ cols: arr } as Partial<RowSortNodeData>);
   };
   const fmt = fmtFor != null ? (cols[fmtFor] ?? null) : null;
@@ -5670,9 +5672,9 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
                 type="button"
                 onClick={() => setSort(i)}
                 className={fmtCls(!!c.sort)}
-                title="该列升序排序（排他）"
+                title="点击切换：升序 → 降序 → 取消（排他）"
               >
-                {c.sort ? '✓升序' : '升序'}
+                {c.sort === 'asc' ? '升序' : c.sort === 'desc' ? '降序' : '排序'}
               </button>
               <button type="button" onClick={() => setFmtFor(i)} className="rounded px-1.5 py-0.5 text-[10px] ring-1 ring-gray-200 bg-white text-gray-600 hover:bg-gray-100" title="数值格式设置">格式</button>
               <button type="button" onClick={() => update({ cols: cols.filter((_, k) => k !== i) } as Partial<RowSortNodeData>)} className="text-[10px] text-red-400 hover:text-red-600" title="删除该列">删</button>
