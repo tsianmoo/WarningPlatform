@@ -4,13 +4,14 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from 'react';
-import { X, Table2, AlertCircle, BellRing } from 'lucide-react';
+import { X, Table2, AlertCircle, BellRing, Move, Maximize2 } from 'lucide-react';
 import type { DataTable, FlowEdge, FlowNode } from '@/lib/types';
 import { evaluateFlow, type NodePreview } from '@/lib/evaluate';
 
@@ -96,6 +97,66 @@ function PreviewModal({ state, onClose }: { state: PreviewState; onClose: () => 
   // 横向滚动进度条：record 记录可视区占全宽的比例与滚动偏移
   const [hBar, setHBar] = useState<{ ratio: number; left: number } | null>(null);
 
+  // 弹窗可拖动位置 + 可缩放尺寸（初始时基于视口水平竖直居中）
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [mode, setMode] = useState<'move' | 'resize' | null>(null);
+  const startRef = useRef<{ mx: number; my: number; px: number; py: number; w: number; h: number } | null>(null);
+
+  const beginDrag = useCallback(
+    (which: 'move' | 'resize', e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const el = dialogRef.current;
+      if (!el) {
+        // 首次打开尚未布局定位，先完成居中后再开始
+        const w = Math.min(1080, window.innerWidth - 48);
+        const h = Math.min(Math.round(window.innerHeight * 0.85), 760);
+        const x = Math.max(0, Math.round((window.innerWidth - w) / 2));
+        const y = Math.max(0, Math.round((window.innerHeight - h) / 2));
+        setPos({ x, y, w, h });
+        startRef.current = { mx: e.clientX, my: e.clientY, px: x, py: y, w, h };
+      } else {
+        const rect = el.getBoundingClientRect();
+        startRef.current = { mx: e.clientX, my: e.clientY, px: rect.left, py: rect.top, w: rect.width, h: rect.height };
+      }
+      setMode(which);
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!mode || !startRef.current) return;
+    const onMove = (ev: MouseEvent) => {
+      const s = startRef.current!;
+      const dx = ev.clientX - s.mx;
+      const dy = ev.clientY - s.my;
+      if (mode === 'move') {
+        const minX = -40;
+        const minY = 0;
+        const maxX = window.innerWidth - s.w + 40;
+        const maxY = window.innerHeight - 36;
+        setPos({
+          x: Math.min(Math.max(s.px + dx, minX), maxX),
+          y: Math.min(Math.max(s.py + dy, minY), maxY),
+          w: s.w,
+          h: s.h,
+        });
+      } else {
+        const w = Math.min(Math.max(s.w + dx, 480), window.innerWidth - s.px - 8);
+        const h = Math.min(Math.max(s.h + dy, 320), window.innerHeight - s.py - 8);
+        setPos({ x: s.px, y: s.py, w, h });
+      }
+    };
+    const onUp = () => setMode(null);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [mode]);
+
   const handleHScroll = useCallback(() => {
     const el = scrollBoxRef.current;
     if (!el) return;
@@ -114,17 +175,28 @@ function PreviewModal({ state, onClose }: { state: PreviewState; onClose: () => 
 
   return (
     <div
-      className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[999] bg-slate-900/40 backdrop-blur-[2px]"
       onClick={onClose}
     >
       <div
-        className="flex max-h-[90vh] w-[min(1080px,96vw)] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        ref={dialogRef}
+        className={`flex flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ${mode ? 'select-none' : ''}`}
+        style={
+          pos
+            ? { position: 'fixed', left: pos.x, top: pos.y, width: pos.w, height: pos.h }
+            : { position: 'fixed', inset: 0, margin: 'auto', width: 'min(1080px, 96vw)', height: 'min(90vh, 760px)' }
+        }
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-3">
+        <div
+          className={`flex shrink-0 cursor-move select-none items-center gap-2 border-b border-gray-100 px-5 py-3 ${mode === 'move' ? 'cursor-grabbing' : ''}`}
+          onMouseDown={(e) => beginDrag('move', e)}
+          title="拖动移动弹窗"
+        >
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
             <Table2 className="h-4 w-4" />
           </span>
+          <Move className="h-3.5 w-3.5 shrink-0 text-gray-300" />
           <div className="min-w-0">
             <div className="text-sm font-semibold text-gray-800">节点预览 · {state.title}</div>
             <div className="text-[11px] text-gray-400">基于已上传数据计算，用于逐步核对配置是否正确</div>
@@ -138,7 +210,7 @@ function PreviewModal({ state, onClose }: { state: PreviewState; onClose: () => 
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto px-5 py-4">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-5 py-4">
           {state.loading ? (
             <div className="flex flex-col items-center justify-center gap-3 py-12 text-gray-400">
               <span className="h-7 w-7 animate-spin rounded-full border-2 border-gray-200 border-t-blue-500" />
@@ -190,13 +262,13 @@ function PreviewModal({ state, onClose }: { state: PreviewState; onClose: () => 
               )}
 
               {r.columns.length > 0 && (
-                <div className="relative rounded-lg border border-gray-200">
+                <div className="relative flex min-h-0 flex-1 flex-col rounded-lg border border-gray-200">
                   <div
                     ref={(el) => {
                       scrollBoxRef.current = el;
                     }}
                     onScroll={handleHScroll}
-                    className="max-h-[70vh] w-full overflow-auto overscroll-x-contain"
+                    className="min-h-0 w-full flex-1 overflow-auto overscroll-x-contain"
                   >
                     <table className="min-w-max border-collapse text-[12px]">
                       <thead>
@@ -266,6 +338,13 @@ function PreviewModal({ state, onClose }: { state: PreviewState; onClose: () => 
         <div className="border-t border-gray-100 px-5 py-2.5 text-[11px] text-gray-400">
           预览基于已上传全量数据计算（结果最多展示前 50 行），用于核对逻辑；正式执行结果相同。
         </div>
+        <span
+          className="absolute bottom-0 right-0 flex h-6 w-6 cursor-nwse-resize items-center justify-center text-gray-300 transition hover:text-blue-500"
+          onMouseDown={(e) => beginDrag('resize', e)}
+          title="拖动调整大小"
+        >
+          <Maximize2 className="h-3.5 w-3.5" />
+        </span>
       </div>
     </div>
   );
