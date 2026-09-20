@@ -30,6 +30,7 @@ import type {
   LinkViewAllNodeData,
   LinkViewAllTab,
   RowSortNodeData,
+  RowSortPivot,
 } from './types';
 import { resolveTimeWindow, resolveElapsedDays, compareModes, computeCompareWindow } from './time';
 import type { TimeWindow } from './types';
@@ -2252,6 +2253,99 @@ function evalNode(
         }
         return 0;
       });
+      // ── 多横排块：每个块独立指定行转列字段 + 值字段 + 表头命名，并排列出（优先于旧单块） ──
+      // 若 data.pivots 存在有效块，优先按多块输出；否则退回旧单块逻辑（保证存量规则零回归）
+      const pivots = Array.isArray(rs.pivots) ? rs.pivots : [];
+      const activeBlocks = pivots.filter(
+        (b) => b && b.enable !== false && b.deleted !== true && b.rowField && b.valueField
+      );
+      if (activeBlocks.length) {
+        const rawKey = (r: Record<string, unknown>, k?: string) => (k ? r[k] ?? '' : '');
+        const usedKeys = new Set<string>();
+        for (const b of activeBlocks) {
+          if (b.rowField) usedKeys.add(b.rowField);
+          if (b.valueField) usedKeys.add(b.valueField);
+        }
+        // 固定列 = 未被任一块用作行转列/值字段的展示列
+        const blockFixCols = shown.filter((c) => !usedKeys.has(c.label || c.key));
+        interface BHead { block: RowSortPivot; orig: string; disp: string; headKey: string; cfg: (typeof all)[number]; }
+        const outHeads: BHead[] = [];
+        // 每个块收集其行转列字段的去重取值作为横向表头
+        for (const b of activeBlocks) {
+          const combos: string[] = [];
+          for (const r of sorted) {
+            const v = String(rawKey(r, b.rowField) ?? '');
+            if (v !== '' && !combos.includes(v)) combos.push(v);
+          }
+          if (Array.isArray(b.order) && b.order.length) {
+            const desired = b.order;
+            combos.sort((a, c) => {
+              const ia = desired.indexOf(a);
+              const ib = desired.indexOf(c);
+              if (ia === -1 && ib === -1) return 0;
+              if (ia === -1) return 1;
+              if (ib === -1) return -1;
+              return ia - ib;
+            });
+          }
+          const cfg = all.find((c) => c.key === b.valueField || (c.label || c.key) === b.valueField);
+          const valCfgFor: { key: string; label?: string; type?: string; decimals?: number; suffix?: string; thousandSep?: boolean; unit?: string } =
+            cfg && cfg.key
+              ? cfg
+              : { key: String(b.valueField ?? ''), label: b.valueField, type: 'auto' as const };
+          for (const orig of combos) {
+            const named = b.labels && b.labels[orig];
+            const disp = named || (b.prefix ? `${b.prefix}·${orig}` : orig);
+            outHeads.push({ block: b, orig, disp, headKey: `${b.id || b.valueField}\u0001${orig}`, cfg: valCfgFor });
+          }
+        }
+        // 表头展示名去重：同名列追加递增下标，避免多块同名表头互相覆盖
+        const seenDisp = new Map<string, number>();
+        for (const h of outHeads) {
+          const base = h.disp;
+          const n = seenDisp.get(base) ?? 0;
+          seenDisp.set(base, n + 1);
+          if (n > 0) h.disp = `${base}·${n + 1}`;
+        }
+        const outHeadUniq: string[] = [...blockFixCols.map((c) => c.label || c.key), ...outHeads.map((h) => h.disp)];
+        const gk = (r: Record<string, unknown>) =>
+          blockFixCols.map((c) => String(rawKey(r, c.label || c.key) ?? '')).join('\u0001');
+        const groups = new Map<string, Record<string, string>>();
+        for (const r of sorted) {
+          const key = gk(r);
+          let row = groups.get(key);
+          if (!row) {
+            row = {};
+            for (const c of blockFixCols) row[c.label || c.key] = formatNumByConfig(rawKey(r, c.label || c.key), c);
+            groups.set(key, row);
+          }
+          for (const h of outHeads) {
+            const rv = String(rawKey(r, h.block.rowField) ?? '');
+            if (rv === h.orig && h.block.valueField) {
+              row[h.headKey] = formatNumByConfig(rawKey(r, h.block.valueField), h.cfg);
+            }
+          }
+        }
+        // 将内部 headKey 重命名为展示名；同名展示名（如两块都有"M"）加块前缀避免覆盖
+        const outRows = [...groups.values()].map((row) => {
+          const o: Record<string, string> = {};
+          for (const c of blockFixCols) o[c.label || c.key] = row[c.label || c.key] ?? '';
+          for (const h of outHeads) {
+            const v = row[h.headKey];
+            o[h.disp] = v != null ? v : o[h.disp];
+          }
+          return o;
+        });
+        const blockDesc = activeBlocks.map((b) => `${b.valueField}（按「${b.rowField}」横排${b.prefix ? '，前缀「' + b.prefix + '」' : ''}）`).join('，');
+        return {
+          title: '节点结果排序',
+          columns: outHeadUniq,
+          rows: cap(outRows),
+          shape: 'table',
+          note: `来自「${src.title || '上游节点'}」共 ${src.rows.length} 行；多指标横排：${blockDesc}。`,
+          allCols: outHeadUniq,
+        };
+      }
       // 行转列（Pivot）：勾选为"行转列字段"（unpivot）的列，其去重值组合成横向表头列，原列不再保留；
       // 其余字段原样保留为行分组；由唯一「值字段」（pivotValue）填充表头下数值。
       const pivotCols = shown.filter((c) => c.unpivot === true);
@@ -2282,7 +2376,95 @@ function evalNode(
             return ia - ib;
           });
         }
-        const valKey = valCfg ? valCfg.label || valCfg.key : '';
+        // ── 多横排块：每个块独立指定行转列字段 + 值字段 + 表头命名，并排列出（优先于旧单块） ──
+      const pivots = Array.isArray(rs.pivots) ? rs.pivots : [];
+      const activeBlocks = pivots.filter(
+        (b) => b && b.enable !== false && b.deleted !== true && b.rowField && b.valueField
+      );
+      if (activeBlocks.length) {
+        const rawKey = (r: Record<string, unknown>, k?: string) => (k ? r[k] ?? '' : '');
+        const usedKeys = new Set<string>();
+        for (const b of activeBlocks) {
+          if (b.rowField) usedKeys.add(b.rowField);
+          if (b.valueField) usedKeys.add(b.valueField);
+        }
+        const blockFixCols = shown.filter((c) => !usedKeys.has(c.label || c.key));
+        interface BHead { block: RowSortPivot; orig: string; disp: string; headKey: string; cfg: (typeof all)[number]; }
+        const outHeads: BHead[] = [];
+        for (const b of activeBlocks) {
+          const combos: string[] = [];
+          for (const r of sorted) {
+            const v = String(rawKey(r, b.rowField) ?? '');
+            if (v !== '' && !combos.includes(v)) combos.push(v);
+          }
+          if (Array.isArray(b.order) && b.order.length) {
+            const desired = b.order;
+            combos.sort((a, c) => {
+              const ia = desired.indexOf(a);
+              const ib = desired.indexOf(c);
+              if (ia === -1 && ib === -1) return 0;
+              if (ia === -1) return 1;
+              if (ib === -1) return -1;
+              return ia - ib;
+            });
+          }
+          const cfg = all.find((c) => c.key === b.valueField || (c.label || c.key) === b.valueField);
+          const valCfgFor: { key: string; label?: string; type?: string; decimals?: number; suffix?: string; thousandSep?: boolean; unit?: string } =
+            cfg && cfg.key
+              ? cfg
+              : { key: String(b.valueField ?? ''), label: b.valueField, type: 'auto' as const };
+          for (const orig of combos) {
+            const named = b.labels && b.labels[orig];
+            const disp = named || (b.prefix ? `${b.prefix}·${orig}` : orig);
+            outHeads.push({ block: b, orig, disp, headKey: `${b.id || b.valueField}\u0001${orig}`, cfg: valCfgFor });
+          }
+        }
+        const seenDisp = new Map<string, number>();
+        for (const h of outHeads) {
+          const base = h.disp;
+          const n = seenDisp.get(base) ?? 0;
+          seenDisp.set(base, n + 1);
+          if (n > 0) h.disp = `${base}·${n + 1}`;
+        }
+        const outHeadUniq: string[] = [...blockFixCols.map((c) => c.label || c.key), ...outHeads.map((h) => h.disp)];
+        const gk = (r: Record<string, unknown>) =>
+          blockFixCols.map((c) => String(rawKey(r, c.label || c.key) ?? '')).join('\u0001');
+        const groups = new Map<string, Record<string, string>>();
+        for (const r of sorted) {
+          const key = gk(r);
+          let row = groups.get(key);
+          if (!row) {
+            row = {};
+            for (const c of blockFixCols) row[c.label || c.key] = formatNumByConfig(rawKey(r, c.label || c.key), c);
+            groups.set(key, row);
+          }
+          for (const h of outHeads) {
+            const rv = String(rawKey(r, h.block.rowField) ?? '');
+            if (rv === h.orig && h.block.valueField) {
+              row[h.headKey] = formatNumByConfig(rawKey(r, h.block.valueField), h.cfg);
+            }
+          }
+        }
+        const outRows = [...groups.values()].map((row) => {
+          const o: Record<string, string> = {};
+          for (const c of blockFixCols) o[c.label || c.key] = row[c.label || c.key] ?? '';
+          for (const h of outHeads) {
+            const v = row[h.headKey];
+            o[h.disp] = v != null ? v : o[h.disp];
+          }
+          return o;
+        });
+        const blockDesc = activeBlocks.map((b) => `${b.valueField}（按「${b.rowField}」横排${b.prefix ? '，前缀「' + b.prefix + '」' : ''}）`).join('，');
+        return {
+          title: '节点结果排序',
+          columns: outHeadUniq,
+          rows: cap(outRows),
+          shape: 'table',
+          note: `来自「${src.title || '上游节点'}」共 ${src.rows.length} 行；多指标横排：${blockDesc}。`,
+          allCols: outHeadUniq,
+        };
+      }
+      const valKey = valCfg ? valCfg.label || valCfg.key : '';
         // 固定列各自成列；每个固定组一行，各组合列填值字段数值
         const outHead: string[] = [...fixedCols.map((c) => c.label || c.key), ...combos];
         const groupKey = (r: Record<string, unknown>) => fixedCols.map((c) => String(fixedKey(r, c) ?? '')).join('\u0001');

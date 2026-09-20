@@ -868,6 +868,28 @@ export interface RowSortCol {
   pivotLabels?: Record<string, string>;
 }
 
+/** 多横排块：在 rowsort 节点内并列输出的一个「行转列透视块」（含其值字段与表头命名） */
+export interface RowSortPivot {
+  /** 块唯一标识 */
+  id?: string;
+  /** 块显示名（预留，前端不使用展示名强校验） */
+  name?: string;
+  /** 行转列字段 key：该字段不同取值横向展开为表头列（如 尺寸名） */
+  rowField?: string;
+  /** 值字段 key：填充表头下数值的列（如 求和(库存数量) / 求和(销售数量)） */
+  valueField?: string;
+  /** 表头展示前缀/指标名（默认取值字段 label），用于区分同尺码不同指标（如 库存 / 销量） */
+  prefix?: string;
+  /** 横排表头顺序（去重值顺序，缺省按上游出现顺序） */
+  order?: string[];
+  /** 行转列表头取值对应自定义显示名（key=取值，value=展示名） */
+  labels?: Record<string, string>;
+  /** 是否在节点上启用该块（未启用则不并列输出） */
+  enable?: boolean;
+  /** 是否删除（软删除标记） */
+  deleted?: boolean;
+}
+
 /** 节点结果排序/格式化 节点数据 */
 export interface RowSortNodeData {
   /** 引用的上游节点 id */
@@ -875,6 +897,8 @@ export interface RowSortNodeData {
   sourceNodeLabel?: string;
   /** 各列的展示配置（顺序即表格列顺序） */
   cols: RowSortCol[];
+  /** 多横排块：每个块独立指定其行转列字段、值字段与表头命名，并排列输出（与 cols 中 unpivot/pivotValue 配置并存，块优先） */
+  pivots?: RowSortPivot[];
   /** 结果命名 */
   resultLabel?: string;
   /** 列转行：指标列名（默认「指标」） */

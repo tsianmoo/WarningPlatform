@@ -2,7 +2,7 @@
 
 import React, { memo, useEffect, useState, useMemo, useRef, createContext, useContext } from 'react';
 import { Handle, Position, useReactFlow, useEdges, useNodes, type NodeProps } from '@xyflow/react';
-import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, SearchCheck, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus, ChevronDown, LayoutList, Copy } from 'lucide-react';
+import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, SearchCheck, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus, ChevronDown, LayoutList, Copy, Trash2 } from 'lucide-react';
 import CalcExprEditor, { type CalcExprEditorHandle } from './CalcExprEditor';
 import {
   KIND_COLOR,
@@ -56,6 +56,7 @@ import {
   type LinkViewAllTab,
   type RowSortCol,
   type RowSortNodeData,
+  type RowSortPivot,
 } from '@/lib/types';
 import { uid } from '@/lib/types';
 import { useStore } from '@/lib/store';
@@ -5775,6 +5776,29 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
     arr.splice(j, 0, it);
     update({ cols: arr } as Partial<RowSortNodeData>);
   };
+  const pivots = Array.isArray(d.pivots) ? d.pivots : [];
+  const activePivotCount = pivots.filter((b) => b && b.enable !== false && b.deleted !== true && b.rowField && b.valueField).length;
+  const setPivot = (i: number, patch: Partial<RowSortPivot>) => {
+    const arr = pivots.slice();
+    arr[i] = { ...arr[i], ...patch };
+    update({ pivots: arr } as Partial<RowSortNodeData>);
+  };
+  const addPivot = () => {
+    const rowCol = merged.find((c) => c.unpivot === true) || merged.find((c) => !c.pivotValue) || merged[0];
+    const valCol = merged.find((c) => c.pivotValue === true) || merged.find((c) => Number.isFinite(Number(exampleVal)) && /数量|库存|金额|求和|sales|qty|val|amount|sum/i.test(c.key || '')) || merged[merged.length - 1];
+    update({
+      pivots: [
+        ...pivots,
+        {
+          id: `pivot_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+          rowField: rowCol ? rowCol.label || rowCol.key : '',
+          valueField: valCol ? valCol.label || valCol.key : '',
+          enable: true,
+        } as RowSortPivot,
+      ],
+    } as Partial<RowSortNodeData>);
+  };
+  const removePivot = (i: number) => setPivot(i, { deleted: true, enable: false });
   const fmt = fmtFor != null ? (merged[fmtFor] ?? null) : null;
   const exampleVal = 21000.04;
   const fmtCls = (on: boolean) => `rounded px-1.5 py-0.5 text-[10px] ring-1 transition ${on ? 'bg-sky-600 text-white ring-sky-600' : 'bg-white text-gray-600 ring-gray-200 hover:bg-gray-100'}`;
@@ -5879,7 +5903,77 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
         )}
         {cols.length === 0 && <div className="text-[10px] text-gray-400">选择节点结果后自动带出全部字段，可在此调整顺序与格式。</div>}
 
-        {/* ③ 结果命名（可选） */}
+        {/* ③ 多横排块（并列输出多个指标） */}
+        <div>
+          <div className={rowLabel}>③ 多横排块（需两个及以上指标横排时使用）</div>
+          <div className="space-y-1.5">
+            {pivots.filter((b) => !(b && b.deleted === true)).map((b, i) => {
+              const real = pivots.findIndex((x) => x === b);
+              const rowCands = merged.filter((c) => c.show !== false);
+              const valCands = merged.filter((c) => c.show !== false);
+              return (
+                <div key={b.id || i} className="rounded-md border border-violet-100 bg-violet-50/40 px-2 py-1.5">
+                  <div className="flex items-center gap-1">
+                    <span className="w-4 text-center text-[10px] text-violet-500">{i + 1}</span>
+                    <select
+                      value={b.rowField ?? ''}
+                      onChange={(e) => setPivot(real, { rowField: e.target.value })}
+                      className="flex-1 min-w-0 rounded border border-gray-200 bg-white px-1.5 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                      title="行转列字段：该字段不同取值横向展开为表头列"
+                    >
+                      <option value="">— 行转列字段（如 尺寸名）—</option>
+                      {rowCands.map((c) => (
+                        <option key={(c.label || c.key) as string} value={c.label || c.key}>{c.label || c.key}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => removePivot(real)}
+                      title="删除该横排块"
+                      className="shrink-0 rounded px-1 text-[11px] text-gray-400 hover:bg-rose-50 hover:text-rose-500"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                  <div className="mt-1 flex items-center gap-1">
+                    <span className="w-4 text-center text-[10px] text-violet-400">↓</span>
+                    <select
+                      value={b.valueField ?? ''}
+                      onChange={(e) => setPivot(real, { valueField: e.target.value })}
+                      className="flex-1 min-w-0 rounded border border-gray-200 bg-white px-1.5 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                      title="值字段：填充该横排表头下数值的列"
+                    >
+                      <option value="">— 值字段（如 求和(销售数量)）—</option>
+                      {valCands.map((c) => (
+                        <option key={(c.label || c.key) as string} value={c.label || c.key}>{c.label || c.key}</option>
+                      ))}
+                    </select>
+                    <input
+                      value={b.prefix ?? ''}
+                      onChange={(e) => setPivot(real, { prefix: e.target.value })}
+                      placeholder="表头前缀(可省)"
+                      title="表头展示前缀，用于区分同尺寸不同指标（如 库存/销量）；留空则直接显示取值"
+                      className="w-24 shrink-0 rounded border border-gray-200 bg-white px-1.5 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+            <button
+              type="button"
+              onClick={addPivot}
+              className="w-full rounded-md border border-dashed border-violet-200 bg-violet-50/30 py-1 text-[11px] text-violet-500 transition hover:bg-violet-100/50"
+            >
+              + 添加横排块（再横排一个指标）
+            </button>
+            {activePivotCount > 0 && (
+              <div className="rounded-md border border-violet-100 bg-violet-50/50 px-2 py-1 text-[10px] leading-4 text-violet-600">
+                已启用 {activePivotCount} 个横排块：每个块按自身「行转列字段」横向展开，并以其「值字段」填充数值，与固定列并列输出。上面的旧「转/值」单块配置不再生效（此多块配置优先）。
+              </div>
+            )}
+          </div>
+        </div>
+        {/* ④ 结果命名（可选） */}
         <div>
           <div className={rowLabel}>④ 结果命名（可选）</div>
           <input
