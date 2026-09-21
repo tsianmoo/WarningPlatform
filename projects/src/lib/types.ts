@@ -1614,6 +1614,34 @@ export interface LoginBoxStyle {
   shadowX: number;       // 投影距离X（px）
   shadowY: number;       // 投影距离Y（px）
   shadowBlur: number;    // 投影模糊（px）
+  title: LoginInnerText; // 登录框内标题
+  subtitle: LoginInnerText; // 登录框内副标题
+  label: LoginInnerText; // 字段标签（账号/密码/验证码）统一样式
+  button: LoginButton;   // 登录按钮
+}
+
+/** 登录框内文本样式 */
+export interface LoginInnerText {
+  text: string;          // 文本内容
+  font: string;
+  size: number;          // 字号
+  weight: number;        // 字重
+  letterSpacing: number; // 字宽（px）
+  color: string;         // 颜色
+  opacity: number;       // 透明度
+}
+
+/** 登录按钮样式 */
+export interface LoginButton {
+  text: string;          // 按钮文字
+  width: number;         // 宽度（px；0 表示随内容/填满）
+  height: number;        // 高度（px）
+  size: number;          // 字号
+  weight: number;        // 字重
+  letterSpacing: number; // 字宽
+  color: string;         // 文字颜色
+  bgColor: string;       // 背景色
+  radius: number;        // 圆角
 }
 /** 画布可添加的文本组件 */
 export interface HomeTextElement {
@@ -1698,6 +1726,10 @@ export const DEFAULT_HOME_CONFIG: HomeConfig = {
     x: 78, y: 48, width: 342, height: 379, bgColor: '#ffffff', bgOpacity: 0.12, blur: 12, radius: 12,
     padX: 25, padY: 23, fieldHeight: 37,
     shadowColor: '#000000', shadowOpacity: 0.25, shadowX: 0, shadowY: 12, shadowBlur: 24,
+    title: { text: '店牛预警平台', font: 'system-ui', size: 20, weight: 700, letterSpacing: 1, color: '#1f2937', opacity: 1 },
+    subtitle: { text: '请登录您的账号', font: 'system-ui', size: 12, weight: 400, letterSpacing: 0, color: '#9ca3af', opacity: 1 },
+    label: { text: '账号', font: 'system-ui', size: 12, weight: 400, letterSpacing: 0, color: '#6b7280', opacity: 1 },
+    button: { text: '登录', width: 0, height: 44, size: 14, weight: 500, letterSpacing: 1, color: '#ffffff', bgColor: '#2563eb', radius: 8 },
   },
   elements: [],
   navMenus: DEFAULT_NAV_MENUS,
@@ -1715,7 +1747,7 @@ export function normalizeHomeConfig(c?: Partial<HomeConfig> | null): HomeConfig 
     ...(c || {}),
     title: { ...DEFAULT_HOME_CONFIG.title, ...(c?.title || {}) },
     subtitle: { ...DEFAULT_HOME_CONFIG.subtitle, ...(c?.subtitle || {}) },
-    loginBox: { ...DEFAULT_HOME_CONFIG.loginBox, ...(c?.loginBox || {}) },
+    loginBox: { ...DEFAULT_HOME_CONFIG.loginBox, ...(c?.loginBox || {}), title: { ...DEFAULT_HOME_CONFIG.loginBox.title, ...((c?.loginBox?.title as object) || {}) }, subtitle: { ...DEFAULT_HOME_CONFIG.loginBox.subtitle, ...((c?.loginBox?.subtitle as object) || {}) }, label: { ...DEFAULT_HOME_CONFIG.loginBox.label, ...((c?.loginBox?.label as object) || {}) }, button: { ...DEFAULT_HOME_CONFIG.loginBox.button, ...((c?.loginBox?.button as object) || {}) } },
     brand: { ...DEFAULT_HOME_CONFIG.brand, ...(c?.brand || {}) },
     elements: Array.isArray(c?.elements) ? c.elements : [],
     navMenus:

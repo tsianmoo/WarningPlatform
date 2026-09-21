@@ -23,6 +23,8 @@ import {
   type HomeElement,
   type HomeImageElement,
   type HomeTitleStyle,
+  type LoginBoxStyle,
+  type LoginButton,
 } from '@/lib/types';
 
 /** 文本类配置共有的字段（主/副标题与新增文本元素） */
@@ -31,14 +33,14 @@ type TextPatch = Partial<TextCfg>;
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-16 shrink-0 text-right text-xs font-medium text-gray-500">{label}</span>
-      {children}
+    <div className="grid grid-cols-[92px_1fr] items-center gap-3 py-1.5">
+      <span className="text-right text-xs text-gray-500">{label}</span>
+      <div className="flex flex-wrap items-center gap-2">{children}</div>
     </div>
   );
 }
 
-const inputCls = 'h-7 min-w-[120px] rounded-lg border border-gray-200 px-2 text-sm outline-none focus:border-blue-400';
+const inputCls = 'h-8 rounded-lg border border-gray-200 bg-white px-2.5 text-xs text-gray-700 outline-none transition-colors focus:border-gray-400';
 
 function NumBox({
   value,
@@ -56,7 +58,7 @@ function NumBox({
   unit: string;
 }) {
   return (
-    <div className="flex h-7 w-[74px] shrink-0 items-center rounded-lg border border-gray-200 bg-white pl-1 transition focus-within:border-blue-400">
+    <div className="flex h-8 w-[76px] shrink-0 items-center overflow-hidden rounded-lg border border-gray-200 bg-white transition-colors focus-within:border-gray-400">
       <input
         type="number"
         min={min}
@@ -98,7 +100,7 @@ function NumberInput({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-28 accent-blue-600"
+        className="h-1.5 w-36 accent-gray-700"
       />
       <NumBox value={value} min={min} max={max} step={step} unit={unit} onChange={onChange} />
     </div>
@@ -107,9 +109,9 @@ function NumberInput({
 
 function ColorPick({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <label className="flex items-center gap-1.5 text-xs text-gray-500">
-      <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="h-7 w-10 cursor-pointer rounded border border-gray-200" />
-      {value}
+    <label className="flex cursor-pointer items-center gap-2 text-xs text-gray-600">
+      <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="h-7 w-9 cursor-pointer rounded border border-gray-200 bg-white" />
+      <span className="uppercase text-gray-500">{value}</span>
     </label>
   );
 }
@@ -124,7 +126,7 @@ function OpacityPick({ value, onChange }: { value: number; onChange: (v: number)
         step={0.05}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-20 accent-blue-600"
+        className="h-1.5 w-24 accent-gray-700"
       />
       <NumBox value={Math.round(value * 100)} min={0} max={100} step={5} unit="%" onChange={(v) => onChange(v / 100)} />
     </div>
@@ -140,6 +142,16 @@ function FontPick({ value, onChange }: { value: string; onChange: (v: string) =>
         </option>
       ))}
     </select>
+  );
+}
+
+/** 配置面板分组标题 */
+function Section({ title }: { title: string }) {
+  return (
+    <div className="-mx-1 mt-3 flex items-center gap-2 pb-0.5 text-[11px] font-medium uppercase tracking-wider text-gray-400 first:mt-0">
+      <span className="h-3 w-0.5 rounded-full bg-gray-300" />
+      {title}
+    </div>
   );
 }
 
@@ -498,49 +510,85 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
       );
     }
     if (t === 'login') {
+      const up = (p: Partial<LoginBoxStyle>) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, ...p } }));
+      const upInner = (k: 'title' | 'subtitle' | 'label', p: TextPatch) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, [k]: { ...c.loginBox[k], ...p } } }));
+      const upBtn = (p: Partial<LoginButton>) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, button: { ...c.loginBox.button, ...p } } }));
       return (
         <>
+          <Section title="尺寸与位置" />
           <Field label="宽度">
-            <NumberInput value={cfg.loginBox.width} min={200} max={600} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, width: n } }))} />
+            <NumberInput value={cfg.loginBox.width} min={200} max={600} onChange={(n) => up({ width: n })} />
           </Field>
           <Field label="高度">
-            <NumberInput value={cfg.loginBox.height} min={200} max={600} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, height: n } }))} />
+            <NumberInput value={cfg.loginBox.height} min={200} max={600} onChange={(n) => up({ height: n })} />
           </Field>
-          <Field label="背景色">
-            <ColorPick value={cfg.loginBox.bgColor} onChange={(v) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, bgColor: v } }))} />
+          <Section title="面板外观" />
+          <Field label="背景">
+            <ColorPick value={cfg.loginBox.bgColor} onChange={(v) => up({ bgColor: v })} />
           </Field>
           <Field label="透明度">
-            <OpacityPick value={cfg.loginBox.bgOpacity} onChange={(v) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, bgOpacity: v } }))} />
+            <OpacityPick value={cfg.loginBox.bgOpacity} onChange={(v) => up({ bgOpacity: v })} />
           </Field>
           <Field label="毛玻璃">
-            <NumberInput value={cfg.loginBox.blur} max={40} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, blur: n } }))} />
+            <NumberInput value={cfg.loginBox.blur} max={40} onChange={(n) => up({ blur: n })} />
           </Field>
           <Field label="圆角">
-            <NumberInput value={cfg.loginBox.radius} max={40} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, radius: n } }))} />
+            <NumberInput value={cfg.loginBox.radius} max={40} onChange={(n) => up({ radius: n })} />
           </Field>
-          <Field label="内边距X">
-            <NumberInput value={cfg.loginBox.padX} min={0} max={80} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, padX: n } }))} />
-          </Field>
-          <Field label="内边距Y">
-            <NumberInput value={cfg.loginBox.padY} min={0} max={80} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, padY: n } }))} />
+          <Field label="内边距">
+            <NumberInput value={cfg.loginBox.padX} min={0} max={80} onChange={(n) => up({ padX: n })} />
+            <NumberInput value={cfg.loginBox.padY} min={0} max={80} onChange={(n) => up({ padY: n })} />
           </Field>
           <Field label="输入框高">
-            <NumberInput value={cfg.loginBox.fieldHeight} min={24} max={72} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, fieldHeight: n } }))} />
+            <NumberInput value={cfg.loginBox.fieldHeight} min={24} max={72} onChange={(n) => up({ fieldHeight: n })} />
           </Field>
-          <Field label="阴影颜色">
-            <ColorPick value={cfg.loginBox.shadowColor} onChange={(v) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, shadowColor: v } }))} />
+          <Section title="阴影" />
+          <Field label="颜色">
+            <ColorPick value={cfg.loginBox.shadowColor} onChange={(v) => up({ shadowColor: v })} />
           </Field>
-          <Field label="阴影透明">
-            <OpacityPick value={cfg.loginBox.shadowOpacity} onChange={(v) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, shadowOpacity: v } }))} />
+          <Field label="透明度">
+            <OpacityPick value={cfg.loginBox.shadowOpacity} onChange={(v) => up({ shadowOpacity: v })} />
           </Field>
-          <Field label="投影X">
-            <NumberInput value={cfg.loginBox.shadowX} min={-40} max={40} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, shadowX: n } }))} />
+          <Field label="偏移">
+            <NumberInput value={cfg.loginBox.shadowX} min={-40} max={40} onChange={(n) => up({ shadowX: n })} />
+            <NumberInput value={cfg.loginBox.shadowY} min={-40} max={40} onChange={(n) => up({ shadowY: n })} />
           </Field>
-          <Field label="投影Y">
-            <NumberInput value={cfg.loginBox.shadowY} min={-40} max={40} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, shadowY: n } }))} />
+          <Field label="模糊">
+            <NumberInput value={cfg.loginBox.shadowBlur} min={0} max={80} onChange={(n) => up({ shadowBlur: n })} />
           </Field>
-          <Field label="投影模糊">
-            <NumberInput value={cfg.loginBox.shadowBlur} min={0} max={80} onChange={(n) => updateHomeConfig((c) => ({ ...c, loginBox: { ...c.loginBox, shadowBlur: n } }))} />
+          <Section title="标题" />
+          <TextFields value={cfg.loginBox.title} onChange={(p) => upInner('title', p)} />
+          <Section title="副标题" />
+          <TextFields value={cfg.loginBox.subtitle} onChange={(p) => upInner('subtitle', p)} />
+          <Section title="字段标签" />
+          <TextFields value={cfg.loginBox.label} onChange={(p) => upInner('label', p)} />
+          <Section title="登录按钮" />
+          <Field label="文字">
+            <input value={cfg.loginBox.button.text} onChange={(e) => upBtn({ text: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label="宽度">
+            <NumberInput value={cfg.loginBox.button.width} min={0} max={480} onChange={(n) => upBtn({ width: n })} />
+          </Field>
+          <Field label="高度">
+            <NumberInput value={cfg.loginBox.button.height} min={28} max={80} onChange={(n) => upBtn({ height: n })} />
+          </Field>
+          <Field label="字号">
+            <NumberInput value={cfg.loginBox.button.size} min={10} max={40} onChange={(n) => upBtn({ size: n })} />
+          </Field>
+          <Field label="字重">
+            <WeightPick value={cfg.loginBox.button.weight} onChange={(v) => upBtn({ weight: v })} />
+          </Field>
+          <Field label="字宽">
+            <NumberInput value={cfg.loginBox.button.letterSpacing} min={0} max={20} onChange={(n) => upBtn({ letterSpacing: n })} />
+          </Field>
+          <Field label="文字颜色">
+            <ColorPick value={cfg.loginBox.button.color} onChange={(v) => upBtn({ color: v })} />
+          </Field>
+          <Field label="背景色">
+            <ColorPick value={cfg.loginBox.button.bgColor} onChange={(v) => upBtn({ bgColor: v })} />
+          </Field>
+          <Field label="圆角">
+            <NumberInput value={cfg.loginBox.button.radius} min={0} max={40} onChange={(n) => upBtn({ radius: n })} />
           </Field>
         </>
       );
@@ -660,39 +708,97 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
             title="点击选中登录框"
           >
             <div className="flex h-full flex-col justify-evenly">
-              <div className="flex items-center gap-2 text-blue-600">
-                <ShieldCheck size={24} />
-                <span className="text-lg font-bold text-gray-800">店牛预警平台</span>
+              <div
+                className="flex items-center gap-2"
+                style={{
+                  fontFamily: cfg.loginBox.title.font,
+                  fontSize: cfg.loginBox.title.size,
+                  fontWeight: cfg.loginBox.title.weight,
+                  letterSpacing: `${cfg.loginBox.title.letterSpacing}px`,
+                  color: cfg.loginBox.title.color,
+                  opacity: cfg.loginBox.title.opacity,
+                }}
+              >
+                <ShieldCheck size={Math.round(cfg.loginBox.title.size * 1.2)} />
+                <span>{cfg.loginBox.title.text}</span>
               </div>
-              <div className="text-xs text-gray-400">请登录您的账号</div>
+              <div
+                className="truncate"
+                style={{
+                  fontFamily: cfg.loginBox.subtitle.font,
+                  fontSize: cfg.loginBox.subtitle.size,
+                  fontWeight: cfg.loginBox.subtitle.weight,
+                  letterSpacing: `${cfg.loginBox.subtitle.letterSpacing}px`,
+                  color: cfg.loginBox.subtitle.color,
+                  opacity: cfg.loginBox.subtitle.opacity,
+                }}
+              >
+                {cfg.loginBox.subtitle.text}
+              </div>
               <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500">账号</label>
+                <label
+                  className="truncate"
+                  style={{
+                    fontFamily: cfg.loginBox.label.font,
+                    fontSize: cfg.loginBox.label.size,
+                    fontWeight: cfg.loginBox.label.weight,
+                    letterSpacing: `${cfg.loginBox.label.letterSpacing}px`,
+                    color: cfg.loginBox.label.color,
+                    opacity: cfg.loginBox.label.opacity,
+                  }}
+                >
+                  账号
+                </label>
                 <input
                   readOnly
                   placeholder="请输入账号"
                   style={{ height: cfg.loginBox.fieldHeight }}
-                  className="rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+                  className="rounded-lg border border-gray-200 px-3 text-sm outline-none"
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500">密码</label>
+                <label
+                  className="truncate"
+                  style={{
+                    fontFamily: cfg.loginBox.label.font,
+                    fontSize: cfg.loginBox.label.size,
+                    fontWeight: cfg.loginBox.label.weight,
+                    letterSpacing: `${cfg.loginBox.label.letterSpacing}px`,
+                    color: cfg.loginBox.label.color,
+                    opacity: cfg.loginBox.label.opacity,
+                  }}
+                >
+                  密码
+                </label>
                 <input
                   readOnly
                   type="password"
                   placeholder="请输入密码"
                   style={{ height: cfg.loginBox.fieldHeight }}
-                  className="rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+                  className="rounded-lg border border-gray-200 px-3 text-sm outline-none"
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500">验证码</label>
+                <label
+                  className="truncate"
+                  style={{
+                    fontFamily: cfg.loginBox.label.font,
+                    fontSize: cfg.loginBox.label.size,
+                    fontWeight: cfg.loginBox.label.weight,
+                    letterSpacing: `${cfg.loginBox.label.letterSpacing}px`,
+                    color: cfg.loginBox.label.color,
+                    opacity: cfg.loginBox.label.opacity,
+                  }}
+                >
+                  验证码
+                </label>
                 <div className="flex items-center gap-2">
                   <input
                     readOnly
                     placeholder="验证码"
                     maxLength={4}
                     style={{ height: cfg.loginBox.fieldHeight }}
-                    className="flex-1 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+                    className="flex-1 rounded-lg border border-gray-200 px-3 text-sm outline-none"
                   />
                   <div
                     className="rounded-md bg-gradient-to-br from-blue-100 to-gray-200 text-center text-xs font-semibold text-blue-600"
@@ -704,9 +810,19 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
               </div>
               <button
                 disabled
-                className="h-11 w-full rounded-lg bg-blue-600 text-sm font-medium text-white"
+                style={{
+                  height: cfg.loginBox.button.height,
+                  width: cfg.loginBox.button.width ? cfg.loginBox.button.width : '100%',
+                  fontSize: cfg.loginBox.button.size,
+                  fontWeight: cfg.loginBox.button.weight,
+                  letterSpacing: `${cfg.loginBox.button.letterSpacing}px`,
+                  color: cfg.loginBox.button.color,
+                  backgroundColor: cfg.loginBox.button.bgColor,
+                  borderRadius: cfg.loginBox.button.radius,
+                }}
+                className="flex items-center justify-center"
               >
-                登录
+                {cfg.loginBox.button.text}
               </button>
               <div className="text-center text-[11px] text-gray-300">© 店牛预警平台 · 零售终端数据预警与通知</div>
             </div>
@@ -930,29 +1046,27 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
           onClick={() => setEditing(null)}
         >
           <div
-            className="absolute max-h-[82vh] w-[580px] max-w-full overflow-auto rounded-2xl bg-white p-5 shadow-2xl"
+            className="absolute shadow-2xl shadow-gray-900/10 max-h-[82vh] w-[600px] max-w-full overflow-hidden rounded-xl border border-gray-200 bg-white"
             style={{ left: modalPos?.x ?? 0, top: modalPos?.y ?? 0 }}
             onClick={(e) => e.stopPropagation()}
           >
             <div
-              className="mb-4 flex cursor-move select-none items-center justify-between"
+              className="flex cursor-move select-none items-center justify-between border-b border-gray-100 px-5 py-3.5"
               onPointerDown={(e) => {
                 e.stopPropagation();
                 modalDragRef.current = { startX: e.clientX, startY: e.clientY, ox: modalPos?.x ?? 0, oy: modalPos?.y ?? 0 };
               }}
               title="拖动标题可移动弹窗"
             >
-              <h3 className="flex items-center gap-2 text-base font-semibold text-gray-800">
-                <Pencil size={16} className="text-blue-600" /> 配置 · {labelOf(editing)}
+              <h3 className="flex items-center gap-2 text-sm font-medium text-gray-800">
+                <Pencil size={15} className="text-gray-400" /> 配置 · {labelOf(editing)}
               </h3>
-              <button onClick={() => setEditing(null)} className="text-gray-400 hover:text-gray-600" title="关闭">
-                <X size={18} />
+              <button onClick={() => setEditing(null)} className="rounded-md p-1 text-gray-400 hover:bg-gray-50 hover:text-gray-600" title="关闭">
+                <X size={16} />
               </button>
             </div>
-            <div className="grid grid-cols-2 items-end gap-x-6 gap-y-4">
-              {fields(editing)}
-              {editingElem && <span className="col-span-2 text-xs text-gray-400">位置可在画布上拖拽调整</span>}
-            </div>
+            <div className="max-h-[70vh] divide-y divide-gray-50 overflow-y-auto px-5 py-1">{fields(editing)}</div>
+            {editingElem && <div className="border-t border-gray-100 px-5 py-2 text-[11px] text-gray-400">位置可在画布上拖拽调整</div>}
           </div>
         </div>
       )}

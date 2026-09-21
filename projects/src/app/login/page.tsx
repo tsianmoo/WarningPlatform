@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { RefreshCw, ShieldCheck } from 'lucide-react';
-import { DEFAULT_HOME_CONFIG, type HomeConfig } from '@/lib/types';
+import { DEFAULT_HOME_CONFIG, normalizeHomeConfig, type HomeConfig } from '@/lib/types';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -57,7 +57,7 @@ export default function LoginPage() {
     fetch('/api/state')
       .then((r) => r.json())
       .then((j) => {
-        if (j?.config) setCfg({ ...DEFAULT_HOME_CONFIG, ...j.config });
+        setCfg(normalizeHomeConfig(j?.config));
         type Row = { id?: string; username?: string; password?: string; name?: string; code?: string };
         // 经销商/店仓/员工等业务账号未单独设密码时，回退到初始密码 123456，保证可登录
         const toAcct = (r: Row, type: string) => ({ username: (r.username ?? r.code) || '', password: r.password || '123456', name: r.name || r.code || r.username || '', type, id: r.id || '' });
@@ -189,26 +189,72 @@ export default function LoginPage() {
         }}
       >
         <div className="flex h-full flex-col justify-evenly" style={{ padding: `${cfg.loginBox.padY}px ${cfg.loginBox.padX}px` }}>
-          <div className="flex items-center gap-2 text-blue-600">
-            <ShieldCheck size={24} />
-            <span className="text-lg font-bold text-gray-800">店牛预警平台</span>
+          <div
+            className="flex items-center gap-2"
+            style={{
+              fontFamily: cfg.loginBox.title.font,
+              fontSize: cfg.loginBox.title.size,
+              fontWeight: cfg.loginBox.title.weight,
+              letterSpacing: `${cfg.loginBox.title.letterSpacing}px`,
+              color: cfg.loginBox.title.color,
+              opacity: cfg.loginBox.title.opacity,
+            }}
+          >
+            <ShieldCheck size={Math.round(cfg.loginBox.title.size * 1.2)} />
+            <span>{cfg.loginBox.title.text}</span>
           </div>
-          <div className="text-xs text-gray-400">请登录您的账号</div>
+          <div
+            className="truncate"
+            style={{
+              fontFamily: cfg.loginBox.subtitle.font,
+              fontSize: cfg.loginBox.subtitle.size,
+              fontWeight: cfg.loginBox.subtitle.weight,
+              letterSpacing: `${cfg.loginBox.subtitle.letterSpacing}px`,
+              color: cfg.loginBox.subtitle.color,
+              opacity: cfg.loginBox.subtitle.opacity,
+            }}
+          >
+            {cfg.loginBox.subtitle.text}
+          </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500">账号</label>
+            <label
+              className="truncate"
+              style={{
+                fontFamily: cfg.loginBox.label.font,
+                fontSize: cfg.loginBox.label.size,
+                fontWeight: cfg.loginBox.label.weight,
+                letterSpacing: `${cfg.loginBox.label.letterSpacing}px`,
+                color: cfg.loginBox.label.color,
+                opacity: cfg.loginBox.label.opacity,
+              }}
+            >
+              账号
+            </label>
             <input
               value={account}
               onChange={(e) => setAccount(e.target.value)}
               placeholder="请输入账号"
               style={{ height: cfg.loginBox.fieldHeight }}
-              className="rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+              className="rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-gray-400"
               autoFocus
             />
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500">密码</label>
+            <label
+              className="truncate"
+              style={{
+                fontFamily: cfg.loginBox.label.font,
+                fontSize: cfg.loginBox.label.size,
+                fontWeight: cfg.loginBox.label.weight,
+                letterSpacing: `${cfg.loginBox.label.letterSpacing}px`,
+                color: cfg.loginBox.label.color,
+                opacity: cfg.loginBox.label.opacity,
+              }}
+            >
+              密码
+            </label>
             <input
               type="password"
               value={password}
@@ -216,12 +262,24 @@ export default function LoginPage() {
               placeholder="请输入密码"
               onKeyDown={(e) => e.key === 'Enter' && doLogin()}
               style={{ height: cfg.loginBox.fieldHeight }}
-              className="rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+              className="rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-gray-400"
             />
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500">验证码</label>
+            <label
+              className="truncate"
+              style={{
+                fontFamily: cfg.loginBox.label.font,
+                fontSize: cfg.loginBox.label.size,
+                fontWeight: cfg.loginBox.label.weight,
+                letterSpacing: `${cfg.loginBox.label.letterSpacing}px`,
+                color: cfg.loginBox.label.color,
+                opacity: cfg.loginBox.label.opacity,
+              }}
+            >
+              验证码
+            </label>
             <div className="flex items-center gap-2">
               <input
                 value={code}
@@ -229,7 +287,7 @@ export default function LoginPage() {
                 placeholder="验证码"
                 maxLength={4}
                 style={{ height: cfg.loginBox.fieldHeight }}
-                className="flex-1 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-400"
+                className="flex-1 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-gray-400"
               />
               <canvas ref={captchaRef} width={90} height={34} className="cursor-pointer rounded-md" onClick={refreshCaptcha} />
               <button onClick={refreshCaptcha} className="text-gray-400 hover:text-gray-600" title="刷新验证码">
@@ -243,9 +301,20 @@ export default function LoginPage() {
           <button
             onClick={doLogin}
             disabled={loading}
-            className="h-11 w-full rounded-lg bg-blue-600 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+            style={{
+              height: cfg.loginBox.button.height,
+              width: cfg.loginBox.button.width ? cfg.loginBox.button.width : '100%',
+              fontFamily: 'system-ui',
+              fontSize: cfg.loginBox.button.size,
+              fontWeight: cfg.loginBox.button.weight,
+              letterSpacing: `${cfg.loginBox.button.letterSpacing}px`,
+              color: cfg.loginBox.button.color,
+              backgroundColor: cfg.loginBox.button.bgColor,
+              borderRadius: cfg.loginBox.button.radius,
+            }}
+            className="flex items-center justify-center transition hover:opacity-90 disabled:opacity-60"
           >
-            {loading ? '登录中…' : '登录'}
+            {loading ? '登录中…' : cfg.loginBox.button.text}
           </button>
 
           <div className="text-center text-[11px] text-gray-300">© 店牛预警平台 · 零售终端数据预警与通知</div>
