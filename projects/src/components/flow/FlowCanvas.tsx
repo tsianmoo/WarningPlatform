@@ -42,7 +42,7 @@ import { useStore } from '@/lib/store';
 import { resolvePerm, resolveAuthAccount, canView } from '@/lib/perm';
 import { BuildCtx, createNodeData, nodeTypes, DupNodeCtx } from './nodes';
 import { NodePreviewProvider } from './NodePreview';
-import { getDirtyNodeId, isLocked, useDirtyVersion } from './draftStore';
+import { discardDraft, getDirtyNodeId, isLocked, useDirtyVersion } from './draftStore';
 
 type DragPayload = {
   kind: FlowNode['kind'];
@@ -149,6 +149,10 @@ function CanvasInner({
       }
       if (removes.length) {
         next = next.filter((n) => !removes.includes(n.id));
+        // 删除的是未保存草稿节点时，同步解锁，否则 dirtyNodeId 残留会导致后续无法再添加节点
+        for (const id of removes) {
+          if (getDirtyNodeId() === id) discardDraft(id);
+        }
         needCommit = true;
       }
       setLocalNodes(next);
