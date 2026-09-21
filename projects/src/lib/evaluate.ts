@@ -2306,7 +2306,7 @@ function evalNode(
           for (const orig of combos) {
             const sharedLabels = b.rowField ? rfGroupLabels.get(b.rowField) : undefined;
             const named = sharedLabels ? sharedLabels[orig] : (b.labels && b.labels[orig]);
-            const disp = named || (b.prefix ? `${b.prefix}·${orig}` : orig);
+            const disp = named || (b.prefix ? `${orig}·${b.prefix}` : orig);
             outHeads.push({ block: b, orig, disp, headKey: `${b.id || b.valueField}\u0001${orig}`, cfg: valCfgFor });
           }
         }
@@ -2347,7 +2347,7 @@ function evalNode(
           }
           return o;
         });
-        const blockDesc = activeBlocks.map((b) => `${b.valueField}（按「${b.rowField}」横排${b.prefix ? '，前缀「' + b.prefix + '」' : ''}）`).join('，');
+        const blockDesc = activeBlocks.map((b) => `${b.valueField}（按「${b.rowField}」横排${b.prefix ? '，后缀「' + b.prefix + '」' : ''}）`).join('，');
         return {
           title: '节点结果排序',
           columns: outHeadUniq,

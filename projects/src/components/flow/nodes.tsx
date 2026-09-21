@@ -5923,7 +5923,7 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
                     <input
                       value={b.prefix ?? ''}
                       onChange={(e) => setPivot(real, { prefix: e.target.value })}
-                      placeholder="表头前缀(可省)"
+                      placeholder="表头后缀(可省)"
                       title="表头展示前缀，用于区分同尺寸不同指标（如 库存/销量）；留空则直接显示取值"
                       className="w-24 shrink-0 rounded border border-gray-200 bg-white px-1.5 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
                     />
@@ -5951,11 +5951,11 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
                       arr.splice(j, 0, it);
                       setOrder(arr);
                     };
-                    // 最终表头 = 改名 优先，否则 前缀·原值
+                    // 最终表头 = 改名 优先，否则 原值·后缀
                     const headName = (v: string) => {
                       const named = curLabels[v];
                       if (named && named.trim()) return named.trim();
-                      return b.prefix ? `${b.prefix}·${v}` : v;
+                      return b.prefix ? `${v}·${b.prefix}` : v;
                     };
                     const sameUsed = activeBlockKeys.filter((k) => k.rf === b.rowField && k.idx !== real).length > 0;
                     return (
