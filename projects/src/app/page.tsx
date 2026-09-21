@@ -233,8 +233,8 @@ function Shell() {
     </div>
   );
 
-  // 预警配置页（new / edit）隐藏左侧导航栏，聚焦画布编辑
-  const withSidebar = view === 'home' || view === 'tables' || view === 'apitable' || view === 'formtable' || view === 'rules' || view === 'alerts' || view === 'people' || view === 'attrs' || view === 'dealer' || view === 'store' || view === 'emp' || view === 'homecfg' || view === 'perms' || view === 'navcfg' || view === 'brandcfg';
+  // 练习场—预警配置页（new / edit）与首页管理（homecfg）隐藏左侧导航栏，聚焦画布编辑
+  const withSidebar = view === 'home' || view === 'tables' || view === 'apitable' || view === 'formtable' || view === 'rules' || view === 'alerts' || view === 'people' || view === 'attrs' || view === 'dealer' || view === 'store' || view === 'emp' || view === 'perms' || view === 'navcfg' || view === 'brandcfg';
   const currentView = view;
 
   const renderMenu = (key: NavMenuKey, label: string): React.ReactNode => {
@@ -366,7 +366,7 @@ function Shell() {
 
       {/* 主内容 */}
       <main className={`min-w-0 flex-1 ${withSidebar ? 'overflow-auto' : ''}`}>
-        {readyUI && withSidebar && view !== 'homecfg' && (
+        {readyUI && withSidebar && (
           <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white pl-5 pr-3 py-2">
             <div className="flex items-center gap-1.5 text-[13px]">
               {(CRUMBS[view] ?? [view]).map((c, i, arr) => (

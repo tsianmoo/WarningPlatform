@@ -1687,16 +1687,16 @@ export const DEFAULT_HOME_CONFIG: HomeConfig = {
   bgImage: '',
   bgBlur: 0,
   title: {
-    text: 'DIANNIU.YJ', font: 'system-ui', size: 60, weight: 300, letterSpacing: 25, marginLeft: 56,
-    color: '#000000', opacity: 1, x: 8, y: 35,
+    text: '店牛预警平台', font: 'system-ui', size: 61, weight: 300, letterSpacing: 23, marginLeft: 56,
+    color: '#000000', opacity: 1, x: 8, y: 42,
   },
   subtitle: {
-    text: '零售终端数据预警与通知助手', font: 'system-ui', size: 16, weight: 500, letterSpacing: 2, marginLeft: 58,
-    color: '#cbd5e1', opacity: 0.9, x: 8, y: 50,
+    text: '零售终端数据预警与通知助手', font: 'system-ui', size: 12, weight: 500, letterSpacing: 18, marginLeft: 58,
+    color: '#000000', opacity: 0.9, x: 8, y: 48,
   },
   loginBox: {
-    x: 66, y: 26, width: 320, height: 340, bgColor: '#ffffff', bgOpacity: 0.12, blur: 12, radius: 16,
-    padX: 40, padY: 24, fieldHeight: 44,
+    x: 78, y: 48, width: 342, height: 379, bgColor: '#ffffff', bgOpacity: 0.12, blur: 12, radius: 12,
+    padX: 25, padY: 23, fieldHeight: 37,
     shadowColor: '#000000', shadowOpacity: 0.25, shadowX: 0, shadowY: 12, shadowBlur: 24,
   },
   elements: [],
