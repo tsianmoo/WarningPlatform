@@ -42,7 +42,7 @@ import { useStore } from '@/lib/store';
 import { resolvePerm, resolveAuthAccount, canView } from '@/lib/perm';
 import { BuildCtx, createNodeData, nodeTypes, DupNodeCtx } from './nodes';
 import { NodePreviewProvider } from './NodePreview';
-import { discardDraft } from './draftStore';
+import { discardDraft, enterEdit } from './draftStore';
 
 type DragPayload = {
   kind: FlowNode['kind'];
@@ -241,6 +241,8 @@ function CanvasInner({
         setLocalNodes(ns);
         setLocalEdges(localEdges);
         onFlowChange(ns, localEdges);
+        // 新组件默认进入编辑态，落盘后即可直接配置，无需再点"编辑本组件"
+        enterEdit(nd.id);
       } catch {
         /* ignore */
       }
@@ -279,6 +281,7 @@ function CanvasInner({
       const ns = [...localNodes, dup];
       setLocalNodes(ns);
       onFlowChange(ns, localEdges);
+      enterEdit(dup.id);
     },
     [localNodes, localEdges, setLocalNodes, onFlowChange]
   );

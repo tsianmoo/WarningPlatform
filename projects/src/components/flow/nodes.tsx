@@ -5231,7 +5231,7 @@ const CALC_FNS: { name: string; desc: string; usage: string; tag: string }[] = [
 /** 添加列（calc）节点：选择数据表或节点结果，逐行用函数公式追加计算列 */
 const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
   const fnode = { id, kind: 'calc' as const, data, position: { x: 0, y: 0 } } as FlowNode;
-  const d = (data as unknown) as CalcNodeData;
+  const d = (useNodeData(id, data) as unknown) as CalcNodeData;
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
