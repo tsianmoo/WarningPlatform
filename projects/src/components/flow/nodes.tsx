@@ -289,10 +289,8 @@ function nodeKindCn(kind: FlowNode['kind']) {
 
 function nodeTitle(fnode: FlowNode) {
   const base = nodeKindCn(fnode.kind);
-  if (fnode.kind === 'baseline' || fnode.kind === 'groupby' || fnode.kind === 'condition') {
-    const rl = (fnode.data as { resultLabel?: string } | undefined)?.resultLabel;
-    if (rl && rl.trim()) return `${base}（${rl.trim()}）`;
-  }
+  const rl = (fnode.data as { resultLabel?: string } | undefined)?.resultLabel;
+  if (rl && rl.trim()) return `${base}（${rl.trim()}）`;
   return base;
 }
 
@@ -389,6 +387,21 @@ function NodeShell({ fnode, children, width = 300, immediate = false }: { fnode:
         </button>
       </div>
       <div className={`nodrag px-3 py-2 ${readOnly ? 'pointer-events-none select-none opacity-70' : ''}`}>{children}</div>
+      <div className="nodrag border-t border-gray-100 px-3 py-1.5">
+        <div className="mb-1 text-[10px] text-gray-400">结果命名</div>
+        <input
+          value={((fnode.data as { resultLabel?: string } | undefined)?.resultLabel ?? '')}
+          onChange={(e) => {
+            const v = e.target.value;
+            const cur = (fnode.data ?? {}) as Record<string, unknown>;
+            updateNodeData(fnode.id, { ...cur, resultLabel: v } as never);
+            writeDraft(fnode.id, { resultLabel: v });
+          }}
+          disabled={readOnly}
+          placeholder="给本组件命名（将显示在标题括号内）"
+          className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 placeholder:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-300 disabled:opacity-50"
+        />
+      </div>
       {immediate ? (
         <div className="flex h-9 items-center px-3 pb-1 text-[10px] text-gray-400">配置即时生效，无需单独保存</div>
       ) : (
@@ -642,7 +655,13 @@ function getNodeOutputs(allNodes: ReturnType<typeof useNodes>, selfId: string): 
   const out: { ref: NodeResultRef }[] = [];
   for (const n of allNodes) {
     if (n.id === selfId) continue;
-    const fn = n as unknown as FlowNode;
+    // 合并草稿：引用的上游节点可能尚在编辑未保存，需用其最新草稿数据推断输出列/标签
+    const fn = {
+      id: (n as { id: string }).id,
+      kind: (n as unknown as FlowNode).kind,
+      position: { x: 0, y: 0 },
+      data: { ...((n as unknown as FlowNode).data ?? {}), ...(getDraft((n as { id: string }).id) ?? {}) },
+    } as unknown as FlowNode;
     const str = (v: unknown): string => (typeof v === 'string' && v ? v : '');
     switch (fn.kind) {
       case 'baseline': {
@@ -781,7 +800,7 @@ function inferNodeCols(allNodes: ReadonlyArray<{ id: string; data: unknown }>, t
   const seen = visited ?? new Set<string>();
   if (seen.has(nid)) return []; // 防止环：递归带出上游列时若再次回到本节点则截断
   seen.add(nid);
-  const data = fn.data as unknown as Record<string, unknown>;
+  const data = { ...(fn.data ?? {}), ...(getDraft(nid) ?? {}) } as unknown as Record<string, unknown>;
   const kind = (fn as unknown as FlowNode).kind;
   const s = (v: unknown): string => (typeof v === 'string' && v ? v : '');
   switch (kind) {
@@ -1124,6 +1143,7 @@ const ConditionNode = memo(({ id, data }: NodeProps) => {
   const noValueOp = d.operator === 'empty' || d.operator === 'notEmpty';
   const edges = useEdges();
   const allNodes = useNodes();
+  useDraftVersion(); // 订阅上游节点草稿变化，节点结果字段/引用实时刷新
   const rangeOp = d.operator === 'between' || d.operator === 'notBetween';
   const isDateOp = d.operator === 'before' || d.operator === 'after';
   const valueInputCls =
@@ -1679,6 +1699,7 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
   const [rlVal, setRlVal] = useState<string>(typeof d.resultLabel === 'string' ? d.resultLabel : '');
   // 可引用的节点输出（含标量单值与列结果，如已过天数/开单天数等）
   const allNodes = useNodes();
+  useDraftVersion(); // 订阅上游节点草稿变化，节点结果字段/引用实时刷新
   const rawRefs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'scalar' || o.ref.outputKind === 'column');
   // 同一节点可能同时注册 column/scalar（如计算节点），下拉只需按节点去重，避免出现两个同名项
   const refOutputs = rawRefs.filter((o, i) => rawRefs.findIndex((x) => x.ref.nodeId === o.ref.nodeId) === i);
@@ -2093,6 +2114,7 @@ const BaseNode = memo(({ id, data }: NodeProps) => {
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
+  useDraftVersion(); // 订阅上游节点草稿变化，节点结果字段/引用实时刷新
   const source = d.source ?? 'table';
   const nodeOutputs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'column');
 
@@ -2231,6 +2253,7 @@ const LookupNode = memo(({ id, data }: NodeProps) => {
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
+  useDraftVersion(); // 订阅上游节点草稿变化，节点结果字段/引用实时刷新
   const source = d.source ?? 'table';
   const nodeOutputs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'column');
   const tableTarget = tables.find((t) => t.id === d.tableId) ?? tables[0];
@@ -2652,6 +2675,7 @@ const ACTION_PRIORITIES = [
 const ActionNode = memo(({ id, data }: NodeProps) => {
   const d = useNodeData(id, data) as unknown as ActionNodeData;
   const allNodes = useNodes();
+  useDraftVersion(); // 订阅上游节点草稿变化，节点结果字段/引用实时刷新
   const tables = useRuleTables();
   const { deleteElements, getNodes, getEdges, updateNodeData } = useReactFlow();
   // ActionNode 没有 NodeShell 的「保存」入口，而草稿只有 NodeShell 保存时才会 write 回 flow(rule.flow.nodes)。
@@ -3444,6 +3468,8 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
+  useDraftVersion(); // 订阅上游节点草稿变化，节点结果字段/引用实时刷新
+  useDraftVersion(); // 上游节点草稿列变化时，刷新本节点的「节点结果字段」列表
   const source = d.source ?? 'table';
   const nodeOutputs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'column');
   const curTable = tables.find((t) => t.id === d.tableId);
@@ -3869,6 +3895,7 @@ const FilterNode = memo(({ id, data }: NodeProps) => {
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
+  useDraftVersion(); // 订阅上游节点草稿变化，节点结果字段/引用实时刷新
   const allEdges = useEdges();
   const source = d.source ?? 'table';
   const nodeOutputs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'column');
@@ -4345,6 +4372,7 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
+  useDraftVersion(); // 订阅上游节点草稿变化，节点结果字段/引用实时刷新
   const source = d.source ?? 'node';
   const nodeOutputs = getNodeOutputs(allNodes, id);
   // 基准要对"每个分组的一个值"求统计，因此取逐组列（column），如查找/分组聚合输出的每店成交
@@ -4577,6 +4605,7 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
+  useDraftVersion(); // 订阅上游节点草稿变化，节点结果字段/引用实时刷新
   // 可作为"事实结果"引用的节点：逐列输出（分组聚合/查找/补全/计算结果列/基础数据等）
   const factNodeOptions = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'column');
   const factSource: 'table' | 'node' = d.factSource === 'table' ? 'table' : 'node';
@@ -4899,6 +4928,7 @@ const RankNode = memo(({ id, data }: NodeProps) => {
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
+  useDraftVersion(); // 订阅上游节点草稿变化，节点结果字段/引用实时刷新
   const source = d.source ?? 'table';
   const nodeOutputs = getNodeOutputs(allNodes, id);
   const columnOutputs = nodeOutputs.filter((o) => o.ref.outputKind === 'column');
@@ -5277,6 +5307,7 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
+  useDraftVersion(); // 订阅上游节点草稿变化，节点结果字段/引用实时刷新
   const inputCls = 'w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-fuchsia-400';
   const rowLabel = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
   const source = d.source ?? 'table';
@@ -5493,6 +5524,7 @@ const LinkJoinNode = memo(function LinkJoinNode({ id, data }: NodeProps) {
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
+  useDraftVersion(); // 订阅上游节点草稿变化，节点结果字段/引用实时刷新
   const inputCls = 'w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-400';
   const rowLabel = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
   const nodeOutputs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'column');
@@ -5723,6 +5755,7 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
+  useDraftVersion(); // 订阅上游节点草稿变化，节点结果字段/引用实时刷新
   const inputCls = 'w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-sky-400';
   const rowLabel = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
   const nodeOutputs = getNodeOutputs(allNodes, id).filter((o) => o.ref.outputKind === 'column');
@@ -6160,6 +6193,7 @@ const LinkViewNode = memo(function LinkViewNode({ id, data }: NodeProps) {
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
+  useDraftVersion(); // 订阅上游节点草稿变化，节点结果字段/引用实时刷新
   const inputCls = 'w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-pink-400';
   const rowLabel = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
   const tabs = Array.isArray(d.tabs) ? d.tabs : [];
@@ -6334,6 +6368,7 @@ const LinkViewAllNode = memo(function LinkViewAllNode({ id, data }: NodeProps) {
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const allNodes = useNodes();
+  useDraftVersion(); // 订阅上游节点草稿变化，节点结果字段/引用实时刷新
   const allEdges = useEdges() as unknown as FlowEdge[];
   const inputCls = 'w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-400';
   const rowLabel = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';

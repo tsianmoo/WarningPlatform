@@ -264,6 +264,8 @@
 - **「开始」(TriggerNode) 无节点级草稿**：其唯一配置（触发调度）经 `SchedulePanel→meta.setSchedule` 写规则级、即时生效，NodeShell 保存会因 `if(!draft) return` 静默无反应 —— 该节点现在用 `NodeShell immediate`（始终可编辑、隐藏编辑/保存/取消，显示「配置即时生效」提示），不要再为其加节点级参数保存。
 - NodeShell 新增 `immediate` prop 与保存反馈：保存成功短暂显示「已保存」，无草稿显示「无修改可保存」，其它节点保存有可见反馈。
 - 「预警动作」(ActionNode) **无 NodeShell/无编辑-保存**：草稿只有 NodeShell 保存时才写回 flow(rule.flow.nodes)；ActionNode 不即时提交会导致 `collectTargets` 与顶保存都读不到(如「按店仓」通知对象)→改动丢失。**故 ActionNode 的 `update` 已改为 草稿+立即 `updateNodeData`(写回 flow)+`commitDraft`**(即时生效，同开始节点语义)。它是 `useCallback` 封装 `writeDraft→getDraft→updateNodeData({...data,...draft})→commitDraft`，deps=[id,data,updateNodeData)。改动会触发 FlowCanvas 同步→setFlow→顶保存可带上。
+- **节点「结果命名」统一**：`NodeShell` 底部对**所有组件**新增「结果命名」输入框（写入/同步 `node.data.resultLabel`，同时 `writeDraft` 使其随保存持久化；非编辑态只读）；`nodeTitle` 改为**所有 kind** 在 `resultLabel` 非空时显示 `类型（结果命名）`（不再只限 baseline/groupby/condition）。⚠️ 部分节点内部原本就有独立的 resultLabel 输入（elapsed/compute/calc 等），现与 NodeShell 底部输入并存（同一字段双入口，绑定一致，无害）。
+- **⚠️ 节点结果字段读取必须合并草稿**：下游组件（分组聚合/过滤/base/calc/linkjoin 等）通过 `useNodes()` 读到的是上游节点**已保存**的数据，而编辑中未「保存」的上游节点字段只存在草稿里 → 选它当数据源时节点结果字段是空的（用户报"分组聚合选公式列节点不显示字段"）。已在 `getNodeOutputs`/`inferNodeCols` 内对每个被引用节点 `getDraft(nid)` 合并草稿，使未保存列也能被下游列出；并让消费组件 `useDraftVersion()` 订阅草稿变化实时刷新。新建节点先配置好再选作上游即可立即看到全部字段。
 
 ## 规则编辑锁 + 跨标签同步（2025）
 - **需求**：同一规则若有人正在编辑，另一台电脑/标签页打开应锁定为只读，避免互相覆盖；多标签页（尤其本机编程页面 vs 新开标签）应实时看到规则改动（此前各标签各自持有内存快照，无同步）。
