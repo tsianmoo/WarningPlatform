@@ -380,34 +380,43 @@ function NodeShell({ fnode, children, width = 300 }: { fnode: FlowNode; children
         </button>
       </div>
       <div className={`nodrag px-3 py-2 ${readOnly ? 'pointer-events-none select-none opacity-70' : ''}`}>{children}</div>
-      <div className="flex h-10 items-center gap-2 border-t px-3 py-2">
-        {editing ? (
-          <>
-            <button
-              type="button"
-              onClick={handleSave}
-              className="flex-1 rounded-md bg-amber-500 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-600"
-            >
-              保存本组件
-            </button>
-            <button
-              type="button"
-              onClick={handleDiscard}
-              className="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-500 transition hover:bg-gray-50"
-            >
-              取消
-            </button>
-            <div className="text-[10px] text-gray-400">保存后更新后续组件</div>
-          </>
-        ) : (
-          <button
-            type="button"
-            onClick={() => enterEdit(fnode.id)}
-            className="flex-1 rounded-md bg-blue-500 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-600"
-          >
-            编辑本组件
-          </button>
-        )}
+      <div className="flex h-10 items-center gap-1.5 border-t px-3 py-2">
+        <button
+          type="button"
+          disabled={editing}
+          onClick={() => enterEdit(fnode.id)}
+          className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition ${
+            editing
+              ? 'cursor-default bg-gray-100 text-gray-400'
+              : 'bg-blue-500 text-white hover:bg-blue-600'
+          }`}
+        >
+          编辑
+        </button>
+        <button
+          type="button"
+          disabled={!editing}
+          onClick={handleSave}
+          className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition ${
+            editing
+              ? 'bg-amber-500 text-white hover:bg-amber-600'
+              : 'cursor-default bg-gray-100 text-gray-400'
+          }`}
+        >
+          保存
+        </button>
+        <button
+          type="button"
+          disabled={!editing}
+          onClick={handleDiscard}
+          className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition ${
+            editing
+              ? 'border border-gray-200 text-gray-500 hover:bg-gray-50'
+              : 'cursor-default border border-gray-100 bg-gray-50 text-gray-300'
+          }`}
+        >
+          取消
+        </button>
       </div>
       <Handle type="target" position={Position.Left} style={{ background: color.dot, width: 10, height: 10 }} />
       {hasSource && (
