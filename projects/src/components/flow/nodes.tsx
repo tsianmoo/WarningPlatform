@@ -1218,16 +1218,6 @@ const ConditionNode = memo(({ id, data }: NodeProps) => {
 
   return (
     <NodeShell fnode={fnode}>
-      {/* 结果命名：区分多个判断节点 */}
-      <div className="mb-1 flex items-center gap-1.5">
-        <span className="shrink-0 text-[11px] text-gray-400">命名</span>
-        <input
-          value={d.resultLabel ?? ''}
-          onChange={(e) => update({ resultLabel: e.target.value })}
-          placeholder="如：本月未开单判断"
-          className="min-w-0 flex-1 rounded-md border px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
-        />
-      </div>
       {/* 左值：判断对象 —— 先选来源（节点结果/表字段） */}
       <div className="mb-1 flex items-center gap-1.5">
         <span className="shrink-0 text-[11px] text-gray-400">判断</span>
@@ -2244,12 +2234,6 @@ const BaseNode = memo(({ id, data }: NodeProps) => {
             })()}
           </div>
         )}
-        <input
-          value={d.resultLabel}
-          onChange={(e) => update({ resultLabel: e.target.value } as Partial<BaseNodeData>)}
-          placeholder="结果命名，如：全部店仓"
-          className="w-full rounded-md border px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-orange-400"
-        />
         <div className="text-[10px] text-gray-400">
           {source === 'node'
             ? `取自节点结果「${d.sourceNodeLabel || '上一步'}」的去重值，作为后续匹配/补全的基础集合`
@@ -2663,13 +2647,6 @@ const ElapsedNode = memo(({ id, data }: NodeProps) => {
         </span>
       </label>
 
-      <div className={`${rowLabel} mt-2`}>结果命名</div>
-      <input
-        value={d.resultLabel || ''}
-        onChange={(e) => update({ resultLabel: e.target.value })}
-        placeholder={`如：${scopeLabel}已过天数`}
-        className={inputCls}
-      />
       <div className="mt-1.5 rounded-md bg-cyan-50 px-2 py-1 text-[10px] leading-relaxed text-cyan-700">
         输出「{scopeLabel}已过天数」一个数字（{d.includeToday !== false ? '含当天' : '不含当天，统计到昨天'}）；下游用「已过天数 − 开单天数」即得未开单天数。
       </div>
@@ -3283,14 +3260,6 @@ const TopNNode = memo(({ id, data }: NodeProps) => {  const fnode = { id, kind: 
 
       <div className={rowLabel}>统计时间窗</div>
       <TimeComponent value={d.timeWindow ?? { preset: 'thisWeek' }} onChange={(tw) => update({ timeWindow: tw })} />
-
-      <div className={rowLabel}>结果命名</div>
-      <input
-        value={d.resultLabel}
-        onChange={(e) => update({ resultLabel: e.target.value })}
-        placeholder="如：本周销量第一款色"
-        className="w-full rounded-md border px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-sky-400"
-      />
     </NodeShell>
   );
 });
@@ -3423,13 +3392,6 @@ const DiffNode = memo(({ id, data }: NodeProps) => {
       <div className={rowLabel}>⑤ 统计时间窗</div>
       <TimeComponent value={d.timeWindow ?? { preset: 'thisWeek' }} onChange={(tw) => update({ timeWindow: tw })} />
 
-      <div className={rowLabel}>结果命名</div>
-      <input
-        value={d.resultLabel}
-        onChange={(e) => update({ resultLabel: e.target.value })}
-        placeholder="如：本周无销售店仓"
-        className="w-full rounded-md border px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-rose-400"
-      />
       <div className="mt-1.5 rounded-md bg-rose-50 px-2 py-1 text-[10px] leading-relaxed text-rose-600">
         输出：基准表中在排查表里【找不到匹配记录】的行（差集），命中即预警
       </div>
@@ -3515,7 +3477,6 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
   const rowLabel = 'mb-1 mt-2 text-[11px] font-medium text-gray-500 first:mt-0';
   const inputCls =
     'w-full rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400';
-  const [rlVal, setRlVal] = useState<string>(typeof d.resultLabel === 'string' ? d.resultLabel : '');
 
   return (
     <NodeShell fnode={fnode} width={420}>
@@ -3882,18 +3843,6 @@ const GroupByNode = memo(({ id, data }: NodeProps) => {
         );
       })()}
 
-      <div className={rowLabel}>结果命名</div>
-      <input
-        value={rlVal}
-        onChange={(e) => setRlVal(e.target.value)}
-        onBlur={() => {
-          const v = rlVal.trim();
-          if (v !== (typeof d.resultLabel === 'string' ? d.resultLabel : '')) update({ resultLabel: v });
-        }}
-        placeholder="如：8月各店仓成交金额"
-        className={inputCls}
-      />
-
       {((d.dims && d.dims.length ? d.dims : []).some((x) => x.fieldKey)) && d.metricField && (
         <div className="mt-2 rounded-md bg-indigo-50/70 px-2 py-1.5 text-[10px] leading-relaxed text-indigo-700">
           按「{((d.dims || []).filter((x) => x.fieldKey).map((x) => x.fieldLabel || x.fieldKey) || ['']).join(' · ')}」分组，
@@ -4251,14 +4200,6 @@ const FilterNode = memo(({ id, data }: NodeProps) => {
           + 添加过滤条件
         </button>
 
-        <div className={rowLabel}>结果命名</div>
-        <input
-          value={d.resultLabel || ''}
-          onChange={(e) => update({ resultLabel: e.target.value })}
-          placeholder="如：仅保留华北区域"
-          className={inputCls}
-        />
-
         {conds.length > 0 && (
           <div className="mt-1 rounded-md bg-amber-50/70 px-2 py-1.5 text-[10px] leading-relaxed text-amber-700">
             保留「{sourceName}」中同时满足 {conds.length} 个条件的行（条件之间为「且」关系）
@@ -4587,14 +4528,6 @@ const BaselineNode = memo(({ id, data }: NodeProps) => {
           <span className="shrink-0 text-[11px] text-gray-500">% 的店铺（按连带率{d.baselineFn === 'topAvg' ? '从高到低' : '从低到高'}）</span>
         </div>
       )}
-
-      <div className={rowLabel}>结果命名</div>
-      <input
-        value={d.resultLabel}
-        onChange={(e) => update({ resultLabel: e.target.value })}
-        placeholder="如：全店平均成交金额"
-        className={inputCls}
-      />
 
       {pickedLabel && (
         <div className="mt-2 rounded-md bg-violet-50/70 px-2 py-1.5 text-[10px] leading-relaxed text-violet-700">
@@ -4925,13 +4858,6 @@ const FillJoinNode = memo(({ id, data }: NodeProps) => {
       <input
         value={d.fillValue}
         onChange={(e) => update({ fillValue: e.target.value })}
-        className={inputCls}
-      />
-
-      <div className={rowLabel}>结果命名</div>
-      <input
-        value={d.resultLabel}
-        onChange={(e) => update({ resultLabel: e.target.value })}
         className={inputCls}
       />
     </NodeShell>
@@ -5280,14 +5206,6 @@ const RankNode = memo(({ id, data }: NodeProps) => {
         ＋ 添加排名项
       </button>
 
-      <div className={rowLabel}>结果命名</div>
-      <input
-        value={d.resultLabel}
-        onChange={(e) => update({ resultLabel: e.target.value })}
-        placeholder="如：连带率排名结果"
-        className={inputCls}
-      />
-
       {defaultItems.length > 0 && (
         <div className="mt-2 rounded-md bg-blue-50/70 px-2 py-1.5 text-[10px] leading-relaxed text-blue-700">
           将为 {defaultItems.map((x) => x.fieldLabel).filter(Boolean).join('、') || '各指标'}{' '}
@@ -5577,8 +5495,6 @@ const LinkJoinNode = memo(function LinkJoinNode({ id, data }: NodeProps) {
     update({ addFields: has ? addFields.filter((c) => c.key !== f) : [...addFields, { key: f, label: f }] } as Partial<LinkJoinNodeData>);
   };
 
-  const [rl, setRl] = useState(d.resultLabel ?? '');
-
   return (
     <NodeShell fnode={fnode}>
       <div className="space-y-1.5">
@@ -5723,17 +5639,6 @@ const LinkJoinNode = memo(function LinkJoinNode({ id, data }: NodeProps) {
               );
             })}
           </div>
-        </div>
-
-        <div>
-          <div className={rowLabel}>⑤ 结果命名（可选）</div>
-          <input
-            value={rl}
-            onChange={(e) => setRl(e.target.value)}
-            onBlur={() => update({ resultLabel: rl } as Partial<LinkJoinNodeData>)}
-            placeholder="如：追加后的结果"
-            className={inputCls}
-          />
         </div>
       </div>
     </NodeShell>
@@ -6105,16 +6010,6 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
               </div>
             )}
           </div>
-        </div>
-        {/* ④ 结果命名（可选） */}
-        <div>
-          <div className={rowLabel}>④ 结果命名（可选）</div>
-          <input
-            value={d.resultLabel ?? ''}
-            onChange={(e) => update({ resultLabel: e.target.value } as Partial<RowSortNodeData>)}
-            placeholder="如：排序后的结果"
-            className={inputCls}
-          />
         </div>
       </div>
 
