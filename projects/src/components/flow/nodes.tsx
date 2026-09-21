@@ -380,25 +380,29 @@ function NodeShell({ fnode, children, width = 300 }: { fnode: FlowNode; children
         </button>
       </div>
       <div className="nodrag px-3 py-2">{children}</div>
-      {isDirty && (
-        <div className="flex items-center gap-2 border-t px-3 py-2">
-          <button
-            type="button"
-            onClick={handleSave}
-            className="flex-1 rounded-md bg-amber-500 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-600"
-          >
-            保存本组件
-          </button>
-          <button
-            type="button"
-            onClick={handleDiscard}
-            className="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-500 transition hover:bg-gray-50"
-          >
-            取消
-          </button>
-          <div className="text-[10px] text-gray-400">保存后更新后续组件</div>
-        </div>
-      )}
+      <div className="flex h-10 items-center gap-2 border-t px-3 py-2">
+        {isDirty ? (
+          <>
+            <button
+              type="button"
+              onClick={handleSave}
+              className="flex-1 rounded-md bg-amber-500 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-600"
+            >
+              保存本组件
+            </button>
+            <button
+              type="button"
+              onClick={handleDiscard}
+              className="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-500 transition hover:bg-gray-50"
+            >
+              取消
+            </button>
+            <div className="text-[10px] text-gray-400">保存后更新后续组件</div>
+          </>
+        ) : (
+          <span className="text-[10px] text-gray-300">编辑完成后点「保存本组件」生效</span>
+        )}
+      </div>
       <Handle type="target" position={Position.Left} style={{ background: color.dot, width: 10, height: 10 }} />
       {hasSource && (
         <Handle type="source" position={Position.Right} style={{ background: color.dot, width: 10, height: 10 }} />
