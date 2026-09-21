@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Save, Rocket, Table2, Folder, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Save, Rocket, Table2, Folder, Plus, Trash2, Lock } from 'lucide-react';
 
 const STEPS = [
   { key: 'flow', label: '流程搭建' },
@@ -39,7 +39,7 @@ const fmtSchedule = (s?: { repeatType?: string; timeOfDay?: string; nextTriggerA
   return `${labels[m ?? 'once'] ?? m} ${time}${s.nextTriggerAt ? ` · ${s.nextTriggerAt} 触发` : ''}`;
 };
 import type { AlertRule, DataTable, FlowEdge, FlowNode, RuleGroup } from '@/lib/types';
-import { useStore, makeDefaultRule, createPendingExecution, computeNextTrigger, buildAlertsForRule } from '@/lib/store';
+import { useStore, makeDefaultRule, createPendingExecution, computeNextTrigger, buildAlertsForRule, RULE_LOCK_TTL, ruleLockOwner, setEditingRule } from '@/lib/store';
 import { PalettePanel, FlowEditor } from './flow/FlowCanvas';
 import { toast } from 'sonner';
 
@@ -72,10 +72,55 @@ export function RuleConfigurator({
   onBack: () => void;
   meName?: string;
 }) {
-  const { state, addRule, setBuilderTables, addAlert, updateAlertStatus, addRuleGroup, removeRuleGroup } = useStore();
+  const { state, addRule, setBuilderTables, addAlert, updateAlertStatus, addRuleGroup, removeRuleGroup, acquireRuleLock, releaseRuleLock, touchRuleLock, refreshRuleLocks } = useStore();
   const [rule, setRule] = useState<AlertRule>(draft);
   const [, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // —— 规则编辑锁（跨标签/跨电脑互斥编辑）——
+  const myOwner = useMemo(() => ruleLockOwner(meName), [meName]);
+  const [lockChecked, setLockChecked] = useState(false);
+  const liveLock = (state.locks ?? {})[rule.id];
+  const lockStale = !!liveLock && Date.now() - (liveLock.at ?? 0) > RULE_LOCK_TTL;
+  const lockedByOther = !!liveLock && !lockStale && liveLock.owner !== myOwner;
+
+  // 进入编辑器：先刷新一次远端锁（识别其它电脑占用），随后抢占/保活/释放
+  useEffect(() => {
+    setEditingRule(rule.id);
+    let alive = true;
+    refreshRuleLocks().finally(() => {
+      if (alive) setLockChecked(true);
+    });
+    const heartbeat = window.setInterval(() => {
+      touchRuleLock(rule.id, myOwner);
+    }, 120000);
+    if (typeof window !== 'undefined') window.addEventListener('beforeunload', releaseOnUnload);
+    function releaseOnUnload() {
+      releaseRuleLock(rule.id, myOwner);
+    }
+    return () => {
+      alive = false;
+      setEditingRule(null);
+      window.clearInterval(heartbeat);
+      if (typeof window !== 'undefined') window.removeEventListener('beforeunload', releaseOnUnload);
+      releaseRuleLock(rule.id, myOwner);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rule.id]);
+
+  // 未被他人占用时抢占（幂等）：仅在锁校验完成后执行一次
+  useEffect(() => {
+    if (!lockChecked) return;
+    if (lockedByOther) return;
+    acquireRuleLock(rule.id, myOwner);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lockChecked, lockedByOther]);
+
+  const handleBack = () => {
+    releaseRuleLock(rule.id, myOwner);
+    onBack();
+  };
+
   const finalTargets = useMemo(() => collectTargets(rule.flow.nodes), [rule.flow.nodes]);
   const hasTargets = finalTargets.storeMode || finalTargets.departments.length > 0 || finalTargets.personnel.length > 0;
   const hasFlow = rule.flow.nodes.length > 0;
@@ -177,12 +222,36 @@ export function RuleConfigurator({
     }
   };
 
+  if (!lockChecked) {
+    return <div className="flex h-full items-center justify-center text-sm text-gray-400">正在校验编辑权限…</div>;
+  }
+  if (lockedByOther) {
+    const who = liveLock?.owner ?? '其他用户';
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 bg-[#F7F8FA] p-6 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 ring-8 ring-amber-100/60">
+          <Lock size={26} className="text-amber-500" />
+        </div>
+        <div className="text-lg font-semibold text-gray-800">该规则正在被他人编辑</div>
+        <div className="max-w-md text-sm leading-relaxed text-gray-500">
+          <span className="font-medium text-gray-700">{who}</span> 当前正在编辑此规则。为避免互相覆盖，本准备已暂时锁定为只读，请对方保存后再来编辑。
+        </div>
+        <button
+          onClick={handleBack}
+          className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+        >
+          <ArrowLeft size={15} /> 返回规则列表
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full flex-col">
       {/* 顶栏 */}
       <div className="flex flex-wrap items-center gap-2 border-b bg-white px-4 py-2.5">
         <button
-          onClick={onBack}
+          onClick={handleBack}
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100"
         >
           <ArrowLeft size={16} /> 返回

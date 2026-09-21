@@ -420,6 +420,38 @@ const ROWS_API = (id: string) => `/api/tables/${encodeURIComponent(id)}/rows`;
 /** 远端持久化是否可用（首次拉取成功后置为 true） */
 let remoteAvailable = false;
 
+/** 本会话/标签页唯一实例号：用于跨标签/跨端区分“我自己”与“他人” */
+const INSTANCE =
+  typeof crypto !== 'undefined' && (crypto as { randomUUID?: () => string }).randomUUID
+    ? (crypto as { randomUUID: () => string }).randomUUID()
+    : `i-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+/** 规则编辑锁 TTL：持有者超时未刷新即视为过期（崩溃/未释放场景自动解约） */
+export const RULE_LOCK_TTL = 10 * 60 * 1000;
+/** 跨标签同步广播通道（同浏览器多标签）；跨电脑靠 DB 持久化锁 */
+let syncChannel: BroadcastChannel | null = null;
+/** 合并远端后置位，跳过随之触发的回写推送，防止 A⇄B 无限互推 */
+let pushSuppressed = false;
+/** 当前正在编辑的规则 id；非空时不整表覆盖（避免覆盖本地未保存改动） */
+let activeEditRuleId: string | null = null;
+
+/** 由 RuleConfigurator 挂载/卸载时登记正在编辑的规则 */
+export function setEditingRule(id: string | null) {
+  activeEditRuleId = id;
+}
+/** 构造锁持有者标识：同一用户在不同标签/不同电脑会得到不同的 owner，从而互斥 */
+export function ruleLockOwner(me: string | undefined) {
+  return `${me || '匿名'}·${INSTANCE}`;
+}
+/** 通知其它标签页从服务端重新拉取最新状态 */
+function broadcastSync() {
+  if (typeof BroadcastChannel === 'undefined' || !syncChannel) return;
+  try {
+    syncChannel.postMessage({ t: 'sync', from: INSTANCE });
+  } catch {
+    /* ignore */
+  }
+}
+
 /** 客户端剥离 rows：/api/state 只同步元数据，rows 走独立行路由，避免超大请求体 */
 function stripRowsClient(t: DataTable): DataTable {
   const { rows: _r, prev, ...meta } = t;
@@ -433,10 +465,10 @@ async function fetchRemoteState(): Promise<Partial<AppState> | null> {
   try {
     const res = await fetch(STATE_API, { cache: 'no-store' });
     if (!res.ok) return null;
-    const json = (await res.json()) as { tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[]; tableGroups?: DataTableGroup[]; orgs?: Organization[]; persons?: Person[]; employees?: Employee[]; hrAttributes?: HrAttribute[]; dealers?: Dealer[]; stores?: Store[]; config?: HomeConfig; error?: string };
+    const json = (await res.json()) as { tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[]; tableGroups?: DataTableGroup[]; orgs?: Organization[]; persons?: Person[]; employees?: Employee[]; hrAttributes?: HrAttribute[]; dealers?: Dealer[]; stores?: Store[]; config?: HomeConfig; locks?: RuleLockMap; error?: string };
     if (json.error) return null;
     remoteAvailable = true;
-    return { tables: json.tables ?? [], rules: json.rules ?? [], alerts: json.alerts ?? [], ruleGroups: json.groups ?? [], tableGroups: json.tableGroups ?? [], orgs: json.orgs ?? [], persons: json.persons ?? [], employees: json.employees ?? [], hrAttributes: json.hrAttributes ?? [], dealers: json.dealers ?? [], stores: json.stores ?? [], config: normalizeHomeConfig(json.config) };
+    return { tables: json.tables ?? [], rules: json.rules ?? [], alerts: json.alerts ?? [], ruleGroups: json.groups ?? [], tableGroups: json.tableGroups ?? [], orgs: json.orgs ?? [], persons: json.persons ?? [], employees: json.employees ?? [], hrAttributes: json.hrAttributes ?? [], dealers: json.dealers ?? [], stores: json.stores ?? [], config: normalizeHomeConfig(json.config), locks: json.locks ?? {} };
   } catch {
     return null;
   }
@@ -473,7 +505,7 @@ async function pushRemoteState(state: AppState, opts?: { clearAlertsAll?: boolea
     const res = await fetch(STATE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tables: state.tables.map(stripRowsClient), rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], tableGroups: state.tableGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] }, clearAlertsAll: opts?.clearAlertsAll }),
+      body: JSON.stringify({ tables: state.tables.map(stripRowsClient), rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], tableGroups: state.tableGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] }, locks: state.locks ?? {}, clearAlertsAll: opts?.clearAlertsAll }),
     });
     if (!res.ok) {
       console.warn('[persist] 云端同步失败', res.status);
@@ -484,12 +516,16 @@ async function pushRemoteState(state: AppState, opts?: { clearAlertsAll?: boolea
     if (resp && Array.isArray(resp.errors) && resp.errors.length > 0) {
       console.warn('[persist] 部分实体未落库:', resp.errors);
     }
+    broadcastSync();
     return true;
   } catch (err) {
     console.warn('[persist] 云端同步异常', err);
     return false;
   }
 }
+
+export type RuleLock = { owner: string; at: number };
+export type RuleLockMap = Record<string, RuleLock>;
 
 export interface AppState {
   tables: DataTable[];
@@ -521,6 +557,8 @@ export interface AppState {
   permissions: RolePerm[];
   /** 权限配置：单用户覆盖 */
   permOverrides: PersonPermOverride[];
+  /** 规则编辑锁：ruleId -> { 持有者, 时间戳 }（跨标签/跨电脑互斥编辑） */
+  locks: RuleLockMap;
 }
 
 type StoreApi = {
@@ -543,6 +581,14 @@ type StoreApi = {
   // rules
   addRule: (r: AlertRule) => void;
   updateRule: (id: string, patch: Partial<AlertRule>) => void;
+  /** 获取/刷新规则编辑锁（owner 为持有者标识），跨标签/跨电脑互斥 */
+  acquireRuleLock: (rid: string, owner: string) => void;
+  /** 释放规则编辑锁（仅持有者本人可释放） */
+  releaseRuleLock: (rid: string, owner: string) => void;
+  /** 保活：编辑期间刷新锁时间戳，避免被 TTL 过期 */
+  touchRuleLock: (rid: string, owner: string) => void;
+  /** 打开编辑器时从服务端拉取一次最新锁，识别其它电脑是否正占用（跨电脑实时依赖此刷新） */
+  refreshRuleLocks: () => Promise<void>;
   removeRule: (id: string, clearAlerts?: boolean) => void;
   activateRule: (id: string) => void;
   // execution
@@ -751,6 +797,25 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
         rules: state.rules.filter((r) => r.id !== id),
         ...(clearAlerts ? { alerts: state.alerts.filter((a) => a.ruleId !== id) } : {}),
       };
+    }
+    case 'SET_RULE_LOCK': {
+      const { rid, owner, at } = (action.payload ?? {}) as { rid: string; owner: string; at: number };
+      if (!rid || !owner) return state;
+      return { ...state, locks: { ...(state.locks ?? {}), [rid]: { owner, at: at ?? Date.now() } } };
+    }
+    case 'DEL_RULE_LOCK': {
+      const { rid, owner } = (action.payload ?? {}) as { rid: string; owner: string };
+      const cur = (state.locks ?? {})[rid];
+      if (!cur) return state;
+      if (owner && cur.owner !== owner) return state; // 仅持有者（同 owner）可释放
+      const next = { ...(state.locks ?? {}) };
+      delete next[rid];
+      return { ...state, locks: next };
+    }
+    case 'MERGE_RULE_LOCKS': {
+      const more = (action.payload ?? {}) as RuleLockMap;
+      if (!more || Object.keys(more).length === 0) return state;
+      return { ...state, locks: { ...(state.locks ?? {}), ...more } };
     }
     case 'UPDATE_EXECUTION': {
       const { ruleId, execId, patch } = action.payload as {
@@ -1016,10 +1081,10 @@ function loadInitialState(): AppState {
     previewRows: sample.previewRows,
     rows: sample.rows,
   };
-  return { tables: [t], rules: [], activeTableId: t.id, builderTableIds: [t.id], alerts: [], ruleGroups: [], tableGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [], employees: [], config: DEFAULT_HOME_CONFIG, permissions: [], permOverrides: [] };
+  return { tables: [t], rules: [], activeTableId: t.id, builderTableIds: [t.id], alerts: [], ruleGroups: [], tableGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [], employees: [], config: DEFAULT_HOME_CONFIG, permissions: [], permOverrides: [], locks: {} };
 }
 
-const EMPTY_STATE: AppState = { tables: [], rules: [], activeTableId: '', builderTableIds: [], alerts: [], ruleGroups: [], tableGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [], employees: [], config: DEFAULT_HOME_CONFIG, permissions: [], permOverrides: [] };
+const EMPTY_STATE: AppState = { tables: [], rules: [], activeTableId: '', builderTableIds: [], alerts: [], ruleGroups: [], tableGroups: [], orgs: [], persons: [], hrAttributes: [], dealers: [], stores: [], employees: [], config: DEFAULT_HOME_CONFIG, permissions: [], permOverrides: [], locks: {} };
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   // 初始统一为空，避免 SSR 与客户端首帧不一致导致 Hydration 报错；
@@ -1059,6 +1124,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               employees: state.employees ?? [],
               permissions: state.permissions ?? [],
               permOverrides: state.permOverrides ?? [],
+              locks: state.locks ?? {},
               activeTableId: tables[0]?.id ?? '',
               builderTableIds: tables.map((t) => t.id),
             });
@@ -1098,6 +1164,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           permOverrides: Array.isArray((remote.config as HomeConfig | undefined)?.permOverrides) ? ((remote.config as HomeConfig).permOverrides ?? []) : (s.permOverrides ?? []),
           activeTableId: tables[0]?.id ?? '',
           builderTableIds: tables.map((t) => t.id),
+          locks: { ...(s.locks ?? {}), ...(remote.locks ?? {}) },
         }));
         setRemotePersist(true);
       } else {
@@ -1114,9 +1181,58 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 跨标签实时同步：收到其它标签页的落库广播后，非编辑态下从服务端重新拉取并合并
+  // （不覆盖本地内存中的 rows 与编辑内容，仅同步元数据/规则/锁等）
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return;
+    const ch = new BroadcastChannel('cnfe-sync');
+    syncChannel = ch;
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const onMsg = async (e: MessageEvent) => {
+      const d = (e.data ?? {}) as { t?: string; from?: string };
+      if (!d || d.t !== 'sync' || d.from === INSTANCE) return;
+      if (t) clearTimeout(t);
+      t = setTimeout(async () => {
+        if (activeEditRuleId) return; // 正在编辑规则时不整表覆盖
+        const remote = await fetchRemoteState();
+        if (!remote) return;
+        pushSuppressed = true;
+        // 仅合并非表格类实体（规则/分组/预警/锁/字典等），不动 tables，
+        // 避免覆盖其它标签页正在进行的字段/行编辑；表格数据各自以已落库状态为准
+        setState((s) => ({
+          ...s,
+          rules: remote.rules ?? s.rules,
+          ruleGroups: remote.ruleGroups ?? s.ruleGroups,
+          tableGroups: remote.tableGroups ?? s.tableGroups,
+          alerts: remote.alerts ?? s.alerts,
+          orgs: remote.orgs ?? s.orgs,
+          persons: remote.persons ?? s.persons,
+          hrAttributes: remote.hrAttributes ?? s.hrAttributes,
+          dealers: remote.dealers ?? s.dealers,
+          stores: remote.stores ?? s.stores,
+          employees: remote.employees ?? s.employees,
+          config: remote.config ?? s.config,
+          locks: { ...(s.locks ?? {}), ...(remote.locks ?? {}) },
+        }));
+      }, 260);
+    };
+    ch.addEventListener('message', onMsg);
+    return () => {
+      ch.removeEventListener('message', onMsg);
+      if (t) clearTimeout(t);
+      if (syncChannel === ch) syncChannel = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // 状态变化：本地缓存兜底 + 防抖同步到服务端数据库
   useEffect(() => {
     if (!loaded.current) return;
+    if (pushSuppressed) {
+      // 来自远端广播的合并，跳过本次回写推送，防止 A⇄B 无限互推
+      pushSuppressed = false;
+      return;
+    }
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(state));
     } catch {
@@ -1175,6 +1291,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setFieldDateFormat: (tableId, fieldKey, dateFormat) => dispatch('SET_FIELD_DATE_FORMAT', { tableId, fieldKey, dateFormat }),
       addRule: (r) => dispatch('ADD_RULE', r),
       updateRule: (id, patch) => dispatch('UPDATE_RULE', { id, patch }),
+      acquireRuleLock: (rid, owner) => dispatch('SET_RULE_LOCK', { rid, owner, at: Date.now() }),
+      releaseRuleLock: (rid, owner) => dispatch('DEL_RULE_LOCK', { rid, owner }),
+      touchRuleLock: (rid, owner) => dispatch('SET_RULE_LOCK', { rid, owner, at: Date.now() }),
+      refreshRuleLocks: async () => {
+        try {
+          const res = await fetch(STATE_API, { cache: 'no-store' });
+          if (!res.ok) return;
+          const json = (await res.json()) as { locks?: RuleLockMap; error?: string };
+          if (json.error) return;
+          dispatch('MERGE_RULE_LOCKS', json.locks ?? {});
+        } catch {
+          /* 拉取锁失败保持本地现状 */
+        }
+      },
       activateRule: (id) => {
         const rule = state.rules.find((r) => r.id === id);
         if (!rule) return;
