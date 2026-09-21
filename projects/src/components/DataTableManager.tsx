@@ -26,16 +26,6 @@ import { parseTableFile, buildTableFromRows } from '@/lib/parser';
 import { uid, type FieldType, type DataTable, type AlertRule } from '@/lib/types';
 import { DATE_FORMATS, parseByFormat, toStdDateStr } from '@/lib/datefmt';
 import { toast } from 'sonner';
-
-// 展示归一化：带 dateFormat 的日期字段，网格里统一按 yyyy-MM-dd 展示（不改原始数据）
-function fmtDtCell(f: { type?: string; dateFormat?: string }, v: unknown): string {
-  if (f.type === 'date' && f.dateFormat && v != null && v !== '') {
-    const d = parseByFormat(v, f.dateFormat);
-    return d ? toStdDateStr(d) : String(v);
-  }
-  return v == null ? '' : String(v);
-}
-
 import {
   AlertDialog,
   AlertDialogContent,
@@ -669,7 +659,7 @@ export function DataTableManager() {
                         <tr key={i} className="border-t border-gray-50">
                           {active.fields.map((f) => (
                             <td key={f.key} className="whitespace-nowrap px-3 py-2 text-gray-500">
-                              {fmtDtCell(f, r[f.key])}
+                              {r[f.key] ?? ''}
                             </td>
                           ))}
                         </tr>
