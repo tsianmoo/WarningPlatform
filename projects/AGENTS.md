@@ -256,3 +256,9 @@
 - 预警分类 `rule_groups` 列：id(text pk), name, created_at(bigint)。`syncRuleGroups` 同上。
 - 后端 `/api/state` 用 `Promise.allSettled` 逐实体同步：单个实体失败只进返回体 `errors` 数组，HTTP 仍 200；前端 `pushRemoteState` 只认 `success` 并 console.warn(errors)，不弹给用户 → 可能“假已保存”。排查“某类数据刷新后丢失”先查该实体表在该部署 DB 是否缺列/有数据：
   `select (select count(*) from alert_rules) rules,(select count(*) from rule_groups) rule_groups,(select count(*) from data_tables) tables;`
+
+## 画布节点保存 UX
+- 节点卡片右下角三段式：「编辑→（改）→保存/取消」。默认非编辑态只读；**必须点「编辑」后「保存」才可用**。保存走 draftStore：`useNodeUpdater→writeDraft`（草稿）、NodeShell `handleSave→updateNodeData+commitDraft`。
+- **「开始」(TriggerNode) 无节点级草稿**：其唯一配置（触发调度）经 `SchedulePanel→meta.setSchedule` 写规则级、即时生效，NodeShell 保存会因 `if(!draft) return` 静默无反应 —— 该节点现在用 `NodeShell immediate`（始终可编辑、隐藏编辑/保存/取消，显示「配置即时生效」提示），不要再为其加节点级参数保存。
+- NodeShell 新增 `immediate` prop 与保存反馈：保存成功短暂显示「已保存」，无草稿显示「无修改可保存」，其它节点保存有可见反馈。
+- 「预警动作」节点「通知对象(按店仓/员工/用户/手动)」走 `TargetPanel→onChange→update({notify})` 草稿 → 同样是「编辑→保存」提交。

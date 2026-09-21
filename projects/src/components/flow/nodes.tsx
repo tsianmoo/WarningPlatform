@@ -296,13 +296,18 @@ function nodeTitle(fnode: FlowNode) {
   return base;
 }
 
-function NodeShell({ fnode, children, width = 300 }: { fnode: FlowNode; children: React.ReactNode; width?: number }) {
+function NodeShell({ fnode, children, width = 300, immediate = false }: { fnode: FlowNode; children: React.ReactNode; width?: number; immediate?: boolean }) {
   const color = KIND_COLOR[fnode.kind];
   const hasSource = true; // 所有节点（含开始）都开放右侧出口，用于连向后继
   const { deleteElements, getNodes, getEdges, updateNodeData } = useReactFlow();
   useDirtyVersion();
   const editing = isEditing(fnode.id);
-  const readOnly = !editing;
+  const readOnly = !immediate && !editing;
+  const [flash, setFlash] = useState('');
+  const flashOnce = (msg: string) => {
+    setFlash(msg);
+    window.setTimeout(() => setFlash(''), 1200);
+  };
   const tables = useRuleTables();
   const preview = useNodePreview();
   const handlePreview = (e: React.MouseEvent) => {
@@ -319,10 +324,14 @@ function NodeShell({ fnode, children, width = 300 }: { fnode: FlowNode; children
   const handleSave = (e: React.MouseEvent) => {
     e.stopPropagation();
     const draft = getDraft(fnode.id);
-    if (!draft) return;
+    if (!draft) {
+      flashOnce('无修改可保存');
+      return;
+    }
     const merged = { ...fnode.data, ...draft } as FlowNode['data'];
     updateNodeData(fnode.id, merged as never);
     commitDraft(fnode.id);
+    flashOnce('已保存');
   };
   const handleDiscard = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -330,7 +339,7 @@ function NodeShell({ fnode, children, width = 300 }: { fnode: FlowNode; children
   };
   return (
     <div
-      className="w-[300px] max-w-[300px] rounded-xl border bg-white shadow-sm transition"
+      className="relative w-[300px] max-w-[300px] rounded-xl border bg-white shadow-sm transition"
       style={{ borderColor: color.border, width, maxWidth: width }}
     >
       <div
@@ -380,44 +389,53 @@ function NodeShell({ fnode, children, width = 300 }: { fnode: FlowNode; children
         </button>
       </div>
       <div className={`nodrag px-3 py-2 ${readOnly ? 'pointer-events-none select-none opacity-70' : ''}`}>{children}</div>
-      <div className="flex h-10 items-center gap-1.5 border-t px-3 py-2">
-        <button
-          type="button"
-          disabled={editing}
-          onClick={() => enterEdit(fnode.id)}
-          className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition ${
-            editing
-              ? 'cursor-default bg-gray-100 text-gray-400'
-              : 'bg-blue-500 text-white hover:bg-blue-600'
-          }`}
-        >
-          编辑
-        </button>
-        <button
-          type="button"
-          disabled={!editing}
-          onClick={handleSave}
-          className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition ${
-            editing
-              ? 'bg-amber-500 text-white hover:bg-amber-600'
-              : 'cursor-default bg-gray-100 text-gray-400'
-          }`}
-        >
-          保存
-        </button>
-        <button
-          type="button"
-          disabled={!editing}
-          onClick={handleDiscard}
-          className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition ${
-            editing
-              ? 'border border-gray-200 text-gray-500 hover:bg-gray-50'
-              : 'cursor-default border border-gray-100 bg-gray-50 text-gray-300'
-          }`}
-        >
-          取消
-        </button>
-      </div>
+      {immediate ? (
+        <div className="flex h-9 items-center px-3 pb-1 text-[10px] text-gray-400">配置即时生效，无需单独保存</div>
+      ) : (
+        <div className="flex h-10 items-center gap-1.5 border-t px-3 py-2">
+          <button
+            type="button"
+            disabled={editing}
+            onClick={() => enterEdit(fnode.id)}
+            className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition ${
+              editing
+                ? 'cursor-default bg-gray-100 text-gray-400'
+                : 'bg-blue-500 text-white hover:bg-blue-600'
+            }`}
+          >
+            编辑
+          </button>
+          <button
+            type="button"
+            disabled={!editing}
+            onClick={handleSave}
+            className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition ${
+              editing
+                ? 'bg-amber-500 text-white hover:bg-amber-600'
+                : 'cursor-default bg-gray-100 text-gray-400'
+            }`}
+          >
+            保存{flash ? '' : ''}
+          </button>
+          <button
+            type="button"
+            disabled={!editing}
+            onClick={handleDiscard}
+            className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition ${
+              editing
+                ? 'border border-gray-200 text-gray-500 hover:bg-gray-50'
+                : 'cursor-default border border-gray-100 bg-gray-50 text-gray-300'
+            }`}
+          >
+            取消
+          </button>
+        </div>
+      )}
+      {flash && (
+        <div className="absolute right-2 top-1 z-20 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-medium text-white shadow">
+          {flash}
+        </div>
+      )}
       <Handle type="target" position={Position.Left} style={{ background: color.dot, width: 10, height: 10 }} />
       {hasSource && (
         <Handle type="source" position={Position.Right} style={{ background: color.dot, width: 10, height: 10 }} />
@@ -590,7 +608,7 @@ const TriggerNode = memo(({ id, data }: NodeProps) => {
   const fnode = { id, kind: 'trigger' as const, data, position: { x: 0, y: 0 } } as FlowNode;
   const meta = useRuleMeta();
   return (
-    <NodeShell fnode={fnode} width={380}>
+    <NodeShell fnode={fnode} width={380} immediate>
       <div className="text-sm font-medium text-gray-700">开始监测</div>
       <div className="mt-1 text-xs text-gray-400">规则触发入口 · 在此配置调度</div>
       {meta && <SchedulePanel schedule={meta.schedule} />}
