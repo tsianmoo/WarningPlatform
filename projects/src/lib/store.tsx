@@ -489,6 +489,18 @@ function readLocalCache(): { tables: DataTable[]; rules: AlertRule[] } | null {
   }
 }
 
+/** 显式删除规则/分组（绝不依赖"客户端快照全量覆盖"来做隐式删除，避免误删其它标签/会话新建的记录） */
+async function deleteRemote(drop: { ruleIds?: string[]; groupIds?: string[]; clearAlerts?: boolean }): Promise<void> {
+  if (!drop || (!Array.isArray(drop.ruleIds) && !Array.isArray(drop.groupIds))) return;
+  try {
+    await fetch(STATE_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ del: { ruleIds: drop.ruleIds ?? [], groupIds: drop.groupIds ?? [], clearAlerts: !!drop.clearAlerts } }),
+    });
+  } catch { /* 前台删除不阻塞，失败由下次全量 upsert 补偿目标集合即可 */ }
+}
+
 /** 把当前状态全量同步到服务端数据库（失败返回 false，保留本地缓存） */
 async function pushRemoteState(state: AppState, opts?: { clearAlertsAll?: boolean }): Promise<boolean> {
   // 远程尚未确认可用（例如刚打开页面时 GET /api/state 失败）时，
@@ -1326,7 +1338,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         }
         if (rule.status !== 'active') dispatch('UPDATE_RULE', { id, patch: { status: 'active' } });
       },
-      removeRule: (id, clearAlerts) => dispatch('REMOVE_RULE', { id, clearAlerts: !!clearAlerts }),
+      removeRule: (id, clearAlerts) => {
+        dispatch('REMOVE_RULE', { id, clearAlerts: !!clearAlerts });
+        void deleteRemote({ ruleIds: [id], clearAlerts: !!clearAlerts });
+      },
       updateExecution: (ruleId, execId, patch) => dispatch('UPDATE_EXECUTION', { ruleId, execId, patch }),
       addRuleGroup: (name) => {
         const n = String(name ?? '').trim();
@@ -1334,7 +1349,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         dispatch('ADD_RULE_GROUP', g);
         return g;
       },
-      removeRuleGroup: (id) => dispatch('REMOVE_RULE_GROUP', id),
+      removeRuleGroup: (id) => {
+        dispatch('REMOVE_RULE_GROUP', id);
+        void deleteRemote({ groupIds: [id] });
+      },
       updateRuleGroup: (id, name) => dispatch('UPDATE_RULE_GROUP', { id, name }),
       addTableGroup: (name) => {
         const n = String(name ?? '').trim();

@@ -175,13 +175,6 @@ export async function syncAlerts(alerts: AlertTask[], opts?: { clearAll?: boolea
     // 本次提交为空集合时不清空库中已有预警，避免前端某次空同步误删全部业务预警
     return;
   }
-
-  const keep = new Set(rows.map((r) => r.id));
-  const staleIds = await computeStale(client, 'alert_tasks', keep);
-  if (staleIds.length > 0) {
-    const { error: delErr } = await client.from('alert_tasks').delete().in('id', staleIds);
-    if (delErr) throw new Error(`删除预警失败: ${delErr.message}`);
-  }
 }
 
 /** 读取所有数据表（按创建时间升序）。返回的元数据剥离全量 rows（rows 存 data_tables_row）。
@@ -281,7 +274,9 @@ export async function getAllRules(): Promise<AlertRule[]> {
   return rows.map((r) => r.data as AlertRule);
 }
 
-/** 全量覆盖式保存规则 */
+/** 增量式保存规则：仅 upsert 入参中的规则，绝不按“本次提交集合”删库中其它规则。
+ *  破坏性删除只经 deleteRules()（显式提交的 ruleIds），避免任何标签/会话的旧快照
+ *  全量覆盖时误删其它标签/电脑新建的规则（这是历史“规则莫名消失”的根因）。 */
 export async function syncRules(rules: AlertRule[]): Promise<void> {
   const client = getSupabaseClient();
   const rows = rules.map((r) => ({
@@ -297,12 +292,17 @@ export async function syncRules(rules: AlertRule[]): Promise<void> {
     const { error } = await client.from('alert_rules').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存规则失败: ${error.message}`);
   }
+}
 
-  const keep = new Set(rules.map((r) => r.id));
-  const staleIds = await computeStale(client, 'alert_rules', keep);
-  if (staleIds.length > 0) {
-    const { error: delErr } = await client.from('alert_rules').delete().in('id', staleIds);
-    if (delErr) throw new Error(`删除规则失败: ${delErr.message}`);
+/** 显式删除规则（及可选的其名下预警）。由前端删除操作显式触发，不经任何全量覆盖。 */
+export async function deleteRules(ruleIds: string[], opts?: { clearAlerts?: boolean }): Promise<void> {
+  if (!Array.isArray(ruleIds) || ruleIds.length === 0) return;
+  const client = getSupabaseClient();
+  const { error } = await client.from('alert_rules').delete().in('id', ruleIds);
+  if (error) throw new Error(`删除规则失败: ${error.message}`);
+  if (opts?.clearAlerts) {
+    const { error: aErr } = await client.from('alert_tasks').delete().in('rule_id', ruleIds);
+    if (aErr) throw new Error(`删除规则预警失败: ${aErr.message}`);
   }
 }
 
@@ -333,12 +333,14 @@ export async function syncRuleGroups(groups: RuleGroup[]): Promise<void> {
     const { error } = await client.from('rule_groups').upsert(rows, { onConflict: 'id' });
     if (error) throw new Error(`保存分组失败: ${error.message}`);
   }
-  const keep = new Set(groups.map((g) => g.id));
-  const staleIds = await computeStale(client, 'rule_groups', keep);
-  if (staleIds.length > 0) {
-    const { error: delErr } = await client.from('rule_groups').delete().in('id', staleIds);
-    if (delErr) throw new Error(`删除分组失败: ${delErr.message}`);
-  }
+}
+
+/** 显式删除规则分组（不经全量覆盖） */
+export async function deleteRuleGroups(groupIds: string[]): Promise<void> {
+  if (!Array.isArray(groupIds) || groupIds.length === 0) return;
+  const client = getSupabaseClient();
+  const { error } = await client.from('rule_groups').delete().in('id', groupIds);
+  if (error) throw new Error(`删除分组失败: ${error.message}`);
 }
 
 /** 读取所有数据表分组 */

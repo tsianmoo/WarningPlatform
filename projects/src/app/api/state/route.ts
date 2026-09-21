@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAllTables, getAllRules, getAllAlerts, getAllRuleGroups, getAllTableGroups, getAllOrganizations, getAllPersons, getAllHrAttributes, getAllDealers, getAllStores, getAllEmployees, getHomeConfig, syncTables, syncRules, syncAlerts, syncRuleGroups, syncTableGroups, syncOrganizations, syncPersons, syncHrAttributes, syncDealers, syncStores, syncEmployees, saveHomeConfig } from '@/lib/server/repo';
+import { getAllTables, getAllRules, getAllAlerts, getAllRuleGroups, getAllTableGroups, getAllOrganizations, getAllPersons, getAllHrAttributes, getAllDealers, getAllStores, getAllEmployees, getHomeConfig, syncTables, syncRules, syncAlerts, syncRuleGroups, syncTableGroups, syncOrganizations, syncPersons, syncHrAttributes, syncDealers, syncStores, syncEmployees, saveHomeConfig, deleteRules, deleteRuleGroups } from '@/lib/server/repo';
 import type { AlertRule, AlertTask, DataTable, DataTableGroup, Dealer, Employee, HrAttribute, HomeConfig, Organization, Person, RuleGroup, Store } from '@/lib/types';
 
 // 读取持久化的全部业务数据（数据表 + 规则 + 预警 + 规则分组 + 组织架构 + 人事架构 + 经销商/店仓 + 员工 + 首页配置）
@@ -21,7 +21,19 @@ export async function POST(req: Request) {
     const body = (await req.json()) as {
       tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[]; tableGroups?: DataTableGroup[];
       orgs?: Organization[]; persons?: Person[]; hrAttributes?: HrAttribute[]; dealers?: Dealer[]; stores?: Store[]; employees?: Employee[]; config?: HomeConfig | null; clearAlertsAll?: boolean;
+      del?: { ruleIds?: string[]; groupIds?: string[]; clearAlerts?: boolean };
     };
+    // 显式删除通道：删除规则/分组由前端删除操作显式提交，绝不走"客户端快照全量覆盖把其它记录抹掉"的隐式删除。
+    // 仅当本次请求确带 del 时才处理删除并直接返回，不同时跑全量 sync（避免空数组触发 syncTables 等 delete-stale 清空业务数据）。
+    if (body.del) {
+      if (Array.isArray(body.del.ruleIds) && body.del.ruleIds.length > 0) {
+        await deleteRules(body.del.ruleIds, { clearAlerts: !!body.del.clearAlerts });
+      }
+      if (Array.isArray(body.del.groupIds) && body.del.groupIds.length > 0) {
+        await deleteRuleGroups(body.del.groupIds);
+      }
+      return NextResponse.json({ success: true, errors: [] });
+    }
     const tables = Array.isArray(body.tables) ? body.tables : [];
     const rules = Array.isArray(body.rules) ? body.rules : [];
     const alerts = Array.isArray(body.alerts) ? body.alerts : [];
