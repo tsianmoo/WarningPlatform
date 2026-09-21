@@ -220,7 +220,7 @@ function Shell() {
   } else if (view === 'navcfg') {
     content = <NavConfig onHome={() => navigate('home')} />;
   } else if (view === 'brandcfg') {
-    content = <BrandConfig onHome={() => navigate('home')} />;
+    content = <BrandConfig />;
   } else {
     content = <RuleList onNew={startNew} onEdit={startEdit} />;
   }

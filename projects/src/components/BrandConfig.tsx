@@ -6,19 +6,14 @@ import { DEFAULT_HOME_CONFIG, FONT_OPTIONS, HomeTitleStyle } from '@/lib/types';
 type Pad = { top: number; right: number; bottom: number; left: number };
 type Brand = HomeTitleStyle & { logo?: string; padding?: Pad };
 
-function hexToRgba(hex: string, alpha: number): string {
-  const h = (hex || '#000000').replace('#', '');
-  const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
-  if (Number.isNaN(n)) return `rgba(0,0,0,${alpha})`;
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
-}
+
 
 function numClamp(v: number, min: number, max: number): number {
   if (Number.isNaN(v)) return min;
   return Math.min(max, Math.max(min, v));
 }
 
-export default function BrandConfig({ onHome }: { onHome: () => void }) {
+export default function BrandConfig() {
   const { state, updateHomeConfig } = useStore();
   const brand: Brand = state.config.brand || DEFAULT_HOME_CONFIG.brand;
   const pad: Pad = brand.padding || { top: 20, right: 16, bottom: 20, left: 16 };
@@ -37,32 +32,9 @@ export default function BrandConfig({ onHome }: { onHome: () => void }) {
   const num = (v: number) => (Number.isFinite(v) ? v : 0);
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-        <div className="border-b border-gray-100 px-6 py-4">
-          <div className="text-[15px] font-semibold text-gray-900">基础信息管理</div>
-          <div className="mt-0.5 text-xs text-gray-400">配置品牌 LOGO、系统名称与文字样式</div>
-        </div>
-
-        <div className="p-6">
-        {/* 实时预览 */}
-        <div className="mb-6 rounded-xl bg-gray-50 px-4 py-5">
-          <div className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-400">实时预览</div>
-          <div className="flex items-center gap-3" style={{ paddingTop: pad.top, paddingRight: pad.right, paddingBottom: pad.bottom, paddingLeft: pad.left }}>
-            {brand.logo && <img src={brand.logo} alt="logo" className="h-9 w-9 rounded-md object-contain" />}
-            <span
-              style={{
-                fontFamily: brand.font || 'system-ui',
-                fontSize: num(brand.size),
-                fontWeight: num(brand.weight),
-                letterSpacing: num(brand.letterSpacing),
-                color: hexToRgba(brand.color, brand.opacity ?? 1),
-              }}
-            >
-              {brand.text || '系统名称'}
-            </span>
-          </div>
-        </div>
+    <div className="p-6">
+        <div className="text-[15px] font-semibold text-gray-900">基础信息管理</div>
+        <div className="mt-0.5 mb-5 text-xs text-gray-400">配置品牌 LOGO、系统名称与文字样式</div>
 
         {/* LOGO */}
         <div className="mb-5 border-b border-gray-100 pb-5">
@@ -205,12 +177,6 @@ export default function BrandConfig({ onHome }: { onHome: () => void }) {
             ))}
           </div>
         </div>
-        </div>
-      </div>
-
-      <button onClick={onHome} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
-        返回首页
-      </button>
     </div>
   );
 }
