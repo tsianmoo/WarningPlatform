@@ -5732,9 +5732,22 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
   };
   const pivots = Array.isArray(d.pivots) ? d.pivots : [];
   const activePivotCount = pivots.filter((b) => b && b.enable !== false && b.deleted !== true && b.rowField && b.valueField).length;
+  const activeBlockKeys = pivots.map((b, i) => ({ idx: i, rf: b?.rowField ?? '' })).filter((k) => k.rf);
+  // 排序(order)/改名(labels)按「行转列字段」维度共享：改动某块，同 rowField 的其它有效块一并同步
   const setPivot = (i: number, patch: Partial<RowSortPivot>) => {
+    const cur = pivots[i];
+    const mergedPatch = { ...cur, ...patch };
     const arr = pivots.slice();
-    arr[i] = { ...arr[i], ...patch };
+    if ((patch.order || patch.labels) && cur && cur.rowField) {
+      arr.forEach((b, bi) => {
+        if (!b || bi === i || b.deleted === true || b.rowField !== cur.rowField) return;
+        const nb = { ...b };
+        if (patch.order) nb.order = patch.order;
+        if (patch.labels) nb.labels = patch.labels;
+        arr[bi] = nb;
+      });
+    }
+    arr[i] = mergedPatch;
     update({ pivots: arr } as Partial<RowSortNodeData>);
   };
   const addPivot = () => {
@@ -5938,10 +5951,18 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
                       arr.splice(j, 0, it);
                       setOrder(arr);
                     };
+                    // 最终表头 = 改名 优先，否则 前缀·原值
+                    const headName = (v: string) => {
+                      const named = curLabels[v];
+                      if (named && named.trim()) return named.trim();
+                      return b.prefix ? `${b.prefix}·${v}` : v;
+                    };
+                    const sameUsed = activeBlockKeys.filter((k) => k.rf === b.rowField && k.idx !== real).length > 0;
                     return (
                       <div className="mt-1.5 rounded-md border border-violet-100 bg-white/60 px-1.5 py-1">
-                        <div className="mb-1 flex items-center justify-between">
-                          <span className="text-[10px] text-violet-500">横向表头标签（{b.rowField} 去重值，可按顺序调整）</span>
+                        <div className="mb-1 flex flex-wrap items-center justify-between gap-x-2">
+                          <span className="text-[10px] text-violet-500">横向表头（{b.rowField} 去重值 · 可排序/改名）</span>
+                          {sameUsed && <span className="text-[10px] text-amber-500">同字段 {b.rowField} 的其它块会自动同步排序与名称</span>}
                         </div>
                         <div className="max-h-[160px] space-y-1 overflow-y-auto pr-0.5">
                           {order.map((v, li) => (
@@ -5951,9 +5972,12 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
                                 value={curLabels[v] ?? ''}
                                 placeholder={v}
                                 onChange={(e) => setLabel(v, e.target.value)}
-                                title={`原值：${v}`}
+                                title={`原值：${v} → 表头：${headName(v)}`}
                                 className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 text-[11px] text-gray-700 focus:border-sky-300 focus:bg-white focus:outline-none"
                               />
+                              <span className="w-[92px] shrink-0 truncate text-right text-[10px] text-gray-400" title={`最终表头：${headName(v)}`}>
+                                → {headName(v)}
+                              </span>
                               <button type="button" onClick={() => move(li, -1)} disabled={li === 0} className="shrink-0 text-[10px] text-gray-400 hover:text-violet-600 disabled:opacity-30" title="左移">◀</button>
                               <button type="button" onClick={() => move(li, 1)} disabled={li === order.length - 1} className="shrink-0 text-[10px] text-gray-400 hover:text-violet-600 disabled:opacity-30" title="右移">▶</button>
                             </div>
