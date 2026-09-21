@@ -6682,7 +6682,7 @@ export function createNodeData(
         tableName: '',
         sourceNode: '',
         sourceNodeLabel: '',
-        columns: [],
+        columns: [{ label: '', expr: '' }],
       };
     case 'linkjoin':
       return {
