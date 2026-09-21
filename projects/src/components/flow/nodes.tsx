@@ -5364,9 +5364,10 @@ const CalcNode = memo(function CalcNode({ id, data }: NodeProps) {
               <input
                 value={c.label}
                 onFocus={() => setActiveCol(i)}
+                onMouseDown={(e) => e.stopPropagation()}
                 onChange={(e) => setCol(i, { label: e.target.value })}
                 placeholder="新列名，如：上货天数"
-                className={`${inputCls} flex-1`}
+                className={`nodrag ${inputCls} flex-1`}
               />
               <button
                 type="button"
