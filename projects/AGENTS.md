@@ -261,4 +261,4 @@
 - 节点卡片右下角三段式：「编辑→（改）→保存/取消」。默认非编辑态只读；**必须点「编辑」后「保存」才可用**。保存走 draftStore：`useNodeUpdater→writeDraft`（草稿）、NodeShell `handleSave→updateNodeData+commitDraft`。
 - **「开始」(TriggerNode) 无节点级草稿**：其唯一配置（触发调度）经 `SchedulePanel→meta.setSchedule` 写规则级、即时生效，NodeShell 保存会因 `if(!draft) return` 静默无反应 —— 该节点现在用 `NodeShell immediate`（始终可编辑、隐藏编辑/保存/取消，显示「配置即时生效」提示），不要再为其加节点级参数保存。
 - NodeShell 新增 `immediate` prop 与保存反馈：保存成功短暂显示「已保存」，无草稿显示「无修改可保存」，其它节点保存有可见反馈。
-- 「预警动作」节点「通知对象(按店仓/员工/用户/手动)」走 `TargetPanel→onChange→update({notify})` 草稿 → 同样是「编辑→保存」提交。
+- 「预警动作」(ActionNode) **无 NodeShell/无编辑-保存**：草稿只有 NodeShell 保存时才写回 flow(rule.flow.nodes)；ActionNode 不即时提交会导致 `collectTargets` 与顶保存都读不到(如「按店仓」通知对象)→改动丢失。**故 ActionNode 的 `update` 已改为 草稿+立即 `updateNodeData`(写回 flow)+`commitDraft`**(即时生效，同开始节点语义)。它是 `useCallback` 封装 `writeDraft→getDraft→updateNodeData({...data,...draft})→commitDraft`，deps=[id,data,updateNodeData)。改动会触发 FlowCanvas 同步→setFlow→顶保存可带上。

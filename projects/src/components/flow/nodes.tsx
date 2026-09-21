@@ -1,6 +1,6 @@
 'use client';
 
-import React, { memo, useEffect, useState, useMemo, useRef, createContext, useContext } from 'react';
+import React, { memo, useEffect, useState, useMemo, useRef, useCallback, createContext, useContext } from 'react';
 import { Handle, Position, useReactFlow, useEdges, useNodes, type NodeProps } from '@xyflow/react';
 import { Play, Braces, GitFork, Calculator, Link2, Bell, Search, SearchCheck, CalendarClock, Trophy, GitPullRequestArrow, Scale, Layers, Merge, ListFilter, Filter, Database, X, Eye, CalendarRange, Users, TrendingUp, TableProperties, Plus, ChevronDown, LayoutList, Copy, Trash2 } from 'lucide-react';
 import CalcExprEditor, { type CalcExprEditorHandle } from './CalcExprEditor';
@@ -2651,10 +2651,25 @@ const ACTION_PRIORITIES = [
 
 const ActionNode = memo(({ id, data }: NodeProps) => {
   const d = useNodeData(id, data) as unknown as ActionNodeData;
-  const update = useNodeUpdater(id);
   const allNodes = useNodes();
   const tables = useRuleTables();
-  const { deleteElements, getNodes, getEdges } = useReactFlow();
+  const { deleteElements, getNodes, getEdges, updateNodeData } = useReactFlow();
+  // ActionNode 没有 NodeShell 的「保存」入口，而草稿只有 NodeShell 保存时才会 write 回 flow(rule.flow.nodes)。
+  // 若不即时提交，collectTargets 与顶保存都读不到本节点的改动（如「按店仓」通知对象）→ 直接丢失。
+  // 故 ActionNode 改成立即生效：每次 update 同时写草稿(供预览)并 commit 回 flow。
+  const update = useCallback((patch: Partial<ActionNodeData>) => {
+    writeDraft(id, patch as unknown as Record<string, unknown>);
+    const dr = getDraft(id);
+    if (dr) {
+      try {
+        updateNodeData(id, { ...(data as object), ...dr } as never);
+      } catch {
+        /* 忽略写回异常，草稿仍保留可跳过 */
+      }
+    }
+    commitDraft(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, data, updateNodeData]);
   const preview = useNodePreview();
   const type = d.type ?? (d.level === 'critical' || d.level === 'warn' ? 'alert' : 'remind');
   const prio = d.priority ?? 'ImportantNotUrgent';
