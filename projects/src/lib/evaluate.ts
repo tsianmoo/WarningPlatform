@@ -2270,6 +2270,15 @@ function evalNode(
         const blockFixCols = shown.filter((c) => !usedKeys.has(c.label || c.key));
         interface BHead { block: RowSortPivot; orig: string; disp: string; headKey: string; cfg: (typeof all)[number]; }
         const outHeads: BHead[] = [];
+        // 同 rowField 多块共享排序与改名：按行转列字段分组，合并各块的 order 与 labels，
+        // 使同字段的多个块列序/命名完全一致（覆盖 UI 未同步或字段 label 有细微差异的存量数据）。
+        const rfGroupOrder = new Map<string, string[]>();   // rowField -> 统一横排顺序
+        const rfGroupLabels = new Map<string, Record<string, string>>(); // rowField -> 统一取值→显示名
+        for (const b of activeBlocks) {
+          if (!b.rowField) continue;
+          if (!rfGroupOrder.has(b.rowField)) rfGroupOrder.set(b.rowField, Array.isArray(b.order) ? b.order.slice() : []);
+          if (!rfGroupLabels.has(b.rowField)) rfGroupLabels.set(b.rowField, (b.labels && typeof b.labels === 'object' ? { ...b.labels } : {}));
+        }
         // 每个块收集其行转列字段的去重取值作为横向表头
         for (const b of activeBlocks) {
           const combos: string[] = [];
@@ -2277,8 +2286,9 @@ function evalNode(
             const v = String(rawKey(r, b.rowField) ?? '');
             if (v !== '' && !combos.includes(v)) combos.push(v);
           }
-          if (Array.isArray(b.order) && b.order.length) {
-            const desired = b.order;
+          const sharedOrder = b.rowField ? rfGroupOrder.get(b.rowField) : undefined;
+          if (sharedOrder && sharedOrder.length) {
+            const desired = sharedOrder;
             combos.sort((a, c) => {
               const ia = desired.indexOf(a);
               const ib = desired.indexOf(c);
@@ -2294,7 +2304,8 @@ function evalNode(
               ? cfg
               : { key: String(b.valueField ?? ''), label: b.valueField, type: 'auto' as const };
           for (const orig of combos) {
-            const named = b.labels && b.labels[orig];
+            const sharedLabels = b.rowField ? rfGroupLabels.get(b.rowField) : undefined;
+            const named = sharedLabels ? sharedLabels[orig] : (b.labels && b.labels[orig]);
             const disp = named || (b.prefix ? `${b.prefix}·${orig}` : orig);
             outHeads.push({ block: b, orig, disp, headKey: `${b.id || b.valueField}\u0001${orig}`, cfg: valCfgFor });
           }
