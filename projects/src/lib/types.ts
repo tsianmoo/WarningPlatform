@@ -1687,7 +1687,7 @@ export const DEFAULT_HOME_CONFIG: HomeConfig = {
   bgImage: '',
   bgBlur: 0,
   title: {
-    text: '店牛预警平台', font: 'system-ui', size: 61, weight: 300, letterSpacing: 23, marginLeft: 56,
+    text: 'DIANNIU.YJ', font: 'system-ui', size: 61, weight: 300, letterSpacing: 23, marginLeft: 56,
     color: '#000000', opacity: 1, x: 8, y: 42,
   },
   subtitle: {
