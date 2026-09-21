@@ -24,6 +24,7 @@ import { useStore, formatDateTime } from '@/lib/store';
 import { resolvePerm, canOper } from '@/lib/perm';
 import { parseTableFile, buildTableFromRows } from '@/lib/parser';
 import { uid, type FieldType, type DataTable, type AlertRule } from '@/lib/types';
+import { DATE_FORMATS, parseByFormat, toStdDateStr } from '@/lib/datefmt';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -51,7 +52,7 @@ const TYPE_LABEL: Record<FieldType, string> = {
 };
 
 export function DataTableManager() {
-  const { state, addTable, updateTable, removeTable, saveTableRows, setActiveTable, renameField, setFieldType, addTableGroup, updateTableGroup, removeTableGroup } = useStore();
+  const { state, addTable, updateTable, removeTable, saveTableRows, setActiveTable, renameField, setFieldType, setFieldDateFormat, addTableGroup, updateTableGroup, removeTableGroup } = useStore();
   const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
   const me = state.persons.find((p) => p.name === meName) ?? null;
   const perm = resolvePerm(me, state.config);
@@ -592,19 +593,42 @@ export function DataTableManager() {
                           </div>
                         </td>
                         <td className="px-4 py-2.5">
-                          <select
-                            value={f.type}
-                            onChange={(e) => setFieldType(active.id, f.key, e.target.value as FieldType)}
-                            className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 outline-none hover:border-gray-300"
-                          >
-                            {(['string', 'number', 'date', 'boolean'] as FieldType[]).map((t) => (
-                              <option key={t} value={t}>
-                                {TYPE_LABEL[t]}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="flex items-center gap-1">
+                            <select
+                              value={f.type}
+                              onChange={(e) => setFieldType(active.id, f.key, e.target.value as FieldType)}
+                              className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 outline-none hover:border-gray-300"
+                            >
+                              {(['string', 'number', 'date', 'boolean'] as FieldType[]).map((t) => (
+                                <option key={t} value={t}>
+                                  {TYPE_LABEL[t]}
+                                </option>
+                              ))}
+                            </select>
+                            {f.type === 'date' && (
+                              <select
+                                value={f.dateFormat ?? ''}
+                                onChange={(e) => setFieldDateFormat(active.id, f.key, e.target.value || undefined)}
+                                title="原始值的解析格式，统一输出为 yyyy-MM-dd"
+                                className="w-44 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-700 outline-none hover:border-amber-300"
+                              >
+                                {DATE_FORMATS.map((o) => (
+                                  <option key={o.value} value={o.value}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
                         </td>
-                        <td className="max-w-[180px] truncate px-4 py-2.5 text-xs text-gray-400">{f.sample || '—'}</td>
+                        <td className="max-w-[180px] truncate px-4 py-2.5 text-xs text-gray-400">
+                          {f.type === 'date' && f.dateFormat
+                            ? (() => {
+                                const d = parseByFormat(f.sample, f.dateFormat!);
+                                return d ? toStdDateStr(d) : f.sample || '—';
+                              })()
+                            : f.sample || '—'}
+                        </td>
                       </tr>
                     ))}
                     {active.fields.length === 0 && (

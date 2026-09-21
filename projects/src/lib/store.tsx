@@ -539,6 +539,7 @@ type StoreApi = {
   setBuilderTables: (ids: string[]) => void;
   renameField: (tableId: string, fieldKey: string, alias: string) => void;
   setFieldType: (tableId: string, fieldKey: string, type: DataTable['fields'][number]['type']) => void;
+  setFieldDateFormat: (tableId: string, fieldKey: string, dateFormat?: string) => void;
   // rules
   addRule: (r: AlertRule) => void;
   updateRule: (id: string, patch: Partial<AlertRule>) => void;
@@ -717,6 +718,15 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
         ...state,
         tables: state.tables.map((t) =>
           t.id === tableId ? { ...t, fields: t.fields.map((f) => (f.key === fieldKey ? { ...f, type } : f)) } : t
+        ),
+      };
+    }
+    case 'SET_FIELD_DATE_FORMAT': {
+      const { tableId, fieldKey, dateFormat } = action.payload as { tableId: string; fieldKey: string; dateFormat?: string };
+      return {
+        ...state,
+        tables: state.tables.map((t) =>
+          t.id === tableId ? { ...t, fields: t.fields.map((f) => (f.key === fieldKey ? { ...f, dateFormat } : f)) } : t
         ),
       };
     }
@@ -1162,6 +1172,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setBuilderTables: (ids) => dispatch('SET_BUILDER_TABLES', ids),
       renameField: (tableId, fieldKey, alias) => dispatch('RENAME_FIELD', { tableId, fieldKey, alias }),
       setFieldType: (tableId, fieldKey, type) => dispatch('SET_FIELD_TYPE', { tableId, fieldKey, type }),
+      setFieldDateFormat: (tableId, fieldKey, dateFormat) => dispatch('SET_FIELD_DATE_FORMAT', { tableId, fieldKey, dateFormat }),
       addRule: (r) => dispatch('ADD_RULE', r),
       updateRule: (id, patch) => dispatch('UPDATE_RULE', { id, patch }),
       activateRule: (id) => {

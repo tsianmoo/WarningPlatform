@@ -10,6 +10,7 @@ export interface TableField {
   type: FieldType;
   tagColor: string; // 标签颜色
   sample: string; // 样例值
+  dateFormat?: string; // 类型为 date 时的原始值解析格式（空=自动识别）；运行时按此标准化为 yyyy-MM-dd
 }
 
 /** 上传的数据表 */

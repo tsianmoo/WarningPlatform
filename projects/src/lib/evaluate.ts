@@ -35,6 +35,7 @@ import type {
 import { resolveTimeWindow, resolveElapsedDays, compareModes, computeCompareWindow } from './time';
 import type { TimeWindow } from './types';
 import { TAG_COLORS } from './parser';
+import { parseByFormat, toStdDateStr } from './datefmt';
 import { OPERATOR_OPTIONS } from './types';
 import type { ActionNodeData } from './types';
 
@@ -110,8 +111,22 @@ const PREVIEW_LIMIT = 20000;
 /** 全量行（用于聚合/统计计算）；无全量数据时回退到预览样本行 */
 function allRows(t?: DataTable): Record<string, string | number | boolean>[] {
   if (!t) return [];
-  if (t.rows && t.rows.length) return t.rows;
-  return t.previewRows as unknown as Record<string, string | number | boolean>[];
+  const base = (t.rows && t.rows.length ? t.rows : t.previewRows) as unknown as Record<string, string | number | boolean>[];
+  // 对配置了 dateFormat 的日期字段做运行时标准化（如 20260101 -> 2026-01-01），保证时间窗/聚合口径统一；不改原始数据
+  const fmtFields = (t.fields || []).filter((f) => f.type === 'date' && f.dateFormat);
+  if (!fmtFields.length) return base;
+  return base.map((r) => {
+    let norm: Record<string, string | number | boolean> | null = null;
+    for (const f of fmtFields) {
+      const raw = r[f.key];
+      if (raw == null || raw === '') continue;
+      const d = parseByFormat(raw, f.dateFormat!);
+      if (!d) continue;
+      const s = toStdDateStr(d);
+      if (s !== String(raw)) (norm ??= { ...r })[f.key] = s;
+    }
+    return norm ?? r;
+  });
 }
 
 /** 宽松数字解析：去千分位逗号、货币符号、空格、百分号等 */
