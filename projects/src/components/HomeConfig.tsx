@@ -146,7 +146,7 @@ function FontPick({ value, onChange }: { value: string; onChange: (v: string) =>
 function WeightPick({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
     <select value={value} onChange={(e) => onChange(Number(e.target.value))} className={inputCls}>
-      {[400, 500, 600, 700, 800, 900].map((w) => (
+      {[100, 200, 300, 400, 500, 600, 700, 800, 900, 1000].map((w) => (
         <option key={w} value={w}>
           {w}
         </option>
@@ -235,6 +235,7 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
   const [hover, setHover] = useState<SelKey | null>(null);
   const [preview, setPreview] = useState(false);
   const [modalPos, setModalPos] = useState<{ x: number; y: number } | null>(null);
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
   const modalDragRef = useRef<{ startX: number; startY: number; ox: number; oy: number } | null>(null);
 
   const bgFileRef = useRef<HTMLInputElement | null>(null);
@@ -299,9 +300,11 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
       const nx = Math.max(0, Math.min(100, d.originX + ((e.clientX - d.startX) / rect.width) * 100));
       const ny = Math.max(0, Math.min(100, d.originY + ((e.clientY - d.startY) / rect.height) * 100));
       setPos(d.key, nx, ny);
+      setDragPos({ x: nx, y: ny });
     };
     const up = () => {
       dragRef.current = null;
+      setDragPos(null);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -311,6 +314,8 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updateHomeConfig]);
+
+  // 不使用 dragPos 状态触发位置重算（move 已实时更新），仅在拖动时显示坐标
 
   // 打开配置弹窗时居中定位
   useEffect(() => {
@@ -909,6 +914,11 @@ export function HomeConfig({ onBack }: { onBack?: () => void }) {
         <div className="pointer-events-none absolute left-3 top-3 z-20 rounded-full bg-black/30 px-3 py-1 text-[11px] text-white/80 backdrop-blur">
           悬停组件显示「编辑」，点击配置；可直接拖拽移动组件
         </div>
+        {dragPos && (
+          <div className="pointer-events-none absolute bottom-3 right-3 z-30 rounded-full bg-black/50 px-3 py-1 text-[11px] font-medium text-white backdrop-blur">
+            位置 X:{dragPos.x.toFixed(1)}%　Y:{dragPos.y.toFixed(1)}%
+          </div>
+        )}
       </div>
 
       <input ref={addImageFileRef} type="file" accept="image/*" className="hidden" onChange={onAddImageFile} />

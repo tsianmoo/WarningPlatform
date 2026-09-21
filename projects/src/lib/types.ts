@@ -1683,12 +1683,12 @@ export const DEFAULT_NAV_MENUS: NavMenuEntry[] = [
 
 export const DEFAULT_HOME_CONFIG: HomeConfig = {
   bgMode: 'color',
-  bgColor: '#1e293b',
+  bgColor: '#ffffff',
   bgImage: '',
   bgBlur: 0,
   title: {
-    text: '店牛预警平台', font: 'system-ui', size: 44, weight: 700, letterSpacing: 4, marginLeft: 56,
-    color: '#ffffff', opacity: 1, x: 8, y: 35,
+    text: 'DIANNIU.YJ', font: 'system-ui', size: 60, weight: 300, letterSpacing: 25, marginLeft: 56,
+    color: '#000000', opacity: 1, x: 8, y: 35,
   },
   subtitle: {
     text: '零售终端数据预警与通知助手', font: 'system-ui', size: 16, weight: 500, letterSpacing: 2, marginLeft: 58,

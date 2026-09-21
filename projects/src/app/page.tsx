@@ -366,7 +366,7 @@ function Shell() {
 
       {/* 主内容 */}
       <main className={`min-w-0 flex-1 ${withSidebar ? 'overflow-auto' : ''}`}>
-        {readyUI && withSidebar && (
+        {readyUI && withSidebar && view !== 'homecfg' && (
           <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white pl-5 pr-3 py-2">
             <div className="flex items-center gap-1.5 text-[13px]">
               {(CRUMBS[view] ?? [view]).map((c, i, arr) => (
