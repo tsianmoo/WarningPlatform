@@ -335,6 +335,17 @@ function NodeShell({ fnode, children, width = 300, immediate = false }: { fnode:
     e.stopPropagation();
     discardDraft(fnode.id);
   };
+  const committedResultName = (fnode.data as { resultLabel?: string } | undefined)?.resultLabel ?? '';
+  const [resultName, setResultName] = useState(committedResultName);
+  const composing = useRef(false);
+  useEffect(() => {
+    if (!composing.current) setResultName(committedResultName);
+  }, [committedResultName]);
+  const commitResultName = (v: string) => {
+    const cur = (fnode.data ?? {}) as Record<string, unknown>;
+    updateNodeData(fnode.id, { ...cur, resultLabel: v } as never);
+    writeDraft(fnode.id, { resultLabel: v });
+  };
   return (
     <div
       className="relative w-[300px] max-w-[300px] rounded-xl border bg-white shadow-sm transition"
@@ -390,12 +401,18 @@ function NodeShell({ fnode, children, width = 300, immediate = false }: { fnode:
       <div className="nodrag border-t border-gray-100 px-3 py-1.5">
         <div className="mb-1 text-[10px] text-gray-400">结果命名</div>
         <input
-          value={((fnode.data as { resultLabel?: string } | undefined)?.resultLabel ?? '')}
+          value={resultName}
+          onCompositionStart={() => (composing.current = true)}
+          onCompositionEnd={(e) => {
+            composing.current = false;
+            const v = e.currentTarget.value;
+            setResultName(v);
+            commitResultName(v);
+          }}
           onChange={(e) => {
             const v = e.target.value;
-            const cur = (fnode.data ?? {}) as Record<string, unknown>;
-            updateNodeData(fnode.id, { ...cur, resultLabel: v } as never);
-            writeDraft(fnode.id, { resultLabel: v });
+            setResultName(v);
+            if (!composing.current) commitResultName(v);
           }}
           disabled={readOnly}
           placeholder="给本组件命名（将显示在标题括号内）"
