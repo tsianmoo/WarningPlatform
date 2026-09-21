@@ -5679,10 +5679,6 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
     return inferNodeCols(allNodes, tables, d.sourceNode);
   }, [d.sourceNode, allNodes, tables]);
   const [fmtFor, setFmtFor] = useState<number | null>(null);
-  const [valOpen, setValOpen] = useState(false);
-  // 「转」弹窗：对行转列字段的横排（去重值）顺序排序
-  const [pivotSortIdx, setPivotSortIdx] = useState<number | null>(null);
-  const allEdges = useEdges();
   // 选择节点后自动用其字段填充列配置（保留已有匹配项，追加新增字段；一律展示全部字段）
   const applySource = (nid: string, label = '') => {
     const colsOf = inferNodeCols(allNodes, tables, nid);
@@ -5711,13 +5707,6 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
     arr[i] = { ...arr[i], ...patch };
     update({ cols: arr } as Partial<RowSortNodeData>);
   };
-  // 行转列值字段：设为指定字段为值字段，互斥清空其它字段的值字段标记
-  const chooseValue = (col: RowSortCol) => {
-    const keyOf = (c: RowSortCol) => (c.label != null && c.label !== '' ? c.label : c.key) ?? '';
-    const arr = mergeCols().map((c) => ({ ...c, pivotValue: keyOf(c) === keyOf(col) ? true : undefined }));
-    update({ cols: arr } as Partial<RowSortNodeData>);
-    setValOpen(false);
-  };
   // 权威显示列表 = 已存 cols（保留顺序与显示/格式配置）+ 上游缺失字段追加到末尾；
   // 保证字段齐全（含 filljoin/linkjoin 去重列如 商品1 等）且不破坏用户排版；无上游时回退已存 cols
   const mergeCols = (): RowSortCol[] => {
@@ -5730,44 +5719,9 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
     return [...cols, ...missing];
   };
   const merged = mergeCols();
-  // 展示列在前、未展示沉底的显示列表；值字段列已占用(行转列表头下填充)故从②字段列移除不展示；索引基于该列表，改配置时映射回 merged 下标
-  const displayCols = [...merged].filter((c) => !c.pivotValue).sort((a, b) => Number(a.show === false) - Number(b.show === false));
+  // 展示列在前、未展示沉底的显示列表；索引基于该列表，改配置时映射回 merged 下标
+  const displayCols = [...merged].sort((a, b) => Number(a.show === false) - Number(b.show === false));
   const idxOf = (colIdx: number) => merged.indexOf(displayCols[colIdx]);
-  // 取某个行转列字段的去重值（来自上游节点运行输出行），供「转」弹窗排序列表使用
-  // 只依赖"其它节点的配置 data + edges 结构"，内容签名缓存：拖动/自身输入不触发全量 evaluate
-  const pivotEvalSig = useMemo(
-    () =>
-      JSON.stringify(
-        allNodes
-          .filter((n) => (n as unknown as FlowNode).id !== id)
-          .map((n) => ((n as unknown as FlowNode).data ?? {}))
-      ) + '|' + JSON.stringify(allEdges.map((e) => [e.source, e.target])),
-    [allNodes, allEdges, id]
-  );
-  const pivotDistinct = useMemo(() => {
-    if (pivotSortIdx == null) return [] as string[];
-    const src = d.sourceNode;
-    if (!src) return [] as string[];
-    const cfg = mergeCols()[pivotSortIdx];
-    if (!cfg || cfg.unpivot !== true) return [] as string[];
-    const key = cfg.key;
-    try {
-      const outs = evaluateFlow(allNodes as unknown as FlowNode[], allEdges as unknown as FlowEdge[], tables);
-      const rows: Record<string, unknown>[] = (outs[src]?.rows ?? []) as Record<string, unknown>[];
-      const seen: string[] = [];
-      for (const r of rows) {
-        const v = r[key];
-        if (v != null && v !== '') {
-          const sv = String(v);
-          if (!seen.includes(sv)) seen.push(sv);
-        }
-      }
-      return seen;
-    } catch {
-      return [] as string[];
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pivotSortIdx, d.sourceNode, pivotEvalSig, tables]);
   const moveCol = (i: number, dir: -1 | 1) => {
     const j = i + dir;
     if (j < 0 || j >= displayCols.length) return;
@@ -5784,15 +5738,16 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
     update({ pivots: arr } as Partial<RowSortNodeData>);
   };
   const addPivot = () => {
-    const rowCol = merged.find((c) => c.unpivot === true) || merged.find((c) => !c.pivotValue) || merged[0];
-    const valCol = merged.find((c) => c.pivotValue === true) || merged.find((c) => Number.isFinite(Number(exampleVal)) && /数量|库存|金额|求和|sales|qty|val|amount|sum/i.test(c.key || '')) || merged[merged.length - 1];
+    const primary = merged.find((c) => c.show !== false);
+    const numCol = merged.find((c) => /数量|库存|金额|求和|sales|qty|val|amount|sum/i.test((c.key || c.label || ''))) || merged[merged.length - 1];
+    const rowCol = primary && numCol && (primary !== numCol) ? primary : merged.find((c) => c !== numCol) || primary;
     update({
       pivots: [
         ...pivots,
         {
           id: `pivot_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
           rowField: rowCol ? rowCol.label || rowCol.key : '',
-          valueField: valCol ? valCol.label || valCol.key : '',
+          valueField: numCol ? numCol.label || numCol.key : '',
           enable: true,
         } as RowSortPivot,
       ],
@@ -5865,43 +5820,11 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
                 className={`${inputCls} flex-1`}
                 title={`源字段：${c.key}`}
               />
-              <label
-                title={c.unpivot ? '已作为行转列字段：该列不同取值横向展开为表头列' : '勾选后将本列的不同取值去重成横向表头列（行转列透视）'}
-                className="flex cursor-pointer items-center text-[10px] text-violet-600"
-              >
-                <input
-                  type="checkbox"
-                  checked={c.unpivot === true}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setCol(idxOf(i), { unpivot: true });
-                      setPivotSortIdx(idxOf(i));
-                    } else {
-                      setCol(idxOf(i), { unpivot: false, pivotOrder: undefined });
-                    }
-                  }}
-                  className="mr-0.5 h-3 w-3 accent-violet-600"
-                />
-                转
-              </label>
-              <button
-                type="button"
-                onClick={() => setValOpen(true)}
-                className={`rounded px-1.5 py-0.5 text-[10px] ring-1 ${c.pivotValue ? 'bg-rose-500 text-white ring-rose-500' : 'bg-white text-gray-600 ring-gray-200 hover:bg-gray-100'}`}
-                title="行转列值字段：点此弹出选择框，指定一个字段作为表头下填充的数值来源；选定后该字段在②字段列不再展示"
-              >
-                值
-              </button>
               <button type="button" onClick={() => setFmtFor(idxOf(i))} className="rounded px-1.5 py-0.5 text-[10px] ring-1 ring-gray-200 bg-white text-gray-600 hover:bg-gray-100" title="数值格式设置">格式</button>
             </div>
           ))}
         </div>
-        {displayCols.some((c) => c.unpivot === true) && (
-          <div className="rounded-md border border-violet-100 bg-violet-50/50 px-2 py-1 text-[10px] leading-4 text-violet-600">
-            已启用行转列：勾选「转」的字段其不同取值将横向去重成表头列；点「值」指定一个字段作为表头下填充的数值来源（未指定时自动取数值列）。
-          </div>
-        )}
-        {cols.length === 0 && <div className="text-[10px] text-gray-400">选择节点结果后自动带出全部字段，可在此调整顺序与格式。</div>}
+        {cols.length === 0 && <div className="text-[10px] text-gray-400">选择节点结果后自动带出全部字段，可在此调整顺序与格式。如需多指标横向并列展示，请在下方「③ 多横排块」添加。</div>}
 
         {/* ③ 多横排块（并列输出多个指标） */}
         <div>
@@ -5968,7 +5891,7 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
             </button>
             {activePivotCount > 0 && (
               <div className="rounded-md border border-violet-100 bg-violet-50/50 px-2 py-1 text-[10px] leading-4 text-violet-600">
-                已启用 {activePivotCount} 个横排块：每个块按自身「行转列字段」横向展开，并以其「值字段」填充数值，与固定列并列输出。上面的旧「转/值」单块配置不再生效（此多块配置优先）。
+                已启用 {activePivotCount} 个横排块：每个块按自身「行转列字段」横向展开，并以其「值字段」填充数值，与②固定列并列输出。
               </div>
             )}
           </div>
@@ -6067,114 +5990,7 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
         </div>
       )}
 
-      {/* 行转列值字段选择弹窗 */}
-      {valOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4" onClick={() => setValOpen(false)}>
-          <div className="w-[320px] rounded-xl bg-white p-4 shadow-2xl" onClick={(e) => { e.stopPropagation(); }}>
-            <div className="mb-3 flex items-center justify-between">
-              <div className="text-sm font-semibold text-gray-800">选择值字段</div>
-              <button type="button" onClick={() => setValOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
-            </div>
-            <div className="mb-2 text-[11px] leading-4 text-gray-500">作为行转列表头下填充的数值来源；选定后该字段将从②字段列移除。</div>
-            {(() => {
-              const keyOf = (k?: string, l?: string) => (l != null && l !== '' ? l : k) ?? '';
-              const mapCfg = (c: ColOpt): RowSortCol =>
-                merged.find((m) => keyOf(m.key, m.label) === keyOf(c.key, c.label)) ??
-                ({ key: c.key, label: c.label || c.key, type: 'auto', show: true } as RowSortCol);
-              const cur = merged.find((c) => c.pivotValue);
-              return (
-                <div className="max-h-[300px] space-y-1 overflow-y-auto pr-0.5">
-                  {upCols.map((c, i) => {
-                    const cfg = mapCfg(c);
-                    if (cfg.unpivot === true) return null;
-                    const on = cur != null && keyOf(cur.key, cur.label) === keyOf(cfg.key, cfg.label);
-                    return (
-                      <button
-                        key={`${c.key}-${i}`}
-                        type="button"
-                        onClick={() => chooseValue(cfg)}
-                        className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs ring-1 transition ${on ? 'bg-rose-500 text-white ring-rose-500' : 'bg-white text-gray-700 ring-gray-200 hover:bg-gray-100'}`}
-                      >
-                        <span className="truncate">{cfg.label || cfg.key}</span>
-                        <span className="shrink-0 opacity-70">{on ? '当前值字段' : '选为值'}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-
-      {/* 行转列「转」弹窗：对横排表头（去重值）排序 */}
-      {pivotSortIdx != null && merged[pivotSortIdx]?.unpivot === true && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4" onClick={() => setPivotSortIdx(null)}>
-          <div className="w-[340px] rounded-xl bg-white p-4 shadow-2xl" onClick={(e) => { e.stopPropagation(); }}>
-            <div className="mb-3 flex items-center justify-between">
-              <div className="text-sm font-semibold text-gray-800">行转列字段排序</div>
-              <button type="button" onClick={() => setPivotSortIdx(null)} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
-            </div>
-            <div className="mb-2">
-              <label className="mb-1 block text-[11px] font-medium text-gray-500">字段名称</label>
-              <input
-                value={merged[pivotSortIdx]?.label ?? ''}
-                onChange={(e) => setCol(pivotSortIdx, { label: e.target.value })}
-                placeholder={merged[pivotSortIdx]?.key ?? '字段名称'}
-                className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
-              />
-              <div className="mt-2 text-[11px] leading-4 text-gray-500">
-                字段不同取值将横向展开为表头列；此处修改的名称将同步到字段列与预览。
-              </div>
-            </div>
-            {(() => {
-              const cur = merged[pivotSortIdx];
-              const order = Array.isArray(cur.pivotOrder) && cur.pivotOrder.length
-                ? cur.pivotOrder
-                : pivotDistinct;
-              const shown = order.length ? order : (pivotDistinct.length ? pivotDistinct : ['（暂无数据）']);
-              const setOrder = (arr: string[]) => setCol(pivotSortIdx, { pivotOrder: arr });
-              const curLabels = (cur.pivotLabels && typeof cur.pivotLabels === 'object' ? cur.pivotLabels : {}) as Record<string, string>;
-              const setLabel = (orig: string, name: string) => {
-                const next = { ...curLabels };
-                if (name.trim()) next[orig] = name.trim();
-                else delete next[orig];
-                setCol(pivotSortIdx, { pivotLabels: next });
-              };
-              const move = (idx: number, dir: -1 | 1) => {
-                const j = idx + dir;
-                if (j < 0 || j >= shown.length) return;
-                const arr = shown.slice();
-                const [it] = arr.splice(idx, 1);
-                arr.splice(j, 0, it);
-                setOrder(arr);
-              };
-              return (
-                <div className="max-h-[300px] space-y-1 overflow-y-auto pr-0.5">
-                  {shown.map((v, i) => (
-                    <div key={`${v}-${i}`} className="flex items-center gap-1 rounded-md border border-gray-100 bg-gray-50/60 px-2 py-1">
-                      <span className="w-5 text-center text-[10px] text-gray-400">{i + 1}</span>
-                      <input
-                        value={curLabels[v] ?? ''}
-                        placeholder={v}
-                        onChange={(e) => setLabel(v, e.target.value)}
-                        title={`原值：${v}`}
-                        className="flex-1 min-w-0 rounded border border-transparent bg-transparent px-1 text-xs text-gray-700 focus:border-sky-300 focus:bg-white focus:outline-none"
-                      />
-                      <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="text-[10px] text-gray-400 hover:text-sky-600 disabled:opacity-30" title="左移">◀</button>
-                      <button type="button" onClick={() => move(i, 1)} disabled={i === shown.length - 1} className="text-[10px] text-gray-400 hover:text-sky-600 disabled:opacity-30" title="右移">▶</button>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-            <div className="mt-3 flex justify-end gap-2">
-              <button type="button" onClick={() => setPivotSortIdx(null)} className="rounded-md px-3 py-1 text-xs text-gray-500 ring-1 ring-gray-200 hover:bg-gray-100">完成</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </NodeShell>
+      </NodeShell>
   );
 });
 
