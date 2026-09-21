@@ -67,8 +67,8 @@ import {
   useDraftVersion,
   useDirtyVersion,
   getDraft,
-  getDirtyNodeId,
-  isLocked,
+  isEditing,
+  enterEdit,
   writeDraft,
   commitDraft,
   discardDraft,
@@ -301,8 +301,8 @@ function NodeShell({ fnode, children, width = 300 }: { fnode: FlowNode; children
   const hasSource = true; // 所有节点（含开始）都开放右侧出口，用于连向后继
   const { deleteElements, getNodes, getEdges, updateNodeData } = useReactFlow();
   useDirtyVersion();
-  const isDirty = getDirtyNodeId() === fnode.id;
-  const locked = isLocked() && !isDirty;
+  const editing = isEditing(fnode.id);
+  const readOnly = !editing;
   const tables = useRuleTables();
   const preview = useNodePreview();
   const handlePreview = (e: React.MouseEvent) => {
@@ -330,7 +330,7 @@ function NodeShell({ fnode, children, width = 300 }: { fnode: FlowNode; children
   };
   return (
     <div
-      className={`w-[300px] max-w-[300px] rounded-xl border bg-white shadow-sm transition ${locked ? 'pointer-events-none cursor-not-allowed opacity-50 saturate-75' : ''}`}
+      className="w-[300px] max-w-[300px] rounded-xl border bg-white shadow-sm transition"
       style={{ borderColor: color.border, width, maxWidth: width }}
     >
       <div
@@ -346,9 +346,9 @@ function NodeShell({ fnode, children, width = 300 }: { fnode: FlowNode; children
         <span className="min-w-0 flex-1 truncate text-xs font-semibold" style={{ color: color.text }}>
           {nodeTitle(fnode)}
         </span>
-        {isDirty && (
+        {editing && (
           <span className="flex h-4 items-center rounded-full bg-amber-100 px-1.5 text-[9px] font-semibold text-amber-700">
-            未保存
+            编辑中
           </span>
         )}
         <button
@@ -379,9 +379,9 @@ function NodeShell({ fnode, children, width = 300 }: { fnode: FlowNode; children
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      <div className="nodrag px-3 py-2">{children}</div>
+      <div className={`nodrag px-3 py-2 ${readOnly ? 'pointer-events-none select-none opacity-70' : ''}`}>{children}</div>
       <div className="flex h-10 items-center gap-2 border-t px-3 py-2">
-        {isDirty ? (
+        {editing ? (
           <>
             <button
               type="button"
@@ -400,7 +400,13 @@ function NodeShell({ fnode, children, width = 300 }: { fnode: FlowNode; children
             <div className="text-[10px] text-gray-400">保存后更新后续组件</div>
           </>
         ) : (
-          <span className="text-[10px] text-gray-300">编辑完成后点「保存本组件」生效</span>
+          <button
+            type="button"
+            onClick={() => enterEdit(fnode.id)}
+            className="flex-1 rounded-md bg-blue-500 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-600"
+          >
+            编辑本组件
+          </button>
         )}
       </div>
       <Handle type="target" position={Position.Left} style={{ background: color.dot, width: 10, height: 10 }} />
