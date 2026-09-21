@@ -5754,6 +5754,42 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
     } as Partial<RowSortNodeData>);
   };
   const removePivot = (i: number) => setPivot(i, { deleted: true, enable: false });
+  // 取每个已选 rowField 的去重值（来自上游节点运行输出行），供「标签排序」列表展示
+  // 内容签名缓存：只依赖"其它节点配置 data + edges 结构"+ 自身 pivots 的 rowField 选择，拖动/自身无关输入不触发全量 evaluate
+  const allEdges = useEdges() as unknown as FlowEdge[];
+  const rowDistinctSig = useMemo(
+    () =>
+      JSON.stringify(allNodes.filter((n) => (n as unknown as FlowNode).id !== id).map((n) => ((n as unknown as FlowNode).data ?? {}))) +
+      '|' + JSON.stringify(allEdges.map((e) => [e.source, e.target])) +
+      '|' + JSON.stringify(pivots.map((b) => b.rowField ?? '')),
+    [allNodes, allEdges, id, pivots]
+  );
+  const rowDistinctByField = useMemo(() => {
+    const src = d.sourceNode;
+    if (!src) return new Map<string, string[]>();
+    const map = new Map<string, string[]>();
+    try {
+      const outs = evaluateFlow(allNodes as unknown as FlowNode[], allEdges as unknown as FlowEdge[], tables);
+      const rows: Record<string, unknown>[] = (outs[src]?.rows ?? []) as Record<string, unknown>[];
+      for (const b of pivots) {
+        const f = b.rowField;
+        if (!f) continue;
+        const seen: string[] = [];
+        for (const r of rows) {
+          const v = r[f];
+          if (v != null && v !== '') {
+            const sv = String(v);
+            if (!seen.includes(sv)) seen.push(sv);
+          }
+        }
+        map.set(f, seen);
+      }
+      return map;
+    } catch {
+      return new Map<string, string[]>();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.sourceNode, rowDistinctSig, tables]);
   const fmt = fmtFor != null ? (merged[fmtFor] ?? null) : null;
   const exampleVal = 21000.04;
   const fmtCls = (on: boolean) => `rounded px-1.5 py-0.5 text-[10px] ring-1 transition ${on ? 'bg-sky-600 text-white ring-sky-600' : 'bg-white text-gray-600 ring-gray-200 hover:bg-gray-100'}`;
@@ -5879,6 +5915,53 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
                       className="w-24 shrink-0 rounded border border-gray-200 bg-white px-1.5 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
                     />
                   </div>
+                  {(() => {
+                    const distinct = rowDistinctByField.get(b.rowField ?? '') ?? [];
+                    if (!b.rowField || !distinct.length) return null;
+                    const desired = Array.isArray(b.order) && b.order.length ? b.order : [];
+                    const labels = distinct.filter((v) => !desired.includes(v));
+                    const ordered = desired.filter((v) => distinct.includes(v));
+                    const order = [...ordered, ...labels];
+                    const curLabels = (b.labels && typeof b.labels === 'object' ? b.labels : {}) as Record<string, string>;
+                    const setOrder = (arr: string[]) => setPivot(real, { order: arr });
+                    const setLabel = (orig: string, name: string) => {
+                      const next = { ...curLabels };
+                      if (name.trim()) next[orig] = name.trim();
+                      else delete next[orig];
+                      setPivot(real, { labels: next });
+                    };
+                    const move = (idx: number, dir: -1 | 1) => {
+                      const j = idx + dir;
+                      if (j < 0 || j >= order.length) return;
+                      const arr = order.slice();
+                      const [it] = arr.splice(idx, 1);
+                      arr.splice(j, 0, it);
+                      setOrder(arr);
+                    };
+                    return (
+                      <div className="mt-1.5 rounded-md border border-violet-100 bg-white/60 px-1.5 py-1">
+                        <div className="mb-1 flex items-center justify-between">
+                          <span className="text-[10px] text-violet-500">横向表头标签（{b.rowField} 去重值，可按顺序调整）</span>
+                        </div>
+                        <div className="max-h-[160px] space-y-1 overflow-y-auto pr-0.5">
+                          {order.map((v, li) => (
+                            <div key={`${v}-${li}`} className="flex items-center gap-1 rounded border border-gray-100 bg-white px-1.5 py-0.5">
+                              <span className="w-4 shrink-0 text-center text-[10px] text-gray-400">{li + 1}</span>
+                              <input
+                                value={curLabels[v] ?? ''}
+                                placeholder={v}
+                                onChange={(e) => setLabel(v, e.target.value)}
+                                title={`原值：${v}`}
+                                className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 text-[11px] text-gray-700 focus:border-sky-300 focus:bg-white focus:outline-none"
+                              />
+                              <button type="button" onClick={() => move(li, -1)} disabled={li === 0} className="shrink-0 text-[10px] text-gray-400 hover:text-violet-600 disabled:opacity-30" title="左移">◀</button>
+                              <button type="button" onClick={() => move(li, 1)} disabled={li === order.length - 1} className="shrink-0 text-[10px] text-gray-400 hover:text-violet-600 disabled:opacity-30" title="右移">▶</button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
