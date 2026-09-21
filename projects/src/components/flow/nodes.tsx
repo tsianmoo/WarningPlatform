@@ -5731,7 +5731,15 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
     update({ cols: arr } as Partial<RowSortNodeData>);
   };
   const pivots = Array.isArray(d.pivots) ? d.pivots : [];
-  const activePivotCount = pivots.filter((b) => b && b.enable !== false && b.deleted !== true && b.rowField && b.valueField).length;
+  const visiblePivots = pivots.filter((b) => b && b.deleted !== true);
+  const firstIdxByField = useMemo(() => {
+    const m = new Map<string, number>();
+    visiblePivots.forEach((b, i) => {
+      if (b && b.rowField && !m.has(b.rowField)) m.set(b.rowField, i);
+    });
+    return m;
+  }, [visiblePivots]);
+  const activePivotCount = visiblePivots.filter((b) => b && b.enable !== false && b.rowField && b.valueField).length;
   const setPivot = (i: number, patch: Partial<RowSortPivot>) => {
     const arr = pivots.slice();
     arr[i] = { ...arr[i], ...patch };
@@ -5866,7 +5874,7 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
         <div>
           <div className={rowLabel}>③ 多横排块（需两个及以上指标横排时使用）</div>
           <div className="space-y-1.5">
-            {pivots.filter((b) => !(b && b.deleted === true)).map((b, i) => {
+            {visiblePivots.map((b, i) => {
               const real = pivots.findIndex((x) => x === b);
               const rowCands = merged.filter((c) => c.show !== false);
               const valCands = merged.filter((c) => c.show !== false);
@@ -5918,17 +5926,23 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
                   {(() => {
                     const distinct = rowDistinctByField.get(b.rowField ?? '') ?? [];
                     if (!b.rowField || !distinct.length) return null;
+                    const isFirstField = firstIdxByField.get(b.rowField) === i;
                     const desired = Array.isArray(b.order) && b.order.length ? b.order : [];
-                    const labels = distinct.filter((v) => !desired.includes(v));
-                    const ordered = desired.filter((v) => distinct.includes(v));
-                    const order = [...ordered, ...labels];
+                    const labelsSide = distinct.filter((v) => !desired.includes(v));
+                    const orderedSide = desired.filter((v) => distinct.includes(v));
+                    const order = [...orderedSide, ...labelsSide];
                     const curLabels = (b.labels && typeof b.labels === 'object' ? b.labels : {}) as Record<string, string>;
-                    const setOrder = (arr: string[]) => setPivot(real, { order: arr });
+                    const patchField = (patch: Partial<RowSortPivot>) => {
+                      const arr = pivots.slice();
+                      arr.forEach((x, xi) => { if (x && x.rowField === b.rowField) arr[xi] = { ...x, ...patch }; });
+                      update({ pivots: arr } as Partial<RowSortNodeData>);
+                    };
+                    const setOrder = (arr: string[]) => patchField({ order: arr });
                     const setLabel = (orig: string, name: string) => {
                       const next = { ...curLabels };
                       if (name.trim()) next[orig] = name.trim();
                       else delete next[orig];
-                      setPivot(real, { labels: next });
+                      patchField({ labels: next });
                     };
                     const move = (idx: number, dir: -1 | 1) => {
                       const j = idx + dir;
@@ -5941,24 +5955,31 @@ const RowSortNode = memo(function RowSortNode({ id, data }: NodeProps) {
                     return (
                       <div className="mt-1.5 rounded-md border border-violet-100 bg-white/60 px-1.5 py-1">
                         <div className="mb-1 flex items-center justify-between">
-                          <span className="text-[10px] text-violet-500">横向表头标签（{b.rowField} 去重值，可按顺序调整）</span>
+                          <span className="text-[10px] text-violet-500">{isFirstField ? `横向表头（${b.rowField} 去重值，可改名/排序）` : `该行转列字段的顺序与命名与首块共享，可仅在本块设置表头前缀`}</span>
                         </div>
-                        <div className="max-h-[160px] space-y-1 overflow-y-auto pr-0.5">
-                          {order.map((v, li) => (
-                            <div key={`${v}-${li}`} className="flex items-center gap-1 rounded border border-gray-100 bg-white px-1.5 py-0.5">
-                              <span className="w-4 shrink-0 text-center text-[10px] text-gray-400">{li + 1}</span>
-                              <input
-                                value={curLabels[v] ?? ''}
-                                placeholder={v}
-                                onChange={(e) => setLabel(v, e.target.value)}
-                                title={`原值：${v}`}
-                                className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 text-[11px] text-gray-700 focus:border-sky-300 focus:bg-white focus:outline-none"
-                              />
-                              <button type="button" onClick={() => move(li, -1)} disabled={li === 0} className="shrink-0 text-[10px] text-gray-400 hover:text-violet-600 disabled:opacity-30" title="左移">◀</button>
-                              <button type="button" onClick={() => move(li, 1)} disabled={li === order.length - 1} className="shrink-0 text-[10px] text-gray-400 hover:text-violet-600 disabled:opacity-30" title="右移">▶</button>
-                            </div>
-                          ))}
-                        </div>
+                        {isFirstField ? (
+                          <div className="flex flex-wrap items-center gap-1">
+                            {order.map((v, li) => {
+                              const name = curLabels[v] !== undefined ? curLabels[v] : v;
+                              return (
+                                <span key={`${v}-${li}`} className="group inline-flex items-center gap-0.5 rounded-full border border-violet-200 bg-white py-0.5 pl-2 pr-1 text-[11px] text-gray-700">
+                                  <span className="max-w-[88px] truncate" title={`原值：${v}`}>{b.prefix ? `${b.prefix}·${name}` : name}</span>
+                                  <input
+                                    value={curLabels[v] ?? ''}
+                                    placeholder={v}
+                                    onChange={(e) => setLabel(v, e.target.value)}
+                                    title={`点击修改名称（原值：${v}）`}
+                                    className="w-[56px] rounded px-0.5 text-[10px] focus:border-sky-300 focus:outline-none"
+                                  />
+                                  <button type="button" onClick={() => move(li, -1)} disabled={li === 0} className="text-[10px] text-gray-300 hover:text-violet-500 disabled:opacity-20" title="左移">◀</button>
+                                  <button type="button" onClick={() => move(li, 1)} disabled={li === order.length - 1} className="text-[10px] text-gray-300 hover:text-violet-500 disabled:opacity-20" title="右移">▶</button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-gray-400">表头顺序/命名随首块变化，这里只需注意：此块输出的每条表头 = {b.prefix ? `「${b.prefix}」 + 上方标签名` : '标签名'}。</div>
+                        )}
                       </div>
                     );
                   })()}
