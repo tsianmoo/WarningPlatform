@@ -1735,7 +1735,7 @@ export const DEFAULT_HOME_CONFIG: HomeConfig = {
   navMenus: DEFAULT_NAV_MENUS,
   brand: {
     text: 'DIANNIU.YJ', logo: '',
-    font: 'system-ui', size: 15, weight: 700, letterSpacing: 2,
+    font: 'system-ui', size: 22, weight: 500, letterSpacing: 3,
     color: '#000000', opacity: 1, x: 0, y: 0, marginLeft: 0,
     padding: { top: 20, right: 16, bottom: 20, left: 16 },
   },

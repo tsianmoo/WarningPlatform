@@ -37,15 +37,19 @@ export default function BrandConfig({ onHome }: { onHome: () => void }) {
   const num = (v: number) => (Number.isFinite(v) ? v : 0);
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-6">
-      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 text-base font-semibold text-gray-800">基础信息管理</div>
+    <div className="space-y-6 p-6">
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="border-b border-gray-100 px-6 py-4">
+          <div className="text-[15px] font-semibold text-gray-900">基础信息管理</div>
+          <div className="mt-0.5 text-xs text-gray-400">配置品牌 LOGO、系统名称与文字样式</div>
+        </div>
 
+        <div className="p-6">
         {/* 实时预览 */}
-        <div className="mb-5 rounded-xl border border-dashed border-gray-200 bg-gray-50/70 p-4">
-          <div className="mb-2 text-xs text-gray-400">实时预览</div>
-          <div className="flex items-center gap-2" style={{ paddingTop: pad.top, paddingRight: pad.right, paddingBottom: pad.bottom, paddingLeft: pad.left }}>
-            {brand.logo && <img src={brand.logo} alt="logo" className="h-8 w-8 object-contain" />}
+        <div className="mb-6 rounded-xl bg-gray-50 px-4 py-5">
+          <div className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-400">实时预览</div>
+          <div className="flex items-center gap-3" style={{ paddingTop: pad.top, paddingRight: pad.right, paddingBottom: pad.bottom, paddingLeft: pad.left }}>
+            {brand.logo && <img src={brand.logo} alt="logo" className="h-9 w-9 rounded-md object-contain" />}
             <span
               style={{
                 fontFamily: brand.font || 'system-ui',
@@ -61,10 +65,10 @@ export default function BrandConfig({ onHome }: { onHome: () => void }) {
         </div>
 
         {/* LOGO */}
-        <div className="mb-4 border-b border-gray-100 pb-4">
-          <div className="mb-1 text-sm font-medium text-gray-700">LOGO</div>
+        <div className="mb-5 border-b border-gray-100 pb-5">
+          <div className="mb-3 text-[13px] font-medium text-gray-500">LOGO</div>
           <div className="flex items-center gap-4">
-            <label className="flex h-16 w-16 cursor-pointer items-center justify-center overflow-hidden rounded-xl border border-dashed border-gray-300 bg-gray-50 hover:border-blue-400">
+            <label className="flex h-16 w-16 cursor-pointer items-center justify-center overflow-hidden rounded-xl border border-dashed border-gray-300 bg-gray-50 transition-colors hover:border-gray-400 hover:bg-gray-100">
               {brand.logo ? (
                 <img src={brand.logo} alt="logo" className="h-full w-full object-contain" />
               ) : (
@@ -89,7 +93,7 @@ export default function BrandConfig({ onHome }: { onHome: () => void }) {
           <input
             value={brand.text}
             onChange={(e) => patch({ text: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-200"
             placeholder="请输入系统名称"
           />
         </div>
@@ -101,7 +105,7 @@ export default function BrandConfig({ onHome }: { onHome: () => void }) {
             <select
               value={brand.font}
               onChange={(e) => patch({ font: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm outline-none focus:border-blue-500"
+              className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm outline-none focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-200"
             >
               {FONT_OPTIONS.map((f) => (
                 <option key={f.value} value={f.value}>{f.label}</option>
@@ -113,14 +117,11 @@ export default function BrandConfig({ onHome }: { onHome: () => void }) {
             <select
               value={String(num(brand.weight) || 700)}
               onChange={(e) => patch({ weight: Number(e.target.value) })}
-              className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm outline-none focus:border-blue-500"
+              className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm outline-none focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-200"
             >
-              <option value="400">常规 (400)</option>
-              <option value="500">中等 (500)</option>
-              <option value="600">半粗 (600)</option>
-              <option value="700">加粗 (700)</option>
-              <option value="800">特粗 (800)</option>
-              <option value="900">黑体 (900)</option>
+              {[100, 200, 300, 400, 500, 600, 700, 800, 900, 1000].map((w) => (
+                <option key={w} value={w}>{w}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -134,7 +135,7 @@ export default function BrandConfig({ onHome }: { onHome: () => void }) {
               <input
                 type="number" min={10} max={48} value={num(brand.size)}
                 onChange={(e) => patch({ size: numClamp(Number(e.target.value), 10, 48) })}
-                className="w-16 rounded-md border border-gray-300 px-2 py-1 text-center text-sm outline-none focus:border-blue-500"
+                className="w-16 rounded-md border border-gray-300 px-2 py-1 text-center text-sm outline-none focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-200"
               />
             </div>
           </div>
@@ -149,7 +150,7 @@ export default function BrandConfig({ onHome }: { onHome: () => void }) {
               <input
                 type="number" min={0} max={20} value={num(brand.letterSpacing)}
                 onChange={(e) => patch({ letterSpacing: numClamp(Number(e.target.value), 0, 20) })}
-                className="w-16 rounded-md border border-gray-300 px-2 py-1 text-center text-sm outline-none focus:border-blue-500"
+                className="w-16 rounded-md border border-gray-300 px-2 py-1 text-center text-sm outline-none focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-200"
               />
             </div>
           </div>
@@ -197,12 +198,13 @@ export default function BrandConfig({ onHome }: { onHome: () => void }) {
                   <input
                     type="number" min={0} max={80} value={v}
                     onChange={(e) => patchPad(k, Number(e.target.value))}
-                    className="w-14 rounded-md border border-gray-300 px-1 py-1 text-center text-xs outline-none focus:border-blue-500"
+                    className="w-14 rounded-md border border-gray-300 px-1 py-1 text-center text-xs outline-none focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-200"
                   />
                 </div>
               </div>
             ))}
           </div>
+        </div>
         </div>
       </div>
 
