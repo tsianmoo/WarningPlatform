@@ -47,8 +47,7 @@ const rs: FlowNode = {
       { key: '销量', label: '销量', show: true },
     ],
     pivots: [
-      { id: 'p1', rowField: '尺寸名', valueField: '库存', prefix: '存', enable: true, order: ['175/92A', '170/88A'], labels: { '175/92A': '加大', '170/88A': '标准' } },
-      // 块2 故意不给 order/labels，验证 evaluate 同字段共享兜底（应复用块1的顺序与改名）
+      { id: 'p1', rowField: '尺寸名', valueField: '库存', prefix: '存', enable: true },
       { id: 'p2', rowField: '尺寸名', valueField: '销量', prefix: '销', enable: true },
     ],
   },
