@@ -1,11 +1,12 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { Database, Pencil, Trash2 } from 'lucide-react';
+import { ChevronLeft, Database, Pencil, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { toast } from 'sonner';
 import type { Employee } from '@/lib/types';
 import DealerSourceModal, { loadSrcCfg, srcColumns, srcValue } from '@/components/DealerSourceModal';
+import { ColumnFilter, LoginToggle } from '@/components/ColumnFilter';
 
 export default function EmployeeManage({ onBack }: { onBack: () => void }) {
   const { state, updateEmployee, removeEmployee } = useStore();
@@ -17,23 +18,39 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
   const [srcTick, setSrcTick] = useState(0);
   const srcCfg = useMemo(() => loadSrcCfg('employee'), [srcTick]);
   const srcCols = useMemo(() => { const c = srcColumns('employee', srcCfg); return c.length ? c : null; }, [srcCfg]);
+  // 列筛选：数据源配置里勾了「筛选」的字段，在列表上方出现可搜索下拉
+  const filterCols = useMemo(() => (srcCols ?? []).filter((c) => srcCfg?.filters?.[c.key] === true), [srcCols, srcCfg]);
+  const [colFilters, setColFilters] = useState<Record<string, string>>({});
+  const colVal = (e: Employee, c: NonNullable<typeof srcCols>[number]) => srcValue('employee', e, c);
+
   const [f, setF] = useState({ dealerId: '', storeId: '', code: '', name: '', post: '', onDuty: '', enabled: '' });
+  const [kw, setKw] = useState('');
+  const [panelOpen, setPanelOpen] = useState(false);
+  const q = kw.trim().toLowerCase();
   const filtered = useMemo(() => employees.filter((e) =>
+    (!q || (e.name || '').toLowerCase().includes(q) || (e.code || '').toLowerCase().includes(q)) &&
     (!f.dealerId || e.dealerId === f.dealerId) &&
     (!f.storeId || e.storeId === f.storeId) &&
     (!f.code || (e.code ?? '').toLowerCase().includes(f.code.toLowerCase())) &&
     (!f.name || e.name.includes(f.name)) &&
     (!f.post || (e.attrs?.['岗位'] || e.post || '') === f.post) &&
     (!f.onDuty || (e.onDuty !== false) === (f.onDuty === '1')) &&
-    (!f.enabled || (e.enabled !== false) === (f.enabled === '1'))
-  ), [employees, f]);
+    (!f.enabled || (e.enabled !== false) === (f.enabled === '1')) &&
+    filterCols.every((c) => {
+      const v = colFilters[c.key];
+      if (!v) return true;
+      return colVal(e, c) === v;
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [employees, f, q, filterCols, colFilters]);
 
   const [editing, setEditing] = useState<Employee | null>(null);
   const [open, setOpen] = useState(false);
+  const [confirmDel, setConfirmDel] = useState<Employee | null>(null);
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(0);
-  const [form, setForm] = useState<{ code: string; name: string; dealerId: string; storeId: string; post: string; onDuty: boolean; enabled: boolean; password: string; attrs: Record<string, string> }>({ code: '', name: '', dealerId: '', storeId: '', post: '', onDuty: true, enabled: true, password: '', attrs: {} });
-  const openEdit = (e: Employee) => { setEditing(e); setForm({ code: e.code ?? '', name: e.name, dealerId: e.dealerId ?? '', storeId: e.storeId ?? '', post: e.post ?? '', onDuty: e.onDuty !== false, enabled: e.enabled !== false, password: e.password ?? '', attrs: e.attrs ?? {} }); setOpen(true); };
+  const [form, setForm] = useState<{ password: string }>({ password: '' });
+  const openEdit = (e: Employee) => { setEditing(e); setForm({ password: e.password ?? '' }); setOpen(true); };
 
   const save = () => {
     if (!editing) return;
@@ -42,152 +59,219 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
     setOpen(false);
   };
 
-  const del = (e: Employee) => { if (confirm(`确认删除员工「${e.name}」？`)) removeEmployee(e.id); };
-
   const total = filtered.length;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, pageCount - 1);
   const paged = filtered.slice(safePage * pageSize, safePage * pageSize + pageSize);
 
-  useEffect(() => { setPage(0); }, [filtered, pageSize]);
+  useEffect(() => { setPage(0); }, [kw, f, pageSize]);
 
   const input = 'w-full rounded border border-gray-300 px-2.5 py-1.5 text-sm';
   const label = 'mb-1 block text-xs font-medium text-gray-600';
-  const th = 'border border-gray-200 px-3 py-2 text-left text-xs font-semibold text-gray-600 bg-gray-50';
-  const td = 'border border-gray-200 px-3 py-2 text-sm text-gray-700';
   const sel = 'w-full rounded border border-gray-300 px-2 py-1.5 text-sm';
 
+  const resetFilters = () => {
+    setF({ dealerId: '', storeId: '', code: '', name: '', post: '', onDuty: '', enabled: '' });
+    setColFilters({});
+    setPage(0);
+  };
+
   return (
-    <div className="flex h-full flex-col gap-3 p-4">
-      <div className="flex items-center justify-between">
-        <button onClick={onBack} className="rounded border border-gray-300 px-3 py-1 text-sm text-gray-600 hover:bg-gray-100">‹ 返回</button>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setSrcOpen(true)} title="数据表驱动建档" className="inline-flex items-center gap-1 rounded bg-indigo-600 px-3 py-1 text-sm text-white hover:bg-indigo-700"><Database className="h-3.5 w-3.5" />数据源</button>
+    <div className="flex h-full overflow-hidden">
+      <aside className="flex flex-1 shrink-0 flex-col overflow-hidden border-r border-gray-200 bg-white">
+        <div className="border-b border-gray-100 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+              <button onClick={onBack} title="返回经销商" className="-ml-1 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"><ChevronLeft size={16} /></button>
+              <span>员工列表</span>
+              <span className="rounded-full bg-gray-100 px-1.5 text-[11px] text-gray-500">{filtered.length}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setPanelOpen((o) => !o)}
+                className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-sm ${panelOpen ? 'border-gray-300 bg-gray-50 text-gray-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+              >
+                <SlidersHorizontal size={14} />筛选
+              </button>
+              <button onClick={() => setSrcOpen(true)} title="数据表驱动建档" className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1.5 text-sm text-white hover:bg-indigo-700"><Database size={15} />数据源</button>
+            </div>
+          </div>
+          <input value={kw} onChange={(e) => setKw(e.target.value)} placeholder="搜索员工姓名 / 编号" className="mt-2 w-full rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm outline-none focus:border-blue-400" />
+          {filterCols.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {filterCols.map((c) => (
+                <ColumnFilter
+                  key={c.key}
+                  label={c.label}
+                  options={Array.from(new Set(employees.map((e) => colVal(e, c))))}
+                  value={colFilters[c.key] || ''}
+                  onChange={(v) => {
+                    setColFilters((m) => ({ ...m, [c.key]: v }));
+                    setPage(0);
+                  }}
+                />
+              ))}
+            </div>
+          )}
+          {panelOpen && (
+            <div className="mt-2 rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2.5">
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:grid-cols-4">
+                <div>
+                  <label className={label}>所属经销商</label>
+                  <select value={f.dealerId} onChange={(e) => setF({ ...f, dealerId: e.target.value })} className={sel}><option value="">全部</option>{dealers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
+                </div>
+                <div>
+                  <label className={label}>所属店仓</label>
+                  <select value={f.storeId} onChange={(e) => setF({ ...f, storeId: e.target.value })} className={sel}><option value="">全部</option>{stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+                </div>
+                <div>
+                  <label className={label}>员工编号</label>
+                  <input value={f.code} onChange={(e) => setF({ ...f, code: e.target.value })} placeholder="编号" className={input} />
+                </div>
+                <div>
+                  <label className={label}>员工姓名</label>
+                  <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="姓名" className={input} />
+                </div>
+                <div>
+                  <label className={label}>岗位</label>
+                  <select value={f.post} onChange={(e) => setF({ ...f, post: e.target.value })} className={sel}><option value="">全部</option>{(empAttrs.find((a) => a.name === '岗位')?.items ?? []).map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}</select>
+                </div>
+                <div>
+                  <label className={label}>在职状态</label>
+                  <select value={f.onDuty} onChange={(e) => setF({ ...f, onDuty: e.target.value })} className={sel}><option value="">全部</option><option value="1">在职</option><option value="0">离职</option></select>
+                </div>
+                <div>
+                  <label className={label}>可用状态</label>
+                  <select value={f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.value })} className={sel}><option value="">全部</option><option value="1">可用</option><option value="0">停用</option></select>
+                </div>
+                <div className="flex items-end">
+                  <button onClick={resetFilters} className="h-[34px] w-full rounded border border-gray-300 text-sm text-gray-600 hover:bg-gray-100">重置</button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-      </div>
 
-      <div className="rounded-md border border-gray-200 bg-white px-3 py-2.5">
-        <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:grid-cols-4 xl:grid-cols-8">
-          <div>
-            <label className={label}>所属经销商</label>
-            <select value={f.dealerId} onChange={(e) => setF({ ...f, dealerId: e.target.value })} className={sel}><option value="">全部</option>{dealers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
-          </div>
-          <div>
-            <label className={label}>所属店仓</label>
-            <select value={f.storeId} onChange={(e) => setF({ ...f, storeId: e.target.value })} className={sel}><option value="">全部</option>{stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-          </div>
-          <div>
-            <label className={label}>员工编号</label>
-            <input value={f.code} onChange={(e) => setF({ ...f, code: e.target.value })} placeholder="编号" className={input} />
-          </div>
-          <div>
-            <label className={label}>员工姓名</label>
-            <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="姓名" className={input} />
-          </div>
-          <div>
-            <label className={label}>岗位</label>
-            <select value={f.post} onChange={(e) => setF({ ...f, post: e.target.value })} className={sel}><option value="">全部</option>{(empAttrs.find((a) => a.name === '岗位')?.items ?? []).map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}</select>
-          </div>
-          <div>
-            <label className={label}>在职状态</label>
-            <select value={f.onDuty} onChange={(e) => setF({ ...f, onDuty: e.target.value })} className={sel}><option value="">全部</option><option value="1">在职</option><option value="0">离职</option></select>
-          </div>
-          <div>
-            <label className={label}>可用状态</label>
-            <select value={f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.value })} className={sel}><option value="">全部</option><option value="1">可用</option><option value="0">停用</option></select>
-          </div>
-          <div className="flex items-end">
-            <button onClick={() => setF({ dealerId: '', storeId: '', code: '', name: '', post: '', onDuty: '', enabled: '' })} className="h-[34px] w-full rounded border border-gray-300 text-sm text-gray-600 hover:bg-gray-100">重置</button>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-h-[calc(100vh-200px)] overflow-auto rounded border border-gray-200">
-        <table className="w-full border-collapse bg-white">
-          <thead>
-            <tr>
-              <th className={th}>序号</th>
-              {srcCols ? srcCols.map((c) => <th key={c.key} className={th}>{c.label}</th>) : (
-                <>
-                  <th className={th}>员工编号</th>
-                  <th className={th}>员工姓名</th>
-                  <th className={th}>所属经销商</th>
-                  <th className={th}>所属店仓</th>
-                  <th className={th}>岗位</th>
-                  <th className={th}>是否在职</th>
-                  <th className={th}>是否可用</th>
-                </>
-              )}
-              <th className={th}>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paged.map((e, i) => (
-              <tr key={e.id} className="hover:bg-gray-50">
-                <td className={td}>{safePage * pageSize + i + 1}</td>
-                {srcCols ? srcCols.map((c) => <td key={c.key} className={td}>{srcValue('employee', e, c)}</td>) : (
+        <div className="flex-1 overflow-auto">
+          <table className="min-w-full border-collapse text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" style={{ width: 'max-content' }}>
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs text-gray-500">
+                <th className="px-3 py-2.5 font-medium">序号</th>
+                {srcCols ? srcCols.map((c) => <th key={c.key} className="px-3 py-2.5 font-medium">{c.label}</th>) : (
                   <>
-                    <td className={td}>{e.code}</td>
-                    <td className={td}>{e.name}</td>
-                    <td className={td}>{dealerMap.get(e.dealerId ?? '') ?? '-'}</td>
-                    <td className={td}>{storeMap.get(e.storeId ?? '') ?? '-'}</td>
-                    <td className={td}>{e.attrs?.['岗位'] || e.post || '-'}</td>
-                    <td className={td}>{e.onDuty !== false ? '在职' : '离职'}</td>
-                    <td className={td}>{e.enabled !== false ? '可用' : '停用'}</td>
+                    <th className="px-3 py-2.5 font-medium">员工编号</th>
+                    <th className="px-3 py-2.5 font-medium">员工姓名</th>
+                    <th className="px-3 py-2.5 font-medium">所属经销商</th>
+                    <th className="px-3 py-2.5 font-medium">所属店仓</th>
+                    <th className="px-3 py-2.5 font-medium">岗位</th>
+                    <th className="px-3 py-2.5 font-medium">是否在职</th>
                   </>
                 )}
-                <td className={td}>
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => openEdit(e)} className="rounded p-1 text-blue-600 hover:bg-blue-50"><Pencil className="h-4 w-4" /></button>
-                    <button onClick={() => del(e)} className="rounded p-1 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
-                  </div>
-                </td>
+                <th className="px-3 py-2.5 font-medium">可用状态</th>
+                <th className="sticky right-0 z-10 border-l border-gray-200 bg-gray-50 px-3 py-2.5 text-right font-medium shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.15)]">操作</th>
               </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr><td colSpan={srcCols ? srcCols.length + 2 : 9} className="px-3 py-8 text-center text-sm text-gray-400">暂无员工</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {filtered.length > 0 && (
-        <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
-          <div className="flex items-center gap-1.5">
-            共 <span className="font-medium text-gray-700">{total}</span> 行
-            <span className="mx-1 text-gray-300">|</span>
-            每页
-            <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }} className="rounded border border-gray-200 bg-white px-1 py-0.5 outline-none">
-              {[10, 20, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
-            行
-          </div>
-          <div className="flex items-center gap-1.5">
-            <button disabled={safePage === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} className="rounded border border-gray-200 bg-white px-2 py-0.5 disabled:opacity-40 hover:enabled:bg-gray-50">上一页</button>
-            <span>{safePage + 1} / {pageCount}</span>
-            <button disabled={safePage >= pageCount - 1} onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))} className="rounded border border-gray-200 bg-white px-2 py-0.5 disabled:opacity-40 hover:enabled:bg-gray-50">下一页</button>
-          </div>
+            </thead>
+            <tbody>
+              {paged.map((e, i) => {
+                return (
+                  <tr key={e.id} className="group border-b border-gray-100 text-gray-700 hover:bg-gray-50">
+                    <td className="px-3 py-2.5 text-gray-400">{safePage * pageSize + i + 1}</td>
+                    {srcCols ? srcCols.map((c) => <td key={c.key} className="px-3 py-2.5">{colVal(e, c)}</td>) : (
+                      <>
+                        <td className="px-3 py-2.5">{e.code || '-'}</td>
+                        <td className="px-3 py-2.5 font-medium text-gray-900">{e.name}</td>
+                        <td className="px-3 py-2.5">{dealerMap.get(e.dealerId ?? '') ?? '-'}</td>
+                        <td className="px-3 py-2.5">{storeMap.get(e.storeId ?? '') ?? '-'}</td>
+                        <td className="px-3 py-2.5">{e.attrs?.['岗位'] || e.post || '-'}</td>
+                        <td className="px-3 py-2.5">{e.onDuty !== false ? '在职' : '离职'}</td>
+                      </>
+                    )}
+                    <td className="px-3 py-2.5">{e.enabled !== false ? <span className="rounded bg-green-50 px-1.5 py-0.5 text-xs font-medium text-green-600">可用</span> : <span className="rounded bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-500">停用</span>}</td>
+                    <td className="sticky right-0 z-10 border-l border-gray-100 px-3 py-2.5 shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)] bg-white group-hover:bg-gray-50">
+                      <span className="flex items-center justify-end gap-1 text-gray-400">
+                        <span className="mr-1 flex items-center gap-1.5 border-r border-gray-100 pr-2" title="允许登录">
+                          <LoginToggle
+                            checked={e.enabled !== false}
+                            onChange={(on) => {
+                              if (on === e.enabled) return;
+                              updateEmployee({ ...e, enabled: on } as Employee);
+                              toast.success(`${on ? '已开启' : '已关闭'}「${e.name}」的登录（${on ? '账号可正常登录' : '登录账号已停用，现有会话一并失效'}）`);
+                            }}
+                          />
+                        </span>
+                        <button title="编辑" onClick={() => openEdit(e)} className="rounded p-1 hover:bg-gray-100 hover:text-gray-700"><Pencil size={14} /></button>
+                        <button title="删除" onClick={() => setConfirmDel(e)} className="rounded p-1 hover:bg-red-50 hover:text-red-600"><Trash2 size={14} /></button>
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filtered.length === 0 && (
+                <tr><td colSpan={srcCols ? srcCols.length + 3 : 9} className="px-3 py-8 text-center text-sm text-gray-400">暂无员工，点击右上角「数据源」同步建档</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
 
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setOpen(false)}>
-          <div className="w-[420px] rounded-lg bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-3 text-base font-semibold">重置员工密码</h3>
-            {editing && <p className="mb-3 text-xs text-gray-400">对象：{editing.name}（员工编号：{editing.code || '-'}）</p>}
-            <div>
+        {filtered.length > 0 && (
+          <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2 text-xs text-gray-500">
+            <div className="flex items-center gap-1.5">
+              共 <span className="font-medium text-gray-700">{total}</span> 行
+              <span className="mx-1 text-gray-300">|</span>
+              每页
+              <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }} className="rounded border border-gray-200 bg-white px-1 py-0.5 outline-none">
+                {[10, 20, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+              行
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button disabled={safePage === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} className="rounded border border-gray-200 bg-white px-2 py-0.5 disabled:opacity-40 hover:enabled:bg-gray-50">上一页</button>
+              <span>{safePage + 1} / {pageCount}</span>
+              <button disabled={safePage >= pageCount - 1} onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))} className="rounded border border-gray-200 bg-white px-2 py-0.5 disabled:opacity-40 hover:enabled:bg-gray-50">下一页</button>
+            </div>
+          </div>
+        )}
+      </aside>
+
+      {open && editing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="text-base font-semibold text-gray-900">重置员工密码</h3>
+            <div className="mt-5">
               <label className={label}>重置密码</label>
-              <input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="留空保持原密码" className={input} />
+              <input value={form.password} onChange={(e) => setForm({ password: e.target.value })} placeholder="留空保持原密码" className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900" />
+              <p className="mt-3 text-xs text-gray-400">对象：{editing.name}（员工编号：{editing.code || '-'}）</p>
             </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => setOpen(false)} className="rounded border border-gray-300 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100">取消</button>
-              <button onClick={save} className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700">保存</button>
+            <div className="mt-6 flex justify-end gap-2">
+              <button onClick={() => setOpen(false)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">取消</button>
+              <button onClick={save} className="rounded-lg bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700">保存</button>
             </div>
           </div>
         </div>
       )}
 
-      <DealerSourceModal kind="employee" open={srcOpen} onClose={() => setSrcOpen(false)} onSynced={() => setSrcTick((x) => x + 1)} />
+      {confirmDel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="text-base font-semibold text-gray-900">删除确认</h3>
+            <p className="mt-2 text-sm text-gray-500">确定删除员工「{confirmDel.name}」吗？删除后不可恢复。</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setConfirmDel(null)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm">取消</button>
+              <button
+                onClick={() => {
+                  removeEmployee(confirmDel.id);
+                  setConfirmDel(null);
+                }}
+                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-500"
+              >
+                删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <DealerSourceModal kind="employee" open={srcOpen} onClose={() => { setSrcOpen(false); setSrcTick((x) => x + 1); }} onSynced={() => setSrcTick((x) => x + 1)} />
     </div>
   );
 }

@@ -140,6 +140,11 @@ interface AccountSeed {
    * 无值 → 使用系统默认初始密码（DEFAULT_INITIAL_PASSWORD）。
    */
   initialPassword?: string | null;
+  /**
+   * 档案上的「允许登录」开关（经销商/店仓/员工/人员列表操作列可切换）。
+   * false → 登录账号置为停用并踢掉现有会话；缺省/true → 保持启用。
+   */
+  accountEnabled?: boolean;
 }
 
 /**
@@ -200,13 +205,16 @@ async function ensureAccounts(tx: PoolClient, seeds: AccountSeed[]): Promise<voi
     // 区分「档案还在的正常同步」与「档案删除后重建（账号此前被停用）」：
     // 后者视为重新开通 —— 密码重置为初始密码、清除失败锁定、踢掉旧会话。
     // 否则重建的档案挂着旧密码（用户已改过、无人知道），表现为「添加了用户却登录不了」。
+    // 档案上的「允许登录」开关（accountEnabled=false）优先级最高：
+    // 即使账号此前被禁用，只要档案明确要求停用，就保持停用、不重置密码。
     const st = await tx.query<{ id: string; enabled: boolean }>(
       `SELECT id, enabled FROM accounts WHERE id = ANY($1::text[])`,
       [updates.map((s) => s.id)]
     );
     const wasDisabled = new Set(st.rows.filter((r) => !r.enabled).map((r) => r.id));
     for (const s of updates) {
-      if (wasDisabled.has(s.id)) {
+      const wantEnabled = s.accountEnabled !== false;
+      if (wasDisabled.has(s.id) && wantEnabled) {
         const pwd = (s.initialPassword ?? '').trim() || DEFAULT_INITIAL_PASSWORD;
         await tx.query(
           `UPDATE accounts SET display_name = $2, subject_type = $3, subject_id = $4, enabled = true,
@@ -214,6 +222,21 @@ async function ensureAccounts(tx: PoolClient, seeds: AccountSeed[]): Promise<voi
                   failed_attempts = 0, locked_until = NULL
             WHERE id = $1`,
           [s.id, s.displayName, s.subjectType, s.subjectId, await hashPassword(pwd)]
+        );
+        await tx.query(`DELETE FROM sessions WHERE account_id = $1`, [s.id]);
+      } else if (wasDisabled.has(s.id) && !wantEnabled) {
+        // 账号本来就停用且档案要求继续停用：只同步展示信息，不动密码/启用状态
+        await tx.query(
+          `UPDATE accounts SET display_name = $2, subject_type = $3, subject_id = $4
+            WHERE id = $1`,
+          [s.id, s.displayName, s.subjectType, s.subjectId]
+        );
+      } else if (!wantEnabled) {
+        // 档案开关关闭 → 停用账号并踢掉现有会话（登录与会话校验都会拒绝 disabled 账号）
+        await tx.query(
+          `UPDATE accounts SET display_name = $2, subject_type = $3, subject_id = $4, enabled = false
+            WHERE id = $1`,
+          [s.id, s.displayName, s.subjectType, s.subjectId]
         );
         await tx.query(`DELETE FROM sessions WHERE account_id = $1`, [s.id]);
       } else {
@@ -355,6 +378,7 @@ export async function syncDealers(dealers: Dealer[]): Promise<void> {
         subjectType: 'dealer' as const,
         subjectId: d.id,
         initialPassword: d.password,
+        accountEnabled: d.enabled,
       }))
     );
   });
@@ -440,6 +464,7 @@ export async function syncStores(stores: Store[]): Promise<void> {
         subjectType: 'store' as const,
         subjectId: s.id,
         initialPassword: s.password,
+        accountEnabled: s.enabled,
       }))
     );
   });
@@ -518,6 +543,7 @@ export async function syncEmployees(employees: Employee[]): Promise<void> {
         subjectType: 'employee' as const,
         subjectId: e.id,
         initialPassword: e.password,
+        accountEnabled: e.enabled,
       }))
     );
   });
@@ -646,6 +672,7 @@ export async function syncPersons(persons: Person[]): Promise<void> {
         subjectType: 'person' as const,
         subjectId: p.id,
         initialPassword: p.password,
+        accountEnabled: p.enabled,
       }))
     );
   });

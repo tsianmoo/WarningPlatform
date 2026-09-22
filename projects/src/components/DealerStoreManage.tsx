@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import type { AttrCategory, Dealer, HrAttribute, Store } from '@/lib/types';
 import { parseExcel } from '@/lib/parser';
 import DealerSourceModal, { classifyField, loadSrcCfg, srcColumns, srcValue, type SemKey } from '@/components/DealerSourceModal';
+import { ColumnFilter, LoginToggle } from '@/components/ColumnFilter';
 
 type Kind = 'dealer' | 'store';
 
@@ -48,7 +49,26 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
   }, [kind, srcCfg]);
   const dealerColVal = (d: Dealer | Store, c: NonNullable<typeof srcCols>[number]) => srcValue(kind, d, c);
   const q = kw.trim().toLowerCase();
-  const filtered = q ? list.filter((d) => (d.name || '').toLowerCase().includes(q) || (d.code || '').toLowerCase().includes(q)) : list;
+  // 列筛选：数据源配置里勾了「筛选」的列，在列表上方出现可搜索下拉
+  const filterCols = useMemo(
+    () => (srcCols ?? []).filter((c) => srcCfg?.filters?.[c.key] === true),
+    [srcCols, srcCfg]
+  );
+  const [colFilters, setColFilters] = useState<Record<string, string>>({});
+  const filtered = useMemo(() => {
+    let arr = q
+      ? list.filter((d) => (d.name || '').toLowerCase().includes(q) || (d.code || '').toLowerCase().includes(q))
+      : list;
+    arr = arr.filter((d) =>
+      filterCols.every((c) => {
+        const v = colFilters[c.key];
+        if (!v) return true;
+        return dealerColVal(d, c) === v;
+      })
+    );
+    return arr;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list, q, filterCols, colFilters]);
   const total = filtered.length;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, pageCount - 1);
@@ -198,6 +218,23 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
             </div>
           </div>
           <input value={kw} onChange={(e) => setKw(e.target.value)} placeholder={`搜索${unit}名称 / 编号`} className="mt-2 w-full rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm outline-none focus:border-blue-400" />
+          {filterCols.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {filterCols.map((c) => (
+                <ColumnFilter
+                  key={c.key}
+                  label={c.label}
+                  options={Array.from(new Set(list.map((d) => dealerColVal(d, c))))}
+                  value={colFilters[c.key] || ''}
+                  onChange={(v) => {
+                    setColFilters((m) => ({ ...m, [c.key]: v }));
+                    setPage(0);
+                  }}
+                />
+              ))}
+              <button onClick={() => { setColFilters({}); setPage(0); }} className="h-[30px] rounded-md px-2 text-xs text-gray-400 hover:bg-gray-100 hover:text-gray-600">清除筛选</button>
+            </div>
+          )}
           <input ref={fileRef} type="file" accept=".xlsx,.xls,.xlsm" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImport(f); e.target.value = ''; }} />
         </div>
 
@@ -227,15 +264,16 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
                   </>
                 )}
                 <th className="px-3 py-2.5 font-medium">状态</th>
-                <th className="px-3 py-2.5 font-medium text-right">操作</th>
+                <th className="sticky right-0 z-10 border-l border-gray-200 bg-gray-50 px-3 py-2.5 text-right font-medium shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.15)]">操作</th>
               </tr>
             </thead>
             <tbody>
               {paged.map((d, idx) => {
                 const s = d as Store;
                 const rowNo = safePage * pageSize + idx + 1;
+                const active = activeId === d.id;
                 return (
-                  <tr key={d.id} onClick={() => setActiveId(d.id)} className={`cursor-pointer border-b border-gray-100 ${activeId === d.id ? 'bg-blue-50' : 'text-gray-700 hover:bg-gray-50'}`}>
+                  <tr key={d.id} onClick={() => setActiveId(d.id)} className={`group cursor-pointer border-b border-gray-100 ${active ? 'bg-blue-50' : 'text-gray-700 hover:bg-gray-50'}`}>
                     <td className="px-3 py-2.5 text-gray-400">{rowNo}</td>
                     {srcCols ? (
                       srcCols.map((c) => <td key={c.key} className="px-3 py-2.5">{dealerColVal(d as Dealer, c)}</td>)
@@ -258,8 +296,19 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
                       </>
                     )}
                     <td className="px-3 py-2.5">{s.enabled === false ? <span className="rounded bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-500">停用</span> : <span className="rounded bg-green-50 px-1.5 py-0.5 text-xs font-medium text-green-600">启用</span>}</td>
-                    <td className="px-3 py-2.5">
-                      <span className="flex items-center justify-end gap-0.5 text-gray-400">
+                    <td className={`sticky right-0 z-10 border-l border-gray-100 px-3 py-2.5 shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)] ${active ? 'bg-blue-50' : 'bg-white group-hover:bg-gray-50'}`}>
+                      <span className="flex items-center justify-end gap-1 text-gray-400">
+                        <span className="mr-1 flex items-center gap-1.5 border-r border-gray-100 pr-2" title="允许登录">
+                          <LoginToggle
+                            checked={d.enabled !== false}
+                            disabled={!can('edit', d.id)}
+                            onChange={(on) => {
+                              if (on === d.enabled) return;
+                              field({ ...(d as object), enabled: on } as Dealer);
+                              toast.success(`${on ? '已开启' : '已关闭'}「${d.name}」的登录（${on ? '账号可正常登录' : '登录账号已停用，现有会话一并失效'}）`);
+                            }}
+                          />
+                        </span>
                         <button title="上移" onClick={(e) => { e.stopPropagation(); move(d.id, -1); }} className="rounded p-1 hover:bg-gray-100 hover:text-gray-700"><ChevronUp size={14} /></button>
                         <button title="下移" onClick={(e) => { e.stopPropagation(); move(d.id, 1); }} className="rounded p-1 hover:bg-gray-100 hover:text-gray-700"><ChevronDown size={14} /></button>
                         {can('edit', d.id) && <button title="编辑" onClick={(e) => { e.stopPropagation(); setDictForm({ item: d }); }} className="rounded p-1 hover:bg-gray-100 hover:text-gray-700"><Pencil size={14} /></button>}
@@ -330,7 +379,7 @@ export function DealerStoreManage({ kind }: { kind: Kind }) {
         </div>
       )}
 
-      <DealerSourceModal kind={kind} open={srcOpen} onClose={() => setSrcOpen(false)} onSynced={() => setSrcTick((x) => x + 1)} />
+      <DealerSourceModal kind={kind} open={srcOpen} onClose={() => { setSrcOpen(false); setSrcTick((x) => x + 1); }} onSynced={() => setSrcTick((x) => x + 1)} />
     </div>
   );
 }
