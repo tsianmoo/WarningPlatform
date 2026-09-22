@@ -535,25 +535,34 @@ function Shell() {
               <>
                 <div className="mb-2 text-xs font-semibold text-gray-400">个人资料</div>
                 <div className="space-y-3">
-                  {[
-                    ['姓名', 'name'],
-                    ['账号', 'username'],
-                    ['职位', 'title'],
-                    ['岗位', 'post'],
-                    ['手机', 'phone'],
-                    ['邮箱', 'email'],
-                    ['地址', 'address'],
-                    ['生日', 'birthday'],
-                  ].map(([label, key]) => (
+                  {([
+                    ['姓名', 'name', true],
+                    ['账号', 'username', true],
+                    ['职位', 'title', true],
+                    ['岗位', 'post', true],
+                    ['手机', 'phone', true],
+                    ['邮箱', 'email', false],
+                    ['地址', 'address', false],
+                    ['生日', 'birthday', false],
+                  ] as const).map(([label, key, locked]) => (
                     <label key={key} className="flex items-center gap-3 text-sm">
                       <span className="w-20 shrink-0 text-gray-500">{label}</span>
                       <input
                         value={(draft as unknown as Record<string, string>)[key] ?? ''}
                         onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
-                        className="flex-1 rounded-md border px-2 py-1.5 outline-none focus:border-blue-400"
+                        readOnly={locked}
+                        title={locked ? '该字段由管理员在人事管理中维护，此处不可修改' : undefined}
+                        className={`flex-1 rounded-md border px-2 py-1.5 outline-none ${
+                          locked
+                            ? 'cursor-not-allowed border-gray-100 bg-gray-50 text-gray-400'
+                            : 'focus:border-blue-400'
+                        }`}
                       />
                     </label>
                   ))}
+                  <div className="text-[11px] text-gray-400">
+                    姓名、账号、职位、岗位、手机由管理员在「人事管理」中统一维护，如需修改请联系管理员。
+                  </div>
                 </div>
               </>
             ) : (
