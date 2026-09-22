@@ -407,18 +407,18 @@ export function DataTableManager() {
                               <div
                                 key={t.id}
                                 onClick={() => setActiveTable(t.id)}
-                                className={`group flex cursor-pointer items-center justify-between rounded-xl border px-3 py-2 transition ${
+                                className={`group flex cursor-pointer items-center justify-between rounded-lg border px-3 py-1.5 transition ${
                                   t.id === activeId
                                     ? 'border-gray-300 bg-gray-50 shadow-sm'
                                     : 'border-transparent hover:border-gray-200 hover:bg-gray-50/50'
                                 }`}
                               >
-                                <div className="flex min-w-0 items-center gap-2.5">
-                                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-500">
-                                    <Table2 size={14} strokeWidth={1.7} />
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-gray-100 text-gray-500">
+                                    <Table2 size={11} strokeWidth={1.7} />
                                   </span>
                                   <div className="min-w-0">
-                                    <div className="truncate text-sm font-medium text-gray-800">{t.name}</div>
+                                    <div className="truncate text-xs font-medium text-gray-800">{t.name}</div>
                                   </div>
                                 </div>
                                 <div className="flex shrink-0 items-center gap-0.5">
