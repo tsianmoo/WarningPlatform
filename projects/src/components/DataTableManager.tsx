@@ -718,7 +718,7 @@ export function DataTableManager() {
       </AlertDialog>
 
       <AlertDialog open={!!openUpdate} onOpenChange={(v) => !v && setOpenUpdate(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-h-[86vh] overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle>更新数据表「{openUpdate?.t.name}」</AlertDialogTitle>
             <AlertDialogDescription>
@@ -752,7 +752,7 @@ export function DataTableManager() {
                 </table>
               </div>
 
-              <div className="mt-4 overflow-hidden rounded-xl border border-gray-150">
+              <div className="mt-4 max-h-[45vh] overflow-y-auto rounded-xl border border-gray-150">
                 <div className="flex items-center gap-3 border-b border-gray-100 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500">
                   字段对比
                   <span className="text-emerald-600">新增 +{fieldDiff.added.length}</span>

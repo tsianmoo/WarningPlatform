@@ -276,3 +276,5 @@
 - **跨标签实时同步（本机多标签）**：store DeepLink `BroadcastChannel('cnfe-sync')`：`pushRemoteState` 落库成功后 `postMessage({t:'sync',from:INSTANCE})`；其它标签收到且 `from!==自己` 时，**非编辑态**（`activeEditRuleId` 为空）debounce 260ms GET /api/state 合并不编辑实体（rules/ruleGroups/tableGroups/alerts/dealers/stores/persons/employees/orgs/hrAttributes/config/locks），**不动 tables**（避免覆盖他人正在进行的字段/行编辑）。合并前 `pushSuppressed=true`，persist effect 检测到则跳过本次回写推送并复位，**防 A⇄B 无限互推**。
 - **跨电脑（Open- 场景）**：本地 `refreshRuleLocks()` 只在打开/刷新/重进时拉一次最新锁，未做实时 relay 轮询——但「打开就被锁」已满足：对方电脑或本机新标签打开该规则时，open-time refresh 读到 DB 锁即只读。若要实时（对方正在编辑时本机已打开的规则立刻变只读）需后续加 relay 轮询，当前按 open 时刷新即可。
 - ⚠️ 旧 localStorage 里的 AppState 无 `locks`，读取/解构一律 `state.locks ?? {}` 兜底；`migrateState`/首屏合并已带 `locks: {...s.locks,...remote.locks}`。
+
+- **AlertDialog 超高**：shadcn `AlertDialogContent` 默认无高度限制，内容多（如「更新数据表」弹窗的字段对比表格）会超出页面。约定：内容可能超屏的弹窗给容器加 `max-h-[86vh] overflow-y-auto`，并把最易超高的内层列表/表格单独设 `max-h-[45vh] overflow-y-auto` 内部滚动（标题/按钮固定）。⚠️ 该类弹窗 `AlertDialogDescription` 内部放 `<div>/<table>` 会触发 React hydration 警告（`<p>` 不能含 block），属既有问题、不影响功能，非必要不重构。
