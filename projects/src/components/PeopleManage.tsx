@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Users, Phone, Plus, Pencil, Trash2, Crosshair, KeyRound, ChevronRight, ShieldCheck } from 'lucide-react';
-import { useStore } from '@/lib/store';
-import { resolvePerm, canOper } from '@/lib/perm';
+import { useStore, useMyPerm } from '@/lib/store';
+import { canOper } from '@/lib/perm';
 import { classifyField } from '@/components/DealerSourceModal';
 import type { DataTable, Organization, Person, Store } from '@/lib/types';
 import { toast } from 'sonner';
@@ -31,9 +31,8 @@ const SUBJECT_TEXT: Record<string, string> = {
 export function PeopleManage() {
   const { state, addPerson, updatePerson, removePerson, addOrg, updateOrg, removeOrg, moveOrg } = useStore();
   const { orgs, persons, hrAttributes } = state;
-  const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
-  const me = state.persons.find((p) => p.name === meName) ?? null;
-  const perm = resolvePerm(me, state.config);
+  // 权限统一由「当前登录账号」解析（管理员全放行，其余按角色严格判定）
+  const perm = useMyPerm();
   const can = (op: Parameters<typeof canOper>[2], _rid?: string) => canOper(perm, 'people', op);
   const [activeOrg, setActiveOrg] = useState<string | null>(null);
   const [editing, setEditing] = useState<Person | null>(null);

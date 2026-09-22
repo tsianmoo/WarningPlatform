@@ -3,8 +3,8 @@
 import React, { useState } from 'react';
 import { Plus, BellRing, ArrowLeft, Trash2, Users, CalendarClock, Table2, Pencil, PlayCircle, PauseCircle, Copy, Search, Zap, User, ChevronDown } from 'lucide-react';
 import type { AlertRule, RuleGroup } from '@/lib/types';
-import { useStore, formatDateTime } from '@/lib/store';
-import { resolvePerm, canOper } from '@/lib/perm';
+import { useStore, useMyPerm, formatDateTime } from '@/lib/store';
+import { canOper } from '@/lib/perm';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -34,8 +34,8 @@ export function RuleList({
   const { state, removeRule, updateRule, addRule, activateRule, addRuleGroup, removeRuleGroup, updateRuleGroup } = useStore();
   const [detailId, setDetailId] = useState<string | null>(null);
   const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
-  const me = state.persons.find((p) => p.name === meName) ?? null;
-  const perm = resolvePerm(me, state.config);
+  // 权限统一由「当前登录账号」解析（管理员全放行，其余按角色严格判定）
+  const perm = useMyPerm();
   const can = (op: Parameters<typeof canOper>[2], _rid?: string) => canOper(perm, 'rules', op);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string>('all');

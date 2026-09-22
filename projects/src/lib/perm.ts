@@ -42,6 +42,39 @@ export function noPagePerms(): Partial<Record<PermModule, PagePerm>> {
   return out;
 }
 
+/** 全开权限：所有页面可见、所有操作可用。仅管理员（subjectType='admin'）使用。 */
+export function allPagePerms(): Partial<Record<PermModule, PagePerm>> {
+  const ops: Partial<Record<PermOp, boolean>> = {
+    create: true, edit: true, delete: true, run: true, handle: true,
+    upload: true, download: true, assign: true, resetPwd: true, manage: true,
+  };
+  const out: Partial<Record<PermModule, PagePerm>> = {};
+  for (const m of ALL_MODULES) out[m] = { view: true, ops: { ...ops } };
+  return out;
+}
+
+/**
+ * 管理员权限：全放行，不看角色配置。
+ * 与后端 authz.loadAccountPerm() 返回 'all' 完全同源 —— 两端必须一致，
+ * 否则会出现「接口能写、界面却是无权限」或反过来的假权限问题。
+ */
+export function adminPerm(): ResolvedPerm {
+  return { pages: allPagePerms(), dataScope: null, overridden: false, matched: true };
+}
+
+/**
+ * 是否管理员账号。
+ * 判定依据是 /api/auth/me 返回的 subjectType（后端 accounts.subject_type='admin'）；
+ * 早期数据可能没有该字段，故再用用户名兜底。
+ */
+export function isAdminAccount(
+  a?: { subjectType?: string | null; username?: string | null } | null
+): boolean {
+  if (!a) return false;
+  if (a.subjectType === 'admin') return true;
+  return (a.username ?? '').trim().toLowerCase() === 'admin';
+}
+
 /**
  * 角色生效权限的“严格”展开：把命中角色（或人员覆盖）的 pages 展开为全模块表。
  * 角色里未显式出现的模块一律视为 view:false（未勾选 = 不可见），避免被全开基底误放行，
@@ -100,9 +133,12 @@ export interface ResolvedPerm {
 
 /** 权限主体身份：主体类型 + 主体标识（岗位名 / 经销商编号 / 店仓编号 / 员工编号） */
 export interface AuthSubject {
-  kind: 'post' | 'dealer' | 'store' | 'employee';
+  kind: 'post' | 'dealer' | 'store' | 'employee' | 'admin';
   key: string;
 }
+
+/** 管理员主体：命中即全放行（见 adminPerm），不需要在权限管理里配角色 */
+export const ADMIN_SUBJECT: AuthSubject = { kind: 'admin', key: 'admin' };
 
 /** 在角色表中按主体类型 + 标识查找（缺省 subjectKind 视为 'post'） */
 /** 经销商/店仓/员工 三类的通用权限键：同一类型的所有账号共用一套模板 */
@@ -113,12 +149,16 @@ export function findRoleBySubject(roles: RolePerm[], kind: 'post' | 'dealer' | '
 }
 
 /**
- * 解析当前账号的生效权限：自定义覆盖(仅人员) > 岗位/经销商/店仓/员工角色 > 兜底。
+ * 解析当前账号的生效权限：管理员 > 自定义覆盖(仅人员) > 岗位/经销商/店仓/员工角色 > 兜底（默认拒绝）。
  * @param person 命中的人员（无则为 null）
  * @param cfg 平台配置（含 permissions / permOverrides）
- * @param account 非人员账号（经销商/店仓/员工）的主体身份
+ * @param account 非人员账号（经销商/店仓/员工）的主体身份；管理员传 ADMIN_SUBJECT
  */
 export function resolvePerm(person: Person | null, cfg: HomeConfig | undefined | null, account?: AuthSubject | null): ResolvedPerm {
+  // 管理员：全放行。必须在其它分支之前判定 —— 管理员账号既没有人事档案、
+  // 也不会在角色表里命中任何岗位，若走到最后就是「默认拒绝」，界面会变成
+  // 「当前账号还没有被分配任何页面权限」（历史 bug）。
+  if (account?.kind === 'admin') return adminPerm();
   const roles: RolePerm[] = cfg?.permissions ?? [];
 
   if (person) {
@@ -214,13 +254,17 @@ export function resolveAccountIdentity(
   stores: Store[],
   dealers: Dealer[],
   employees: Employee[],
-  account: { subjectType?: string | null; subjectId?: string | null } | null,
+  account: { subjectType?: string | null; subjectId?: string | null; username?: string | null } | null,
   fallbackName: string
 ): { me: Person | null; subject: AuthSubject | null; scopePerson: Person | null } {
   const sid = account?.subjectId ?? '';
   const shell = (id: string, name: string, dealerId?: string, storeId?: string): Person => ({
     id, name, orgId: '', dealerId, storeId, enabled: true, sort: 0, createdAt: 0,
   });
+
+  // 管理员账号（内置 admin）：没有人事档案，直接给管理员主体 → resolvePerm 全放行。
+  // 顺序必须在最前：否则会掉进下面「按名字猜」，猜不到就变成无权限账号。
+  if (isAdminAccount(account)) return { me: null, subject: ADMIN_SUBJECT, scopePerson: null };
 
   if (account?.subjectType === 'person') {
     const p = (sid && persons.find((x) => x.id === sid))

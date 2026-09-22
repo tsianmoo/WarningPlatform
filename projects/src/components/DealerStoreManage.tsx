@@ -3,8 +3,8 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { ChevronDown, ChevronUp, Database, Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { useStore } from '@/lib/store';
-import { resolvePerm, canOper } from '@/lib/perm';
+import { useStore, useMyPerm } from '@/lib/store';
+import { canOper } from '@/lib/perm';
 import { toast } from 'sonner';
 import type { AttrCategory, Dealer, HrAttribute, Store } from '@/lib/types';
 import { parseExcel } from '@/lib/parser';
@@ -21,9 +21,8 @@ const META: Record<Kind, { unit: string; label: string }> = {
 
 export function DealerStoreManage({ kind }: { kind: Kind }) {
   const { state, addDealer, updateDealer, removeDealer, moveDealer, addStore, updateStore, removeStore, moveStore } = useStore();
-  const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
-  const me = state.persons.find((p) => p.name === meName) ?? null;
-  const perm = resolvePerm(me, state.config);
+  // 权限统一由「当前登录账号」解析（管理员全放行，其余按角色严格判定）
+  const perm = useMyPerm();
   const mod: 'dealer' | 'store' = kind === 'dealer' ? 'dealer' : 'store';
   const can = (op: Parameters<typeof canOper>[2], _rid?: string) => canOper(perm, mod, op);
   const { dealers, stores, hrAttributes } = state;

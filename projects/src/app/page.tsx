@@ -4,7 +4,7 @@ import { useEffect, useState, Fragment } from 'react';
 import type { Person } from '@/lib/types';
 import { useRouter } from 'next/navigation';
 import { Table2, BellRing, Shield, ShieldOff, LayoutDashboard, Activity, Briefcase, Users, Settings, Maximize, Minimize, LogOut, UploadCloud, ClipboardList, ChevronRight, ListOrdered, Settings2 } from 'lucide-react';
-import { StoreProvider, useStore } from '@/lib/store';
+import { StoreProvider, useStore, useAccount } from '@/lib/store';
 import { DEFAULT_HOME_CONFIG, DEFAULT_NAV_MENUS, NavMenuEntry, NavMenuKey } from '@/lib/types';
 import NavConfig from '@/components/NavConfig';
 import BrandConfig from '@/components/BrandConfig';
@@ -25,16 +25,7 @@ import { resolvePerm, canView, resolveAuthAccount, resolveAccountIdentity } from
 
 type View = 'home' | 'tables' | 'apitable' | 'formtable' | 'rules' | 'new' | 'edit' | 'alerts' | 'people' | 'attrs' | 'dealer' | 'store' | 'emp' | 'homecfg' | 'perms' | 'navcfg' | 'brandcfg';
 
-/** 当前登录账号（来自 /api/auth/me）。注意它和「人事档案 Person」是两回事：
- *  系统管理员只有账号、没有人事档案，所以「修改资料」不能依赖 Person 是否存在。 */
-interface LoginAccount {
-  id: string;
-  username: string;
-  displayName: string;
-  subjectType: 'person' | 'dealer' | 'store' | 'employee' | 'admin';
-  subjectId: string | null;
-  mustChangePassword: boolean;
-}
+/** 当前登录账号类型由 store 的 useAccount 提供（含 subjectType='admin' 的判定） */
 
 const SUBJECT_LABEL: Record<string, string> = {
   admin: '系统管理员',
@@ -113,10 +104,10 @@ function Shell() {
   const toggleGroup = (g: string) => setOpenGroup((cur) => (cur === g ? null : g));
   const [showProfile, setShowProfile] = useState(false);
   const [draft, setDraft] = useState<Person | null>(null);
-  const [acct, setAcct] = useState<LoginAccount | null>(null);
-  // /api/auth/me 是否已返回：返回前权限计算只能走「按名兜底」，可能暂时得到「未命中任何角色」，
-  // 此时绝不能做「无权限 → 跳默认页」的重定向，否则会在数据/账号未就绪的瞬间乱跳
-  const [acctLoaded, setAcctLoaded] = useState(false);
+  // 当前登录账号由全局 store 统一提供（只请求一次 /api/auth/me）。
+  // acctLoaded=false 表示账号尚未取回：此时权限只能按显示名兜底、可能暂时算出「无权限」，
+  // 绝不能据此做「无权限 → 跳默认页」的重定向，否则会在数据/账号未就绪的瞬间乱跳。
+  const { account: acct, loaded: acctLoaded } = useAccount();
   const [pwd, setPwd] = useState({ old: '', next: '', confirm: '' });
   const [pwdMsg, setPwdMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pwdBusy, setPwdBusy] = useState(false);
@@ -128,10 +119,6 @@ function Shell() {
     setPwd({ old: '', next: '', confirm: '' });
     setPwdMsg(null);
     setShowProfile(true);
-    void fetch('/api/auth/me', { cache: 'no-store' })
-      .then((r) => (r.ok ? (r.json() as Promise<{ account?: LoginAccount }>) : null))
-      .then((j) => setAcct(j?.account ?? null))
-      .catch(() => setAcct(null));
   };
   const saveProfile = () => {
     if (draft) { updatePerson(draft); localStorage.setItem('dn_auth', draft.name); setMeName(draft.name); setShowProfile(false); setDraft(null); }
@@ -164,14 +151,6 @@ function Shell() {
   const [meName, setMeName] = useState('');
   useEffect(() => {
     if (typeof window !== 'undefined') setMeName(localStorage.getItem('dn_auth') || '');
-  }, []);
-  // 挂载即拉取当前登录账号（不再等点开头像才取）：身份解析、权限判定都依赖它
-  useEffect(() => {
-    void fetch('/api/auth/me', { cache: 'no-store' })
-      .then((r) => (r.ok ? (r.json() as Promise<{ account?: LoginAccount }>) : null))
-      .then((j) => setAcct(j?.account ?? null))
-      .catch(() => setAcct(null))
-      .finally(() => setAcctLoaded(true));
   }, []);
   // 刷新落在 #edit 时的兜底：恢复正在编辑的规则；若无任何可编辑规则，回退到带导航/页头的规则列表页
   useEffect(() => {
@@ -276,7 +255,11 @@ function Shell() {
   if (!viewPermitted(view)) {
     // 未被授予任何页面权限的账号（默认拒绝语义）：给出明确提示，而不是空白页
     const anyPermitted = (['home', 'alerts', 'rules', 'tables', 'dealer', 'store', 'people', 'attrs', 'homecfg', 'perms', 'navcfg', 'brandcfg'] as View[]).some(viewPermitted);
-    content = anyPermitted ? null : (
+    // 账号/数据尚未就绪时权限必然算出「无权限」，此时不能直接甩「没有权限」的结论
+    // （管理员也会被误判），先显示加载态，等账号到位后再判定。
+    content = (!ready || !acctLoaded) ? (
+      <div className="flex h-full items-center justify-center py-24 text-sm text-gray-400">正在加载…</div>
+    ) : anyPermitted ? null : (
       <div className="flex h-full flex-col items-center justify-center gap-2 py-24 text-center">
         <ShieldOff className="h-10 w-10 text-gray-300" />
         <p className="text-sm font-medium text-gray-600">当前账号还没有被分配任何页面权限</p>

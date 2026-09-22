@@ -38,8 +38,8 @@ import {
 } from 'lucide-react';
 import type { FlowEdge, FlowNode, Schedule, TargetSetting } from '@/lib/types';
 import { KIND_COLOR, uid } from '@/lib/types';
-import { useStore } from '@/lib/store';
-import { resolvePerm, resolveAuthAccount, canView } from '@/lib/perm';
+import { useStore, useMyPerm } from '@/lib/store';
+import { canView } from '@/lib/perm';
 import { BuildCtx, createNodeData, nodeTypes, DupNodeCtx } from './nodes';
 import { NodePreviewProvider } from './NodePreview';
 import { discardDraft, enterEdit } from './draftStore';
@@ -415,10 +415,8 @@ export function PalettePanel({
   const { state } = useStore();
   const [showAdd, setShowAdd] = useState(false);
   // 预警关联展示-全量 为独立权限组件：无权限用户不显示/不可添加
-  const meName = typeof window !== 'undefined' ? (localStorage.getItem('dn_auth') ?? '') : '';
-  const me = state.persons?.find((p) => p.name === meName) ?? null;
-  const { subject } = resolveAuthAccount(state.stores ?? [], state.dealers ?? [], state.employees ?? [], meName, me);
-  const perm = resolvePerm(me, state.config, subject);
+  // 权限统一由「当前登录账号」解析（管理员全放行，其余按角色严格判定）
+  const perm = useMyPerm();
   const canLinkviewAll = canView(perm, 'linkview_all');
   // 仅展示规则已选择的数据表，其余通过「添加数据表」展开加入
   const selected = state.tables.filter((t) => selectedTableIds.includes(t.id));

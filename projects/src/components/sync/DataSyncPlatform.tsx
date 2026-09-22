@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useStore } from '@/lib/store';
-import { resolvePerm, canOper } from '@/lib/perm';
+import { useStore, useMyPerm } from '@/lib/store';
+import { canOper } from '@/lib/perm';
 import { PermCtx } from './ui';
 import DatasourceManager from './DatasourceManager';
 import DatasetManager from './DatasetManager';
@@ -30,9 +30,8 @@ export default function DataSyncPlatform() {
   const [channels, setChannels] = useState<any[]>([]);
   const [audit, setAudit] = useState<any[]>([]);
 
-  const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
-  const me = useMemo(() => state.persons.find((p: any) => p.name === meName) ?? null, [state.persons, meName]);
-  const perm = useMemo(() => resolvePerm(me, state.config), [me, state.config]);
+  // 权限统一由「当前登录账号」解析（管理员全放行，其余按角色严格判定）
+  const perm = useMyPerm();
   const can = useCallback((op: string) => canOper(perm, 'datasync', op as any), [perm]);
 
   const loadDs = useCallback(async () => {

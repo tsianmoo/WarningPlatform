@@ -30,7 +30,7 @@ import { buildSampleTable, ensureFieldsComplete } from './parser';
 import { evaluateFlow } from './evaluate';
 import type { NodePreview } from './evaluate';
 import type { ActionNodeData, ConditionItem, ConditionNodeData, FlowNode, MsgPart } from './types';
-import { manageStoreIds } from './perm';
+import { manageStoreIds, resolvePerm, resolveAccountIdentity, type AuthSubject, type ResolvedPerm } from './perm';
 
 /** 判断预警是否为残缺脏数据（标题与规则名均为空且无预览，仅基础字段的残留记录） */
 export function isBlankAlert(a: Partial<AlertTask> | null | undefined): boolean {
@@ -739,6 +739,30 @@ type StoreApi = {
 
 const StoreContext = createContext<StoreApi | null>(null);
 
+/** 当前登录账号（来自 /api/auth/me）。与「人事档案 Person」是两回事：
+ *  系统管理员只有账号、没有人事档案；经销商/店仓/员工账号靠 subjectType + subjectId 定位档案。 */
+export interface LoginAccount {
+  id: string;
+  username: string;
+  displayName: string;
+  subjectType: 'person' | 'dealer' | 'store' | 'employee' | 'admin';
+  subjectId: string | null;
+  mustChangePassword: boolean;
+}
+
+interface AccountCtxValue {
+  account: LoginAccount | null;
+  /** 是否已取回账号信息（未取回前权限只能按名兜底，可能暂时算出「无权限」） */
+  loaded: boolean;
+}
+
+const AccountContext = createContext<AccountCtxValue>({ account: null, loaded: false });
+
+/** 当前登录账号（全局只请求一次，供各页面/组件统一解析身份与权限） */
+export function useAccount(): AccountCtxValue {
+  return useContext(AccountContext);
+}
+
 function migrateState(raw: AppState | null): AppState {
   if (!raw || !Array.isArray(raw.tables)) {
     return loadInitialState();
@@ -1204,8 +1228,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(EMPTY_STATE);
   const [ready, setReady] = useState(false);
   const [remotePersist, setRemotePersist] = useState(false);
+  const [account, setAccount] = useState<LoginAccount | null>(null);
+  const [accountLoaded, setAccountLoaded] = useState(false);
   const loaded = useRef(false);
   const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch('/api/auth/me', { cache: 'no-store' })
+      .then((r) => (r.ok ? (r.json() as Promise<{ account?: LoginAccount }>) : null))
+      .then((j) => { if (!cancelled) setAccount(j?.account ?? null); })
+      .catch(() => { if (!cancelled) setAccount(null); })
+      .finally(() => { if (!cancelled) setAccountLoaded(true); });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1596,13 +1632,59 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
   }, [state, ready, remotePersist]);
 
-  return <StoreContext.Provider value={api}>{children}</StoreContext.Provider>;
+  return (
+    <StoreContext.Provider value={api}>
+      <AccountContext.Provider value={{ account, loaded: accountLoaded }}>{children}</AccountContext.Provider>
+    </StoreContext.Provider>
+  );
 }
 
 export function useStore(): StoreApi {
   const ctx = useContext(StoreContext);
   if (!ctx) throw new Error('useStore must be used within StoreProvider');
   return ctx;
+}
+
+/**
+ * 当前登录者的身份 + 生效权限（管理员全放行；其余按角色/覆盖严格判定，未配置 = 默认拒绝）。
+ *
+ * 各功能页面统一用它，避免「有的页面按账号 ID 认人、有的页面按显示名猜」——
+ * 之前正是按名字猜，重名/改名/本地缓存串号时认错人、权限走兜底，才会出现
+ * 店仓账号看到管理员全量页面、管理员反而被当成无权限账号之类的错乱。
+ */
+export function useMyIdentity(): {
+  account: LoginAccount | null;
+  loaded: boolean;
+  me: Person | null;
+  subject: AuthSubject | null;
+  scopePerson: Person | null;
+  perm: ResolvedPerm;
+} {
+  const { state } = useStore();
+  const { account, loaded } = useAccount();
+  const [meName, setMeName] = useState('');
+  useEffect(() => {
+    try { setMeName(localStorage.getItem('dn_auth') || ''); } catch { /* ignore */ }
+  }, []);
+  return useMemo(() => {
+    const ident = resolveAccountIdentity(
+      state.persons ?? [], state.stores ?? [], state.dealers ?? [], state.employees ?? [],
+      account, meName
+    );
+    return {
+      account,
+      loaded,
+      me: ident.me,
+      subject: ident.subject,
+      scopePerson: ident.scopePerson,
+      perm: resolvePerm(ident.me, state.config, ident.subject),
+    };
+  }, [state.persons, state.stores, state.dealers, state.employees, state.config, account, loaded, meName]);
+}
+
+/** 只需权限时的便捷写法（等价于 useMyIdentity().perm） */
+export function useMyPerm(): ResolvedPerm {
+  return useMyIdentity().perm;
 }
 
 // ---- 工具 ----

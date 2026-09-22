@@ -20,8 +20,8 @@ import {
   FolderPlus,
   FolderInput,
 } from 'lucide-react';
-import { useStore, formatDateTime } from '@/lib/store';
-import { resolvePerm, canOper } from '@/lib/perm';
+import { useStore, useMyPerm, formatDateTime } from '@/lib/store';
+import { canOper } from '@/lib/perm';
 import { parseTableFile, buildTableFromRows } from '@/lib/parser';
 import { uid, type FieldType, type DataTable, type AlertRule } from '@/lib/types';
 import { DATE_FORMATS, parseByFormat, toStdDateStr } from '@/lib/datefmt';
@@ -53,9 +53,8 @@ const TYPE_LABEL: Record<FieldType, string> = {
 
 export function DataTableManager() {
   const { state, addTable, updateTable, removeTable, saveTableRows, setActiveTable, renameField, setFieldType, setFieldDateFormat, addTableGroup, updateTableGroup, removeTableGroup } = useStore();
-  const meName = typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : '';
-  const me = state.persons.find((p) => p.name === meName) ?? null;
-  const perm = resolvePerm(me, state.config);
+  // 权限统一由「当前登录账号」解析（管理员全放行，其余按角色严格判定）
+  const perm = useMyPerm();
   const can = (op: Parameters<typeof canOper>[2], _rid?: string) => canOper(perm, 'datatables', op);
   const [dragging, setDragging] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
