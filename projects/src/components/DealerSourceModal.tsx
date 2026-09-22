@@ -179,10 +179,22 @@ export default function DealerSourceModal({ kind, open, onClose, onSynced }: { k
     if (!tableFields.length) return toast.warning('该数据表没有可配置的字段');
     const sem = autoSemantics(tableFields, cfg.renames);
     const shownOrder = cfg.order.filter((k) => cfg.visible[k] !== false);
-    const nameKey = (sem.name || shownOrder[0]) as string | undefined;
+    // 编号列是登录账号与按编号覆盖更新的依据，必须放在显示字段的第一列
+    if (!sem.code) {
+      return toast.error(
+        `未识别到「编号」列：来源表需包含名为 编号/经销商编号/店仓编号/员工编号/工号/编码 的列（重命名成这些名称也可以）。编号列必须放在首列后才能同步建档`
+      );
+    }
+    if (shownOrder[0] !== sem.code) {
+      const codeName = cfg.renames[sem.code] || tableFields.find((f) => f.key === sem.code)?.alias || sem.code;
+      const firstName = shownOrder[0] ? cfg.renames[shownOrder[0]] || shownOrder[0] : '（无显示列）';
+      return toast.error(
+        `编号必须在首列：当前第一列是「${firstName}」，请用 ↑ 按钮把「${codeName}」移到第一列后再同步建档`
+      );
+    }
+    const nameKey = (sem.name || shownOrder[1]) as string | undefined;
     if (!nameKey) return toast.warning('请勾选并保留至少一个可作为「名称」的字段');
-    if (!sem.name) toast.info(`未精确匹配到「名称」列，已用首个显示的列作为${unit}名称字段`);
-    if (!sem.code) toast.info('未匹配到「编号」列，本次将按名称去重更新、无法按编号覆盖');
+    if (!sem.name) toast.info(`未精确匹配到「名称」列，已用首个显示的非编号列作为${unit}名称字段`);
     const rows: Record<string, unknown>[] = (table.rows?.length ? table.rows : table.previewRows) ?? [];
     if (!rows.length) return toast.warning('来源表没有可用的数据行');
     const semKeys = new Set(Object.values(sem).filter((v): v is string => !!v));
@@ -294,7 +306,10 @@ export default function DealerSourceModal({ kind, open, onClose, onSynced }: { k
                 <option key={t.id} value={t.id}>{`${t.group ? `[${t.group}] ` : ''}${t.name}（${(t.rows?.length ?? t.previewRows?.length ?? 0)} 行）`}</option>
               ))}
             </select>
-            <p className="mt-1.5 text-xs text-gray-400">无需手动映射——同步建档时按列名自动识别；仅需勾选「显示」的列、调整顺序或重命名。</p>
+            <p className="mt-1.5 text-xs text-gray-400">
+              同步建档时按列名自动识别，无需手动映射；<span className="font-medium text-gray-600">「编号」列必须放在首列</span>
+              （作为登录账号与按编号覆盖更新的依据，账号为编号、初始密码取「初始密码」列或系统默认 123456）。
+            </p>
           </div>
 
           {table && (

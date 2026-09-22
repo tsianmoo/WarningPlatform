@@ -264,12 +264,13 @@ export async function listAccounts() {
  * 管理员重置密码。
  *   resetPassword(id)                  → 回到初始密码（DEFAULT_INITIAL_PASSWORD）
  *   resetPassword(id, 'SomePwd123')    → 设为指定密码
- * 两种情况都强制该用户下次登录修改密码，并作废其现有会话。
+ * 重置后清除失败锁定并作废其现有会话；不再强制首次改密
+ * （管理员给什么密码就用什么登录，用户可在「修改资料」里自行更换）。
  */
 export async function resetPassword(accountId: string, newPassword?: string): Promise<void> {
   const pwd = newPassword?.trim() ? newPassword.trim() : DEFAULT_INITIAL_PASSWORD;
   await execute(
-    `UPDATE accounts SET password_hash = $2, must_change_password = true,
+    `UPDATE accounts SET password_hash = $2, must_change_password = false,
             failed_attempts = 0, locked_until = NULL, updated_at = now() WHERE id = $1`,
     [accountId, await hashPassword(pwd)]
   );

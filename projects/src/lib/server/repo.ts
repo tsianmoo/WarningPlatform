@@ -133,6 +133,12 @@ interface AccountSeed {
   displayName: string;
   subjectType: 'person' | 'dealer' | 'store' | 'employee';
   subjectId: string;
+  /**
+   * 建档时管理员显式填写的初始密码（人事表单、数据来源表的「初始密码」列）。
+   * 有值 → 用它作为登录密码，且不强制首次改密；
+   * 无值 → 使用系统默认初始密码（DEFAULT_INITIAL_PASSWORD）。
+   */
+  initialPassword?: string | null;
 }
 
 /**
@@ -166,14 +172,15 @@ async function ensureAccounts(tx: PoolClient, seeds: AccountSeed[]): Promise<voi
       updates.push(s);
       continue;
     }
+    const customPwd = (s.initialPassword ?? '').trim();
     inserts.push([
       s.id,
       s.username,
-      await hashPassword(DEFAULT_INITIAL_PASSWORD),
+      await hashPassword(customPwd || DEFAULT_INITIAL_PASSWORD),
       s.displayName,
       s.subjectType,
       s.subjectId,
-      true, // must_change_password：初始密码首次登录必须修改
+      false, // 初始密码不强制修改：管理员给什么密码就用什么登录，用户可自行在「修改资料」里改
       true,
     ]);
   }
@@ -190,7 +197,8 @@ async function ensureAccounts(tx: PoolClient, seeds: AccountSeed[]): Promise<voi
   }
   for (const s of updates) {
     await tx.query(
-      `UPDATE accounts SET display_name = $2, subject_type = $3, subject_id = $4 WHERE id = $1`,
+      `UPDATE accounts SET display_name = $2, subject_type = $3, subject_id = $4, enabled = true
+        WHERE id = $1`,
       [s.id, s.displayName, s.subjectType, s.subjectId]
     );
   }
@@ -263,6 +271,7 @@ interface DealerRow {
   phone: string | null;
   address: string | null;
   birthday: string | null;
+  password: string | null;
   enabled: boolean;
   attrs: unknown;
   province: string | null;
@@ -280,6 +289,7 @@ const toDealer = (r: DealerRow): Dealer => ({
   phone: r.phone ?? undefined,
   address: r.address ?? undefined,
   birthday: r.birthday ?? undefined,
+  password: r.password ?? undefined,
   enabled: r.enabled ?? true,
   attrs: asObject<Record<string, string>>(r.attrs, {}),
   province: r.province ?? undefined,
@@ -290,19 +300,19 @@ const toDealer = (r: DealerRow): Dealer => ({
 });
 
 const DEALER_COLS = [
-  'id', 'name', 'code', 'contact', 'phone', 'address', 'birthday', 'enabled', 'attrs',
+  'id', 'name', 'code', 'contact', 'phone', 'address', 'birthday', 'password', 'enabled', 'attrs',
   'province', 'city', 'district', 'sort', 'deleted_at',
 ];
 
 const dealerValues = (d: Dealer): unknown[] => [
-  d.id, d.name, nn(d.code), nn(d.contact), nn(d.phone), nn(d.address), nn(d.birthday),
+  d.id, d.name, nn(d.code), nn(d.contact), nn(d.phone), nn(d.address), nn(d.birthday), nn(d.password),
   d.enabled ?? true, JSON.stringify(d.attrs ?? {}), nn(d.province), nn(d.city), nn(d.district),
   Number(d.sort ?? 0), null,
 ];
 
 export async function getAllDealers(): Promise<Dealer[]> {
   const rows = await query<DealerRow>(
-    `SELECT id, name, code, contact, phone, address, birthday, enabled, attrs,
+    `SELECT id, name, code, contact, phone, address, birthday, password, enabled, attrs,
             province, city, district, sort, created_at
        FROM dealers WHERE deleted_at IS NULL ORDER BY sort, created_at`
   );
@@ -320,6 +330,7 @@ export async function syncDealers(dealers: Dealer[]): Promise<void> {
         displayName: d.name,
         subjectType: 'dealer' as const,
         subjectId: d.id,
+        initialPassword: d.password,
       }))
     );
   });
@@ -356,6 +367,7 @@ const toStore = (r: StoreRow): Store => ({
   phone: r.phone ?? undefined,
   address: r.address ?? undefined,
   birthday: r.birthday ?? undefined,
+  password: r.password ?? undefined,
   enabled: r.enabled ?? true,
   attrs: asObject<Record<string, string>>(r.attrs, {}),
   dealerId: r.dealer_id ?? undefined,
@@ -370,13 +382,13 @@ const toStore = (r: StoreRow): Store => ({
 });
 
 const STORE_COLS = [
-  'id', 'name', 'code', 'contact', 'phone', 'address', 'birthday', 'enabled', 'attrs',
+  'id', 'name', 'code', 'contact', 'phone', 'address', 'birthday', 'password', 'enabled', 'attrs',
   'dealer_id', 'brand', 'company', 'department', 'sales_area', 'district', 'allow_retail',
   'sort', 'deleted_at',
 ];
 
 const storeValues = (s: Store): unknown[] => [
-  s.id, s.name, nn(s.code), nn(s.contact), nn(s.phone), nn(s.address), nn(s.birthday),
+  s.id, s.name, nn(s.code), nn(s.contact), nn(s.phone), nn(s.address), nn(s.birthday), nn(s.password),
   s.enabled ?? true, JSON.stringify(s.attrs ?? {}), nn(s.dealerId), nn(s.brand), nn(s.company),
   nn(s.department), nn(s.salesArea), nn(s.district), s.allowRetail ?? false,
   Number(s.sort ?? 0), null,
@@ -384,7 +396,7 @@ const storeValues = (s: Store): unknown[] => [
 
 export async function getAllStores(): Promise<Store[]> {
   const rows = await query<StoreRow>(
-    `SELECT id, name, code, contact, phone, address, birthday, enabled, attrs,
+    `SELECT id, name, code, contact, phone, address, birthday, password, enabled, attrs,
             dealer_id, brand, company, department, sales_area, district, allow_retail,
             sort, created_at
        FROM stores WHERE deleted_at IS NULL ORDER BY sort, created_at`
@@ -403,6 +415,7 @@ export async function syncStores(stores: Store[]): Promise<void> {
         displayName: s.name,
         subjectType: 'store' as const,
         subjectId: s.id,
+        initialPassword: s.password,
       }))
     );
   });
@@ -428,6 +441,7 @@ interface EmployeeRow {
   dealer_id: string | null;
   store_id: string | null;
   post: string | null;
+  password: string | null;
   on_duty: boolean;
   enabled: boolean;
   attrs: unknown;
@@ -442,6 +456,7 @@ const toEmployee = (r: EmployeeRow): Employee => ({
   dealerId: r.dealer_id ?? undefined,
   storeId: r.store_id ?? undefined,
   post: r.post ?? undefined,
+  password: r.password ?? undefined,
   onDuty: r.on_duty ?? true,
   enabled: r.enabled ?? true,
   attrs: asObject<Record<string, string>>(r.attrs, {}),
@@ -450,18 +465,18 @@ const toEmployee = (r: EmployeeRow): Employee => ({
 });
 
 const EMPLOYEE_COLS = [
-  'id', 'code', 'name', 'dealer_id', 'store_id', 'post',
+  'id', 'code', 'name', 'dealer_id', 'store_id', 'post', 'password',
   'on_duty', 'enabled', 'attrs', 'sort', 'deleted_at',
 ];
 
 const employeeValues = (e: Employee): unknown[] => [
-  e.id, nn(e.code), e.name, nn(e.dealerId), nn(e.storeId), nn(e.post),
+  e.id, nn(e.code), e.name, nn(e.dealerId), nn(e.storeId), nn(e.post), nn(e.password),
   e.onDuty ?? true, e.enabled ?? true, JSON.stringify(e.attrs ?? {}), Number(e.sort ?? 0), null,
 ];
 
 export async function getAllEmployees(): Promise<Employee[]> {
   const rows = await query<EmployeeRow>(
-    `SELECT id, code, name, dealer_id, store_id, post, on_duty, enabled, attrs, sort, created_at
+    `SELECT id, code, name, dealer_id, store_id, post, password, on_duty, enabled, attrs, sort, created_at
        FROM employees WHERE deleted_at IS NULL ORDER BY sort, created_at`
   );
   return rows.map(toEmployee);
@@ -478,6 +493,7 @@ export async function syncEmployees(employees: Employee[]): Promise<void> {
         displayName: e.name,
         subjectType: 'employee' as const,
         subjectId: e.id,
+        initialPassword: e.password,
       }))
     );
   });
@@ -507,6 +523,7 @@ interface PersonRow {
   id_card: string | null;
   address: string | null;
   birthday: string | null;
+  password: string | null;
   dealer_id: string | null;
   store_id: string | null;
   enabled: boolean;
@@ -533,6 +550,7 @@ const toPerson = (r: PersonRow): Person => {
     idCard: r.id_card ?? undefined,
     address: r.address ?? undefined,
     birthday: r.birthday ?? undefined,
+    password: r.password ?? undefined,
     dealerId: r.dealer_id ?? undefined,
     storeId: r.store_id ?? undefined,
     enabled: r.enabled ?? true,
@@ -544,20 +562,20 @@ const toPerson = (r: PersonRow): Person => {
 
 const PERSON_COLS = [
   'id', 'name', 'org_id', 'title', 'post', 'supervisor_id', 'phone', 'email',
-  'username', 'id_card', 'address', 'birthday', 'dealer_id', 'store_id',
+  'username', 'id_card', 'address', 'birthday', 'password', 'dealer_id', 'store_id',
   'enabled', 'sort', 'deleted_at',
 ];
 
 const personValues = (p: Person): unknown[] => [
   p.id, p.name, nn(p.orgId), nn(p.title), nn(p.post), nn(p.supervisorId), nn(p.phone),
-  nn(p.email), nn(p.username), nn(p.idCard), nn(p.address), nn(p.birthday),
+  nn(p.email), nn(p.username), nn(p.idCard), nn(p.address), nn(p.birthday), nn(p.password),
   nn(p.dealerId), nn(p.storeId), p.enabled ?? true, Number(p.sort ?? 0), null,
 ];
 
 export async function getAllPersons(): Promise<Person[]> {
   const rows = await query<PersonRow>(
     `SELECT p.id, p.name, p.org_id, p.title, p.post, p.supervisor_id, p.phone, p.email,
-            p.username, p.id_card, p.address, p.birthday, p.dealer_id, p.store_id,
+            p.username, p.id_card, p.address, p.birthday, p.password, p.dealer_id, p.store_id,
             p.enabled, p.sort, p.created_at,
             s.data AS scope_data
        FROM persons p
@@ -603,6 +621,7 @@ export async function syncPersons(persons: Person[]): Promise<void> {
         displayName: p.name,
         subjectType: 'person' as const,
         subjectId: p.id,
+        initialPassword: p.password,
       }))
     );
   });

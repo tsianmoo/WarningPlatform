@@ -41,7 +41,7 @@ async function hashPassword(plain) {
 }
 
 const adminUsername = process.env.ADMIN_USERNAME || 'admin';
-const newPassword = process.env.ADMIN_PASSWORD || process.env.DEFAULT_INITIAL_PASSWORD || 'wi15afvb';
+const newPassword = process.env.ADMIN_PASSWORD || process.env.DEFAULT_INITIAL_PASSWORD || '123456';
 // 默认重置后强制改密；加 --no-force-change 可让它成为一个可直接长期使用的密码
 const keepAsIs = process.argv.includes('--no-force-change');
 

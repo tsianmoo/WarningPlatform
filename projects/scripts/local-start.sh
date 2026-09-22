@@ -132,7 +132,7 @@ for i in $(seq 1 60); do
     echo ""
     echo "✓ 启动成功"
     echo "  地址   : http://$BIND_HOST:$PORT"
-    echo "  登录   : admin / ${INIT_PWD} （首次登录会强制改密）"
+    echo "  登录   : admin / ${ADMIN_PWD:-（管理员自设密码）}；业务账号 = 编号/账号，初始密码 ${INIT_PWD}"
     echo "  进程号 : $SERVER_PID"
     echo "  日志   : $LOG_FILE"
     echo "  停止   : bash scripts/local-stop.sh"

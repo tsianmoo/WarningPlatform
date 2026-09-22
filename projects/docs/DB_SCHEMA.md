@@ -397,6 +397,7 @@
 | `created_at` | timestamptz | 否 | `now()` |  |
 | `updated_at` | timestamptz | 否 | `now()` |  |
 | `deleted_at` | timestamptz | 是 | — |  |
+| `password` | text | 是 | — |  |
 
 **索引**
 
@@ -425,6 +426,7 @@
 | `created_at` | timestamptz | 否 | `now()` |  |
 | `updated_at` | timestamptz | 否 | `now()` |  |
 | `deleted_at` | timestamptz | 是 | — |  |
+| `password` | text | 是 | — |  |
 
 **外键**
 
@@ -585,6 +587,7 @@
 | `created_at` | timestamptz | 否 | `now()` |  |
 | `updated_at` | timestamptz | 否 | `now()` |  |
 | `deleted_at` | timestamptz | 是 | — |  |
+| `password` | text | 是 | — |  |
 
 **外键**
 
@@ -806,6 +809,7 @@
 | `created_at` | timestamptz | 否 | `now()` |  |
 | `updated_at` | timestamptz | 否 | `now()` |  |
 | `deleted_at` | timestamptz | 是 | — |  |
+| `password` | text | 是 | — |  |
 
 **外键**
 

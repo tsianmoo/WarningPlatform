@@ -16,11 +16,21 @@ const BASE = process.env.BASE || 'http://127.0.0.1:3100';
 
 const DEALER_ID = 'authz_dealer_1';
 const DEALER_CODE = 'AUTHZ001';
-const INIT_PWD = process.env.DEFAULT_INITIAL_PASSWORD
+const INIT_PWD = process.env.ADMIN_PASSWORD
+  || (/^ADMIN_PASSWORD=(.*)$/m.exec(
+        readFileSync(new URL('../.env.local', import.meta.url), 'utf8')
+      )?.[1]?.trim())
+  || process.env.DEFAULT_INITIAL_PASSWORD
   || (/^DEFAULT_INITIAL_PASSWORD=(.*)$/m.exec(
         readFileSync(new URL('../.env.local', import.meta.url), 'utf8')
       )?.[1]?.trim())
-  || 'wi15afvb';
+  || '123456';
+// 新建业务账号（经销商/店仓/员工/人员）的初始密码与 admin 密码是两回事
+const DEALER_INIT_PWD = process.env.DEFAULT_INITIAL_PASSWORD
+  || (/^DEFAULT_INITIAL_PASSWORD=(.*)$/m.exec(
+        readFileSync(new URL('../.env.local', import.meta.url), 'utf8')
+      )?.[1]?.trim())
+  || '123456';
 const NEW_PWD = 'Authz@2026';
 
 let pass = 0, fail = 0;
@@ -62,15 +72,15 @@ async function main() {
   }));
   ok('管理员新建经销商成功', mk?.success === true, JSON.stringify(mk?.errors));
 
-  // ---------- 2. 该经销商账号首次登录 + 强制改密 ----------
-  const dl0 = await login(DEALER_CODE, INIT_PWD);
+  // ---------- 2. 该经销商账号用初始密码直接登录（不强制改密） ----------
+  const dl0 = await login(DEALER_CODE, DEALER_INIT_PWD);
   ok('经销商账号可登录（初始密码）', dl0.res.status === 200, `got ${dl0.res.status}`);
-  ok('首次登录被要求改密', dl0.body?.account?.mustChangePassword === true);
+  ok('初始密码登录不被强制改密', dl0.body?.account?.mustChangePassword === false);
 
   const chg = await fetch(`${BASE}/api/auth/password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: dl0.cookie },
-    body: JSON.stringify({ oldPassword: INIT_PWD, newPassword: NEW_PWD }),
+    body: JSON.stringify({ oldPassword: DEALER_INIT_PWD, newPassword: NEW_PWD }),
   });
   ok('改密成功', chg.status === 200, `got ${chg.status}`);
   const dlCookie = cookieOf(chg) || dl0.cookie;

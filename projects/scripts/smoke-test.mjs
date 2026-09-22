@@ -6,12 +6,18 @@ import { readFileSync } from 'node:fs';
  */
 const BASE = process.env.BASE || 'http://127.0.0.1:3100';
 
-// 初始密码统一从 .env.local 读取，避免脚本与配置各写一份、改了一处漏另一处
-const INIT_PWD = process.env.DEFAULT_INITIAL_PASSWORD
+// 管理员密码：优先 ADMIN_PASSWORD（.env.local 里记录的管理员当前密码），
+// 其次 DEFAULT_INITIAL_PASSWORD —— 与「初始密码」区分开：新建业务账号用初始密码，
+// admin 自己的密码是独立的，二者不要混用。
+const INIT_PWD = process.env.ADMIN_PASSWORD
+  || (/^ADMIN_PASSWORD=(.*)$/m.exec(
+        readFileSync(new URL('../.env.local', import.meta.url), 'utf8')
+      )?.[1]?.trim())
+  || process.env.DEFAULT_INITIAL_PASSWORD
   || (/^DEFAULT_INITIAL_PASSWORD=(.*)$/m.exec(
         readFileSync(new URL('../.env.local', import.meta.url), 'utf8')
       )?.[1]?.trim())
-  || 'wi15afvb';
+  || '123456';
 
 let pass = 0, fail = 0;
 const ok = (name, cond, extra = '') => {
