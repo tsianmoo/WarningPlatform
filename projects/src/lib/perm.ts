@@ -212,6 +212,63 @@ export function resolveAuthAccount(
   return { subject: null, scopePerson: null };
 }
 
+/**
+ * 按登录账号精确解析当前身份（推荐）：
+ * 用 /api/auth/me 返回的 subjectType + subjectId 直接到档案表里按 ID 匹配，
+ * 与服务端 authz.ts 完全同源，不会因为显示名重复/改名/本地缓存串号而认错人。
+ * 按 ID 找不到时才退回按名称匹配（fallbackName，兼容旧 localStorage 数据）。
+ */
+export function resolveAccountIdentity(
+  persons: Person[],
+  stores: Store[],
+  dealers: Dealer[],
+  employees: Employee[],
+  account: { subjectType?: string | null; subjectId?: string | null } | null,
+  fallbackName: string
+): { me: Person | null; subject: AuthSubject | null; scopePerson: Person | null } {
+  const sid = account?.subjectId ?? '';
+  const shell = (id: string, name: string, dealerId?: string, storeId?: string): Person => ({
+    id, name, orgId: '', dealerId, storeId, enabled: true, sort: 0, createdAt: 0,
+  });
+
+  if (account?.subjectType === 'person') {
+    const p = (sid && persons.find((x) => x.id === sid))
+      || (fallbackName ? persons.find((x) => x.name === fallbackName) : undefined);
+    if (p) return { me: p, subject: p.post ? { kind: 'post', key: p.post } : null, scopePerson: p };
+  }
+
+  switch (account?.subjectType) {
+    case 'store': {
+      const s = (sid && stores.find((x) => x.id === sid))
+        || stores.find((x) => x.name === fallbackName || x.code === fallbackName);
+      if (s) return { me: null, subject: { kind: 'store', key: COMMON_KEY }, scopePerson: shell(s.id, fallbackName || s.name, s.dealerId, s.id) };
+      break;
+    }
+    case 'employee': {
+      const e = (sid && employees.find((x) => x.id === sid))
+        || employees.find((x) => x.name === fallbackName || x.code === fallbackName);
+      if (e) return { me: null, subject: { kind: 'employee', key: COMMON_KEY }, scopePerson: shell(e.id, fallbackName || e.name, e.dealerId, e.storeId) };
+      break;
+    }
+    case 'dealer': {
+      const d = (sid && dealers.find((x) => x.id === sid))
+        || dealers.find((x) => x.name === fallbackName || x.code === fallbackName);
+      if (d) return { me: null, subject: { kind: 'dealer', key: COMMON_KEY }, scopePerson: shell(d.id, fallbackName || d.name, d.id) };
+      break;
+    }
+    default:
+      break;
+  }
+
+  // 账号类型未知 / 档案缺失：退回旧的按名称匹配（人员 → 店仓 → 员工 → 经销商）
+  const meByName = fallbackName ? persons.find((x) => x.name === fallbackName) ?? null : null;
+  if (meByName) {
+    return { me: meByName, subject: meByName.post ? { kind: 'post', key: meByName.post } : null, scopePerson: meByName };
+  }
+  const legacy = resolveAuthAccount(stores, dealers, employees, fallbackName, null);
+  return { me: null, subject: legacy.subject, scopePerson: legacy.scopePerson };
+}
+
 export function canView(perm: ResolvedPerm, mod: PermModule): boolean {
   return perm.pages[mod]?.view ?? true;
 }

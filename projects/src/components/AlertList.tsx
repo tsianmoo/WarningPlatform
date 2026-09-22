@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, ClipboardList, Eye, MessageSquare, RotateCcw, Send, Trash2, X } from 'lucide-react';
 import { useStore, computeAlertDims } from '@/lib/store';
-import { resolvePerm, canView, filterAlertsByScope, resolveAuthAccount } from '@/lib/perm';
+import { resolvePerm, canView, filterAlertsByScope, resolveAccountIdentity } from '@/lib/perm';
 import { toast } from 'sonner';
 import type { AlertStatus, AlertTask, NotifyMode } from '@/lib/types';
 import { PERSONNEL } from '@/lib/types';
@@ -177,8 +177,17 @@ export function AlertList() {
   const PEOPLE = PERSONNEL as unknown as { name: string; dept: string }[];
   const [meName] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem('dn_auth') || '' : ''));
   const [onlyMine, setOnlyMine] = useState<boolean>(() => (typeof window !== 'undefined' ? localStorage.getItem('dn_alert_mine') === '1' : false));
-  const me = state.persons.find((p) => p.name === meName) ?? null;
-  const { subject: meSubject, scopePerson } = resolveAuthAccount(state.stores ?? [], state.dealers ?? [], state.employees ?? [], meName, me);
+  // 身份解析与 page.tsx 同源：优先按登录账号 subjectId 精确匹配档案，取不到账号再按显示名兜底
+  const [acct, setAcct] = useState<{ subjectType?: string; subjectId?: string | null } | null>(null);
+  useEffect(() => {
+    void fetch('/api/auth/me', { cache: 'no-store' })
+      .then((r) => (r.ok ? (r.json() as Promise<{ account?: { subjectType?: string; subjectId?: string | null } }>) : null))
+      .then((j) => setAcct(j?.account ?? null))
+      .catch(() => setAcct(null));
+  }, []);
+  const meById = acct?.subjectType === 'person' && acct.subjectId ? state.persons.find((p) => p.id === acct.subjectId) : undefined;
+  const me = meById ?? state.persons.find((p) => p.name === meName) ?? null;
+  const { subject: meSubject, scopePerson } = resolveAccountIdentity(state.persons ?? [], state.stores ?? [], state.dealers ?? [], state.employees ?? [], acct, meName);
   const perm = resolvePerm(me, state.config, meSubject);
   const isManager = canView(perm, 'perms');
   const alerts = useMemo(

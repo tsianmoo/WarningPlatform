@@ -21,7 +21,7 @@ import EmployeeManage from '@/components/EmployeeManage';
 import { HomeConfig } from '@/components/HomeConfig';
 import PermissionManage from '@/components/PermissionManage';
 import ApiDataTablePage from '@/components/sync/ApiDataTablePage';
-import { resolvePerm, canView, resolveAuthAccount } from '@/lib/perm';
+import { resolvePerm, canView, resolveAuthAccount, resolveAccountIdentity } from '@/lib/perm';
 
 type View = 'home' | 'tables' | 'apitable' | 'formtable' | 'rules' | 'new' | 'edit' | 'alerts' | 'people' | 'attrs' | 'dealer' | 'store' | 'emp' | 'homecfg' | 'perms' | 'navcfg' | 'brandcfg';
 
@@ -162,6 +162,13 @@ function Shell() {
   useEffect(() => {
     if (typeof window !== 'undefined') setMeName(localStorage.getItem('dn_auth') || '');
   }, []);
+  // 挂载即拉取当前登录账号（不再等点开头像才取）：身份解析、权限判定都依赖它
+  useEffect(() => {
+    void fetch('/api/auth/me', { cache: 'no-store' })
+      .then((r) => (r.ok ? (r.json() as Promise<{ account?: LoginAccount }>) : null))
+      .then((j) => setAcct(j?.account ?? null))
+      .catch(() => setAcct(null));
+  }, []);
   // 刷新落在 #edit 时的兜底：恢复正在编辑的规则；若无任何可编辑规则，回退到带导航/页头的规则列表页
   useEffect(() => {
     if (view !== 'edit' || !ready) return;
@@ -173,8 +180,17 @@ function Shell() {
     setEditingId(null);
     navigate('rules');
   }, [view, ready]);
-  const me = state.persons.find((p) => p.name === meName) ?? null;
-  const { subject: meSubject } = resolveAuthAccount(state.stores ?? [], state.dealers ?? [], state.employees ?? [], meName, me);
+  // 身份解析：优先用登录账号的 subjectId 按 ID 精确匹配档案（与服务端 authz 同源）；
+  // 账号信息尚未取到时才退回旧的「按显示名匹配」（避免改动前的行为回退）。
+  // 旧版只按 localStorage 显示名在各档案里按名字猜，重名/改名/缓存串号时会把人认错，
+  // 认错后权限走「未命中=全放行」兜底 → 店仓账号看到管理员式全量页面。
+  const meByName = state.persons.find((p) => p.name === meName) ?? null;
+  const legacy = resolveAuthAccount(state.stores ?? [], state.dealers ?? [], state.employees ?? [], meName, meByName);
+  const ident = acct
+    ? resolveAccountIdentity(state.persons ?? [], state.stores ?? [], state.dealers ?? [], state.employees ?? [], acct, meName)
+    : { me: meByName, subject: legacy.subject, scopePerson: legacy.scopePerson };
+  const me = ident.me;
+  const meSubject = ident.subject;
   const perm = resolvePerm(me, state.config, meSubject);
   const can = (m: Parameters<typeof canView>[1]) => canView(perm, m);
   const toggleFs = () => {

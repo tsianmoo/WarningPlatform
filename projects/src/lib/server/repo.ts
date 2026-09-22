@@ -195,12 +195,34 @@ async function ensureAccounts(tx: PoolClient, seeds: AccountSeed[]): Promise<voi
       ['id']
     );
   }
-  for (const s of updates) {
-    await tx.query(
-      `UPDATE accounts SET display_name = $2, subject_type = $3, subject_id = $4, enabled = true
-        WHERE id = $1`,
-      [s.id, s.displayName, s.subjectType, s.subjectId]
+  if (updates.length > 0) {
+    // 区分「档案还在的正常同步」与「档案删除后重建（账号此前被停用）」：
+    // 后者视为重新开通 —— 密码重置为初始密码、清除失败锁定、踢掉旧会话。
+    // 否则重建的档案挂着旧密码（用户已改过、无人知道），表现为「添加了用户却登录不了」。
+    const st = await tx.query<{ id: string; enabled: boolean }>(
+      `SELECT id, enabled FROM accounts WHERE id = ANY($1::text[])`,
+      [updates.map((s) => s.id)]
     );
+    const wasDisabled = new Set(st.rows.filter((r) => !r.enabled).map((r) => r.id));
+    for (const s of updates) {
+      if (wasDisabled.has(s.id)) {
+        const pwd = (s.initialPassword ?? '').trim() || DEFAULT_INITIAL_PASSWORD;
+        await tx.query(
+          `UPDATE accounts SET display_name = $2, subject_type = $3, subject_id = $4, enabled = true,
+                  password_hash = $5, must_change_password = false,
+                  failed_attempts = 0, locked_until = NULL
+            WHERE id = $1`,
+          [s.id, s.displayName, s.subjectType, s.subjectId, await hashPassword(pwd)]
+        );
+        await tx.query(`DELETE FROM sessions WHERE account_id = $1`, [s.id]);
+      } else {
+        await tx.query(
+          `UPDATE accounts SET display_name = $2, subject_type = $3, subject_id = $4, enabled = true
+            WHERE id = $1`,
+          [s.id, s.displayName, s.subjectType, s.subjectId]
+        );
+      }
+    }
   }
 }
 
