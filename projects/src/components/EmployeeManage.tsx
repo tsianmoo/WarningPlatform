@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { ChevronLeft, Database, Pencil, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { ChevronLeft, Database, Pencil, Trash2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { toast } from 'sonner';
 import type { Employee } from '@/lib/types';
@@ -10,10 +10,9 @@ import { ColumnFilter, LoginToggle } from '@/components/ColumnFilter';
 
 export default function EmployeeManage({ onBack }: { onBack: () => void }) {
   const { state, updateEmployee, removeEmployee } = useStore();
-  const { employees, dealers, stores, hrAttributes } = state;
+  const { employees, dealers, stores } = state;
   const dealerMap = useMemo(() => new Map(dealers.map((d) => [d.id, d.name])), [dealers]);
   const storeMap = useMemo(() => new Map(stores.map((s) => [s.id, s.name])), [stores]);
-  const empAttrs = useMemo(() => hrAttributes.filter((a) => (a.category ?? 'person') === 'employee'), [hrAttributes]);
   const [srcOpen, setSrcOpen] = useState(false);
   const [srcTick, setSrcTick] = useState(0);
   const srcCfg = useMemo(() => loadSrcCfg('employee'), [srcTick]);
@@ -23,26 +22,17 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
   const [colFilters, setColFilters] = useState<Record<string, string>>({});
   const colVal = (e: Employee, c: NonNullable<typeof srcCols>[number]) => srcValue('employee', e, c);
 
-  const [f, setF] = useState({ dealerId: '', storeId: '', code: '', name: '', post: '', onDuty: '', enabled: '' });
   const [kw, setKw] = useState('');
-  const [panelOpen, setPanelOpen] = useState(false);
   const q = kw.trim().toLowerCase();
   const filtered = useMemo(() => employees.filter((e) =>
     (!q || (e.name || '').toLowerCase().includes(q) || (e.code || '').toLowerCase().includes(q)) &&
-    (!f.dealerId || e.dealerId === f.dealerId) &&
-    (!f.storeId || e.storeId === f.storeId) &&
-    (!f.code || (e.code ?? '').toLowerCase().includes(f.code.toLowerCase())) &&
-    (!f.name || e.name.includes(f.name)) &&
-    (!f.post || (e.attrs?.['岗位'] || e.post || '') === f.post) &&
-    (!f.onDuty || (e.onDuty !== false) === (f.onDuty === '1')) &&
-    (!f.enabled || (e.enabled !== false) === (f.enabled === '1')) &&
     filterCols.every((c) => {
       const v = colFilters[c.key];
       if (!v) return true;
       return colVal(e, c) === v;
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ), [employees, f, q, filterCols, colFilters]);
+  ), [employees, q, filterCols, colFilters]);
 
   const [editing, setEditing] = useState<Employee | null>(null);
   const [open, setOpen] = useState(false);
@@ -64,18 +54,10 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
   const safePage = Math.min(page, pageCount - 1);
   const paged = filtered.slice(safePage * pageSize, safePage * pageSize + pageSize);
 
-  useEffect(() => { setPage(0); }, [kw, f, pageSize]);
+  useEffect(() => { setPage(0); }, [kw, pageSize]);
 
   const input = 'w-full rounded border border-gray-300 px-2.5 py-1.5 text-sm';
   const label = 'mb-1 block text-xs font-medium text-gray-600';
-  const sel = 'w-full rounded border border-gray-300 px-2 py-1.5 text-sm';
-
-  const resetFilters = () => {
-    setF({ dealerId: '', storeId: '', code: '', name: '', post: '', onDuty: '', enabled: '' });
-    setColFilters({});
-    setPage(0);
-  };
-
   return (
     <div className="flex h-full overflow-hidden">
       <aside className="flex flex-1 shrink-0 flex-col overflow-hidden border-r border-gray-200 bg-white">
@@ -87,12 +69,6 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
               <span className="rounded-full bg-gray-100 px-1.5 text-[11px] text-gray-500">{filtered.length}</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setPanelOpen((o) => !o)}
-                className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-sm ${panelOpen ? 'border-gray-300 bg-gray-50 text-gray-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
-              >
-                <SlidersHorizontal size={14} />筛选
-              </button>
               <button onClick={() => setSrcOpen(true)} title="数据表驱动建档" className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1.5 text-sm text-white hover:bg-indigo-700"><Database size={15} />数据源</button>
             </div>
           </div>
@@ -111,43 +87,6 @@ export default function EmployeeManage({ onBack }: { onBack: () => void }) {
                   }}
                 />
               ))}
-            </div>
-          )}
-          {panelOpen && (
-            <div className="mt-2 rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2.5">
-              <div className="grid grid-cols-2 gap-x-3 gap-y-2 md:grid-cols-4">
-                <div>
-                  <label className={label}>所属经销商</label>
-                  <select value={f.dealerId} onChange={(e) => setF({ ...f, dealerId: e.target.value })} className={sel}><option value="">全部</option>{dealers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
-                </div>
-                <div>
-                  <label className={label}>所属店仓</label>
-                  <select value={f.storeId} onChange={(e) => setF({ ...f, storeId: e.target.value })} className={sel}><option value="">全部</option>{stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-                </div>
-                <div>
-                  <label className={label}>员工编号</label>
-                  <input value={f.code} onChange={(e) => setF({ ...f, code: e.target.value })} placeholder="编号" className={input} />
-                </div>
-                <div>
-                  <label className={label}>员工姓名</label>
-                  <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="姓名" className={input} />
-                </div>
-                <div>
-                  <label className={label}>岗位</label>
-                  <select value={f.post} onChange={(e) => setF({ ...f, post: e.target.value })} className={sel}><option value="">全部</option>{(empAttrs.find((a) => a.name === '岗位')?.items ?? []).map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}</select>
-                </div>
-                <div>
-                  <label className={label}>在职状态</label>
-                  <select value={f.onDuty} onChange={(e) => setF({ ...f, onDuty: e.target.value })} className={sel}><option value="">全部</option><option value="1">在职</option><option value="0">离职</option></select>
-                </div>
-                <div>
-                  <label className={label}>可用状态</label>
-                  <select value={f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.value })} className={sel}><option value="">全部</option><option value="1">可用</option><option value="0">停用</option></select>
-                </div>
-                <div className="flex items-end">
-                  <button onClick={resetFilters} className="h-[34px] w-full rounded border border-gray-300 text-sm text-gray-600 hover:bg-gray-100">重置</button>
-                </div>
-              </div>
             </div>
           )}
         </div>
