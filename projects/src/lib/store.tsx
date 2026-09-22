@@ -714,6 +714,7 @@ type StoreApi = {
   addEmployee: (p: Omit<Employee, 'id' | 'createdAt'>) => Employee;
   updateEmployee: (p: Employee) => void;
   removeEmployee: (id: string) => void;
+  removeEmployees: (ids: string[]) => void;
   replEmployees: (list: (Omit<Employee, 'id' | 'createdAt'>)[]) => void;
   // hr attributes
   addHrAttribute: (a: Omit<HrAttribute, 'id' | 'createdAt'>) => HrAttribute;
@@ -723,11 +724,14 @@ type StoreApi = {
   addDealer: (d: Omit<Dealer, 'id' | 'createdAt'>) => Dealer;
   updateDealer: (d: Dealer) => void;
   removeDealer: (id: string) => void;
+  /** 批量移除：单次远端删除请求（数据源同步可能一次删几百条，逐条发请求会卡死 UI） */
+  removeDealers: (ids: string[]) => void;
   moveDealer: (id: string, dir: -1 | 1) => void;
   // stores
   addStore: (s: Omit<Store, 'id' | 'createdAt'>) => Store;
   updateStore: (s: Store) => void;
   removeStore: (id: string) => void;
+  removeStores: (ids: string[]) => void;
   moveStore: (id: string, dir: -1 | 1) => void;
   updateHomeConfig: (patch: Partial<HomeConfig> | ((c: HomeConfig) => HomeConfig)) => void;
   setPermissions: (roles: RolePerm[]) => void;
@@ -1554,6 +1558,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         dispatch('REMOVE_EMPLOYEE', id);
         void deleteRemote({ employeeIds: [id] });
       },
+      removeEmployees: (ids) => {
+        const set = new Set(ids);
+        if (set.size === 0) return;
+        dispatch('REPLACE_EMPLOYEES', state.employees.filter((e) => !set.has(e.id)));
+        void deleteRemote({ employeeIds: ids });
+      },
       addPerson: (p) => {
         const person: Person = { ...p, id: uid('person'), createdAt: Date.now() };
         dispatch('ADD_PERSON', person);
@@ -1584,6 +1594,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         dispatch('REMOVE_DEALER', id);
         void deleteRemote({ dealerIds: [id] });
       },
+      removeDealers: (ids) => {
+        const set = new Set(ids);
+        if (set.size === 0) return;
+        dispatch('REPLACE_DEALERS', state.dealers.filter((d) => !set.has(d.id)));
+        void deleteRemote({ dealerIds: ids });
+      },
       moveDealer: (id, dir) => {
         const arr = [...state.dealers].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
         const idx = arr.findIndex((d) => d.id === id);
@@ -1601,6 +1617,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       removeStore: (id) => {
         dispatch('REMOVE_STORE', id);
         void deleteRemote({ storeIds: [id] });
+      },
+      removeStores: (ids) => {
+        const set = new Set(ids);
+        if (set.size === 0) return;
+        dispatch('REPLACE_STORES', state.stores.filter((s) => !set.has(s.id)));
+        void deleteRemote({ storeIds: ids });
       },
       moveStore: (id, dir) => {
         const arr = [...state.stores].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));

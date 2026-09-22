@@ -13,7 +13,7 @@ export type SemKey = 'name' | 'code' | 'status' | 'contact' | 'phone' | 'provinc
 
 /** 系统字段 ↔ 来源表列名（alias / key / 重命名名）自动识别 */
 const SYNONYMS: Record<SemKey, string[]> = {
-  name: ['名称', '经销商名称', '商户名称', '商家名称', '店仓名称', '员工姓名', '姓名', 'name'],
+  name: ['名称', '经销商名称', '经销商', '商户名称', '商家名称', '客户名称', '客户', '公司名称', '单位名称', '店仓名称', '店仓', '门店名称', '门店', '员工姓名', '姓名', 'name'],
   code: ['编号', '经销商编号', '商户编号', '店仓编号', '员工编号', '工号', '编码', 'code', 'id'],
   status: ['状态', '是否启用', '是否在职', '在职', 'status'],
   contact: ['联系人', '联系人姓名', 'contact'],
@@ -187,7 +187,7 @@ function InnerConfirm({ title, children, confirmText, tone = 'primary', onConfir
 }
 
 export default function DealerSourceModal({ kind, open, onClose, onSynced }: { kind: SourceKind; open: boolean; onClose: () => void; onSynced?: () => void }) {
-  const { state, addDealer, updateDealer, removeDealer, addStore, updateStore, removeStore, addEmployee, updateEmployee, removeEmployee, flushNow } = useStore();
+  const { state, addDealer, updateDealer, removeDealers, addStore, updateStore, removeStores, addEmployee, updateEmployee, removeEmployees, flushNow } = useStore();
   const { tables } = state;
   const [persisted, setPersisted] = useState<PersistedCfg>(() => ({ lastTableId: '', byName: {} }));
   const [cfg, setCfg] = useState<Cfg>(() => blankCfg());
@@ -308,8 +308,20 @@ export default function DealerSourceModal({ kind, open, onClose, onSynced }: { k
     }
     const nameKey = (sem.name || shownOrder[1]) as string | undefined;
     if (!nameKey) { toast.warning('请勾选并保留至少一个可作为「名称」的字段'); return null; }
-    if (!sem.name) toast.info(`未精确匹配到「名称」列，已用首个显示的非编号列作为${unit}名称字段`);
-    const rows: Record<string, unknown>[] = (table.rows?.length ? table.rows : table.previewRows) ?? [];
+    if (!sem.name) {
+      const fallbackLabel = cfg.renames[nameKey] || tableFields.find((f) => f.key === nameKey)?.alias || nameKey;
+      toast.info(`未精确匹配到「名称」列，已用「${fallbackLabel}」列作为${unit}名称字段`);
+    }
+    // 行数据完整性防护：行数据与元数据分库存储，若来源表的全量行未持久化（只有 ≤50 行预览），
+    // 按预览数据计算「移除」会把绝大多数现有档案误判为待删除——必须阻断并要求重新上传
+    if (!Array.isArray(table.rows) || table.rows.length === 0) {
+      toast.error(
+        `来源表「${table.name}」的全量行数据缺失（当前仅有 ${table.previewRows?.length ?? 0} 行预览数据）。` +
+          `为避免按不完整数据误删现有${unit}档案，已阻止同步建档；请先到「数据表管理」对该表重新上传 Excel 文件后再同步`
+      );
+      return null;
+    }
+    const rows: Record<string, unknown>[] = table.rows;
     if (!rows.length) { toast.warning('来源表没有可用的数据行'); return null; }
     return { sem, nameKey, rows };
   };
@@ -344,7 +356,7 @@ export default function DealerSourceModal({ kind, open, onClose, onSynced }: { k
     const LIST = kind === 'dealer' ? state.dealers : kind === 'store' ? state.stores : state.employees;
     const add = kind === 'dealer' ? addDealer : kind === 'store' ? addStore : addEmployee;
     const upd = kind === 'dealer' ? updateDealer : kind === 'store' ? updateStore : updateEmployee;
-    const rem = kind === 'dealer' ? removeDealer : kind === 'store' ? removeStore : removeEmployee;
+    const rem = kind === 'dealer' ? removeDealers : kind === 'store' ? removeStores : removeEmployees;
     setSyncing(true);
     try {
       let synced = 0, updated = 0, removed = 0, skipped = 0;
@@ -407,7 +419,10 @@ export default function DealerSourceModal({ kind, open, onClose, onSynced }: { k
         if (exist) { (upd as (p: Dealer | Store | Employee) => void)({ ...exist, ...(base as Partial<Dealer | Store | Employee>) }); updated++; }
         else { (add as (p: unknown) => unknown)(base); synced++; }
       }
-      for (const d of LIST) { if (d.code && !hit.has(d.code)) { (rem as (id: string) => void)(d.id); removed++; } }
+      // 批量移除：一次远端请求完成（逐条发删除请求时，几百条档案会卡住「同步中…」数十秒以上）
+      const remIds = LIST.filter((d: (Dealer | Store | Employee) & { code?: string }) => d.code && !hit.has(d.code)).map((d) => d.id);
+      if (remIds.length > 0) rem(remIds);
+      removed = remIds.length;
       const okFlush = flushNow ? await flushNow() : true;
       toast.success(`同步建档完成：新增 ${synced}、更新 ${updated}${removed ? `、移除 ${removed}` : ''}${skipped ? `、跳过 ${skipped} 行` : ''}${okFlush ? '' : '（云端保存暂未成功，仅存本地）'}`);
       if (kind === 'dealer' && (synced > 0 || updated > 0)) {
