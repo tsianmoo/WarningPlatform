@@ -419,9 +419,6 @@ export function DataTableManager() {
                                   </span>
                                   <div className="min-w-0">
                                     <div className="truncate text-sm font-medium text-gray-800">{t.name}</div>
-                                    <div className="mt-0.5 text-xs text-gray-400">
-                                      {t.rowCount.toLocaleString()} 行 · {t.fields.length} 字段
-                                    </div>
                                   </div>
                                 </div>
                                 <div className="flex shrink-0 items-center gap-0.5">
@@ -558,7 +555,7 @@ export function DataTableManager() {
                       </button>
                     )}
                   </div>
-                  <p className="mt-1.5 text-xs text-gray-400">共 {active.fields.length} 个字段 · 点击「标签值 / 类型」可标签化并用于规则配置</p>
+                  <p className="mt-1.5 text-xs text-gray-400">共 {active.rowCount.toLocaleString()} 行 · {active.fields.length} 个字段 · 点击「标签值 / 类型」可标签化并用于规则配置</p>
                 </div>
               </div>
 
