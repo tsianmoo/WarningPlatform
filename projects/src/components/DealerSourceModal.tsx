@@ -267,6 +267,9 @@ export default function DealerSourceModal({ kind, open, onClose, onSynced }: { k
       for (const d of LIST) { if (d.code && !hit.has(d.code)) { (rem as (id: string) => void)(d.id); removed++; } }
       const ok = flushNow ? await flushNow() : true;
       toast.success(`同步建档完成：新增 ${synced}、更新 ${updated}${removed ? `、移除 ${removed}` : ''}${skipped ? `、跳过 ${skipped} 行` : ''}${ok ? '' : '（云端保存暂未成功，仅存本地）'}`);
+      if (kind === 'dealer' && (synced > 0 || updated > 0)) {
+        toast.info('经销商登录账号 = J + 编号（例：编号 0290001 → 账号 J0290001），初始密码 123456');
+      }
       persistCfg();
       onClose();
       onSynced?.();
@@ -308,7 +311,9 @@ export default function DealerSourceModal({ kind, open, onClose, onSynced }: { k
             </select>
             <p className="mt-1.5 text-xs text-gray-400">
               同步建档时按列名自动识别，无需手动映射；<span className="font-medium text-gray-600">「编号」列必须放在首列</span>
-              （作为登录账号与按编号覆盖更新的依据，账号为编号、初始密码取「初始密码」列或系统默认 123456）。
+              （作为登录账号与按编号覆盖更新的依据，
+              {kind === 'dealer' ? '经销商登录账号为「J+编号」，用来和同编号的店仓区分' : '登录账号为编号'}，
+              初始密码取「初始密码」列或系统默认 123456）。
             </p>
           </div>
 

@@ -32,6 +32,7 @@ import type {
   Schedule,
   Store,
 } from '@/lib/types';
+import { dealerLoginName } from '@/lib/types';
 
 /**
  * 数据访问层（重写版）。
@@ -348,7 +349,8 @@ export async function syncDealers(dealers: Dealer[]): Promise<void> {
       tx,
       dealers.filter((d) => nn(d.code)).map((d) => ({
         id: `acct_dealer_${d.id}`,
-        username: String(d.code),
+        // 经销商账号 = J + 编号：编号可能与店仓重复，加前缀才能区分两类主体
+        username: dealerLoginName(d.code),
         displayName: d.name,
         subjectType: 'dealer' as const,
         subjectId: d.id,

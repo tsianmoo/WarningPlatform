@@ -272,7 +272,7 @@ export default function LoginPage() {
             <input
               value={account}
               onChange={(e) => setAccount(e.target.value)}
-              placeholder="请输入账号"
+              placeholder="请输入账号（经销商为 J+编号）"
               style={{ height: cfg.loginBox.fieldHeight }}
               className="rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-gray-400"
               autoFocus

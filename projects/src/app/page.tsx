@@ -3,7 +3,7 @@
 import { useEffect, useState, Fragment } from 'react';
 import type { Person } from '@/lib/types';
 import { useRouter } from 'next/navigation';
-import { Table2, BellRing, Shield, LayoutDashboard, Activity, Briefcase, Users, Settings, Maximize, Minimize, LogOut, UploadCloud, ClipboardList, ChevronRight, ListOrdered, Settings2 } from 'lucide-react';
+import { Table2, BellRing, Shield, ShieldOff, LayoutDashboard, Activity, Briefcase, Users, Settings, Maximize, Minimize, LogOut, UploadCloud, ClipboardList, ChevronRight, ListOrdered, Settings2 } from 'lucide-react';
 import { StoreProvider, useStore } from '@/lib/store';
 import { DEFAULT_HOME_CONFIG, DEFAULT_NAV_MENUS, NavMenuEntry, NavMenuKey } from '@/lib/types';
 import NavConfig from '@/components/NavConfig';
@@ -114,6 +114,9 @@ function Shell() {
   const [showProfile, setShowProfile] = useState(false);
   const [draft, setDraft] = useState<Person | null>(null);
   const [acct, setAcct] = useState<LoginAccount | null>(null);
+  // /api/auth/me 是否已返回：返回前权限计算只能走「按名兜底」，可能暂时得到「未命中任何角色」，
+  // 此时绝不能做「无权限 → 跳默认页」的重定向，否则会在数据/账号未就绪的瞬间乱跳
+  const [acctLoaded, setAcctLoaded] = useState(false);
   const [pwd, setPwd] = useState({ old: '', next: '', confirm: '' });
   const [pwdMsg, setPwdMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pwdBusy, setPwdBusy] = useState(false);
@@ -167,7 +170,8 @@ function Shell() {
     void fetch('/api/auth/me', { cache: 'no-store' })
       .then((r) => (r.ok ? (r.json() as Promise<{ account?: LoginAccount }>) : null))
       .then((j) => setAcct(j?.account ?? null))
-      .catch(() => setAcct(null));
+      .catch(() => setAcct(null))
+      .finally(() => setAcctLoaded(true));
   }, []);
   // 刷新落在 #edit 时的兜底：恢复正在编辑的规则；若无任何可编辑规则，回退到带导航/页头的规则列表页
   useEffect(() => {
@@ -238,15 +242,20 @@ function Shell() {
       case 'perms': return can('perms');
       case 'navcfg': return can('navcfg');
       case 'brandcfg': return can('brandcfg');
-      default: return true;
+      // 未知视图一律拒绝：否则任何不认识的 hash（如历史上的 #datatables）都会
+      // 走 default:true 放行，再由内容链的 else 分支渲染出规则列表（权限形同虚设）
+      default: return false;
     }
   };
   useEffect(() => {
+    // 账号/数据未就绪时权限计算不完整（可能暂时「未命中任何角色」= 全部拒绝），
+    // 此时重定向会跳去错误的落地页；等 ready + acctLoaded 后再兜底
+    if (!ready || !acctLoaded) return;
     if (!viewPermitted(view)) {
-      const first = (['home', 'alerts', 'rules', 'datatables', 'dealer', 'store', 'people', 'attrs', 'homecfg', 'perms', 'navcfg', 'brandcfg'] as View[]).find(viewPermitted);
+      const first = (['home', 'alerts', 'rules', 'tables', 'dealer', 'store', 'people', 'attrs', 'homecfg', 'perms', 'navcfg', 'brandcfg'] as View[]).find(viewPermitted);
       navigate(first ?? 'home');
     }
-  }, [view, perm]);
+  }, [view, perm, ready, acctLoaded]);
 
   const startNew = () => {
     if (state.tables.length === 0) {
@@ -265,7 +274,17 @@ function Shell() {
 
   let content;
   if (!viewPermitted(view)) {
-    content = null;
+    // 未被授予任何页面权限的账号（默认拒绝语义）：给出明确提示，而不是空白页
+    const anyPermitted = (['home', 'alerts', 'rules', 'tables', 'dealer', 'store', 'people', 'attrs', 'homecfg', 'perms', 'navcfg', 'brandcfg'] as View[]).some(viewPermitted);
+    content = anyPermitted ? null : (
+      <div className="flex h-full flex-col items-center justify-center gap-2 py-24 text-center">
+        <ShieldOff className="h-10 w-10 text-gray-300" />
+        <p className="text-sm font-medium text-gray-600">当前账号还没有被分配任何页面权限</p>
+        <p className="max-w-md text-xs leading-relaxed text-gray-400">
+          请联系管理员，在「系统管理 → 权限管理」中按 岗位 / 经销商 / 店仓 / 员工 主体类型为该账号配置功能权限后重新登录。
+        </p>
+      </div>
+    );
   } else if (view === 'home') {
     content = <Dashboard />;
   } else if (view === 'tables') {

@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
  *
  * 本脚本验证修复后的语义（与前端 perm.ts 一致）：
  *   - 命中角色  → 严格按该角色的 pages/ops 判定，越权写返回 403
- *   - 未命中角色 → 全放行（开箱即用兜底）
+ *   - 未命中角色 → 默认拒绝（未配置 = 无权限，写入返回 403）
  *
  * 用法：先启动服务，再 node scripts/authz-test.mjs
  */
@@ -16,6 +16,8 @@ const BASE = process.env.BASE || 'http://127.0.0.1:3100';
 
 const DEALER_ID = 'authz_dealer_1';
 const DEALER_CODE = 'AUTHZ001';
+// 经销商登录账号 = J + 编号（编号与店仓共用一套编码，靠前缀区分）
+const DEALER_ACCOUNT = `J${DEALER_CODE}`;
 const INIT_PWD = process.env.ADMIN_PASSWORD
   || (/^ADMIN_PASSWORD=(.*)$/m.exec(
         readFileSync(new URL('../.env.local', import.meta.url), 'utf8')
@@ -57,7 +59,7 @@ async function main() {
   ok('管理员登录成功', admin.res.status === 200, `got ${admin.res.status}`);
   const adminH = { 'Content-Type': 'application/json', Cookie: admin.cookie };
 
-  // ---------- 1. 建一个经销商（会自动生成同名账号，用户名=编号）----------
+  // ---------- 1. 建一个经销商（会自动生成账号，用户名 = J+编号）----------
   await fetch(`${BASE}/api/state`, {
     method: 'POST', headers: adminH,
     body: JSON.stringify({
@@ -73,8 +75,10 @@ async function main() {
   ok('管理员新建经销商成功', mk?.success === true, JSON.stringify(mk?.errors));
 
   // ---------- 2. 该经销商账号用初始密码直接登录（不强制改密） ----------
-  const dl0 = await login(DEALER_CODE, DEALER_INIT_PWD);
-  ok('经销商账号可登录（初始密码）', dl0.res.status === 200, `got ${dl0.res.status}`);
+  const bare = await login(DEALER_CODE, DEALER_INIT_PWD);
+  ok('经销商须用「J+编号」登录（裸编号登录被拒）', bare.res.status === 401, `got ${bare.res.status}`);
+  const dl0 = await login(DEALER_ACCOUNT, DEALER_INIT_PWD);
+  ok('经销商账号可登录（J+编号 + 初始密码）', dl0.res.status === 200, `got ${dl0.res.status}`);
   ok('初始密码登录不被强制改密', dl0.body?.account?.mustChangePassword === false);
 
   const chg = await fetch(`${BASE}/api/auth/password`, {
@@ -87,11 +91,16 @@ async function main() {
   const dlH = { 'Content-Type': 'application/json', Cookie: dlCookie };
 
   // ---------- 3. 未配置角色时：全放行（开箱即用语义）----------
-  const open1 = await j(await fetch(`${BASE}/api/state`, {
+  // ---------- 3. 未配置角色时：默认拒绝（2026-09 语义变更：未配置 = 无权限）----------
+  const open1 = await fetch(`${BASE}/api/state`, {
     method: 'POST', headers: dlH,
     body: JSON.stringify({ dealers: [{ id: DEALER_ID, name: '授权测试经销商(改名)', code: DEALER_CODE, sort: 99, createdAt: Date.now(), enabled: true }] }),
-  }));
-  ok('未配置角色 → 允许写入（开箱即用兜底）', open1?.success === true, JSON.stringify(open1?.errors));
+  });
+  ok('未配置角色 → 写入被拒（默认拒绝）', open1.status === 403, `got ${open1.status}`);
+  // 注：GET /api/state 目前对已登录账号统一返回（读通道尚未按模块拆分，与行级数据范围同属已知遗留），
+  // 这里只验证写通道被拒。
+  const openRead = await fetch(`${BASE}/api/state`, { headers: dlH });
+  ok('未配置角色 → 读接口仍可达（写通道已拒）', openRead.status === 200, `got ${openRead.status}`);
 
   // ---------- 4. 管理员给「经销商」配一个只读角色 ----------
   const cfgRes = await j(await fetch(`${BASE}/api/state`, {
@@ -158,11 +167,11 @@ async function main() {
   ok('★ 角色已从库中移除（不是只 upsert）',
     !(permsCleared?.config?.permissions ?? []).some((p) => p.subjectKind === 'dealer'));
 
-  const open2 = await j(await fetch(`${BASE}/api/state`, {
+  const open2 = await fetch(`${BASE}/api/state`, {
     method: 'POST', headers: dlH,
     body: JSON.stringify({ dealers: [{ id: DEALER_ID, name: '授权测试经销商(再改名)', code: DEALER_CODE, sort: 99, createdAt: Date.now(), enabled: true }] }),
-  }));
-  ok('★ 角色移除后恢复可写（开箱即用语义）', open2?.success === true, JSON.stringify(open2?.errors));
+  });
+  ok('★ 角色移除后重新默认拒绝', open2.status === 403, `got ${open2.status}`);
 
   // ---------- 8. 清理 ----------
   await fetch(`${BASE}/api/state`, { method: 'POST', headers: adminH, body: JSON.stringify({ del: { dealerIds: [DEALER_ID] } }) });

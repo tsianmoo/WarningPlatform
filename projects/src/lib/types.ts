@@ -1777,3 +1777,21 @@ export const FONT_OPTIONS = [
   { label: '无衬线', value: 'Arial, Helvetica, sans-serif' },
   { label: '衬线', value: 'Georgia, "Times New Roman", serif' },
 ];
+// ============ 登录账号命名规则 ============
+
+/**
+ * 经销商登录账号前缀。
+ *
+ * 经销商编号与店仓编号可能重复（例：两者都有 3960200），若都用编号当账号，
+ * 登录时无法区分是哪一类主体，且先建号的会占用用户名导致另一类建不出账号。
+ * 因此经销商账号统一为「J + 编号」（编号 0290001 → 账号 J0290001），
+ * 店仓/人员/员工账号仍直接用编号。
+ */
+export const DEALER_ACCOUNT_PREFIX = 'J';
+
+/** 由经销商编号推出登录账号名；已带前缀的原样返回（幂等，便于重复执行迁移/同步）。 */
+export function dealerLoginName(code: string | number | null | undefined): string {
+  const c = String(code ?? '').trim();
+  if (!c) return '';
+  return c.toUpperCase().startsWith(DEALER_ACCOUNT_PREFIX) ? c : DEALER_ACCOUNT_PREFIX + c;
+}

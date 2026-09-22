@@ -7,6 +7,7 @@ import {
 } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { query, queryOne, execute } from '@/storage/database/db';
+import { DEALER_ACCOUNT_PREFIX } from '@/lib/types';
 
 /**
  * 服务端认证。
@@ -104,18 +105,29 @@ export type LoginResult =
 const MAX_FAILED = 8;
 const LOCK_MS = 10 * 60 * 1000;
 
+/** 按账号名（大小写不敏感）取账号行 */
+async function findAccount(name: string): Promise<AccountDbRow | null> {
+  return queryOne<AccountDbRow>(
+    `SELECT id, username, password_hash, display_name, subject_type, subject_id,
+            must_change_password, enabled, failed_attempts, locked_until
+       FROM accounts WHERE lower(username) = lower($1)`,
+    [name]
+  );
+}
+
 export async function login(
   username: string,
   password: string,
   ip?: string | null,
   userAgent?: string | null
 ): Promise<LoginResult> {
-  const row = await queryOne<AccountDbRow>(
-    `SELECT id, username, password_hash, display_name, subject_type, subject_id,
-            must_change_password, enabled, failed_attempts, locked_until
-       FROM accounts WHERE lower(username) = lower($1)`,
-    [username.trim()]
-  );
+  const name = username.trim();
+  // 经销商账号 = J + 编号（与店仓编号可能重复，靠前缀区分）。
+  // 为了不让经销商记两套账号：纯数字账号若本身不存在，自动按「J+编号」再找一次。
+  // 若同名店仓账号存在则优先店家仓账号本身（与输入的账号字面一致）。
+  const row =
+    (await findAccount(name)) ??
+    (/^\d+$/.test(name) ? await findAccount(DEALER_ACCOUNT_PREFIX + name) : null);
   if (!row) return { ok: false, reason: 'invalid' };
 
   if (row.locked_until && new Date(row.locked_until).getTime() > Date.now()) {

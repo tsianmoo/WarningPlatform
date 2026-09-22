@@ -32,22 +32,13 @@ export const ALL_MODULES: PermModule[] = [
   'linkview_all',
 ];
 
-/** 岗位默认（未配置任何权限时的兜底）：所有页面及操作全放开 → 系统开箱可用，配置了岗位后才按角色收紧 */
-export function defaultPagePerms(): Partial<Record<PermModule, PagePerm>> {
-  const all: Partial<Record<PermOp, boolean>> = {
-    create: true,
-    edit: true,
-    delete: true,
-    run: true,
-    handle: true,
-    upload: true,
-    download: true,
-    assign: true,
-    resetPwd: true,
-    manage: true,
-  };
+/** 未配置任何权限时的兜底：默认拒绝（所有页面不可见、无任何操作）。
+ *  历史版本这里是「全放开」（开箱即用），但那会让没配权限的经销商/店仓/员工账号
+ *  直接看到管理员式全量页面，用户配置了权限反而「不生效」。现改为默认拒绝：
+ *  要给某类账号权限，必须在「权限管理」里为 岗位/经销商/店仓/员工 配置角色。 */
+export function noPagePerms(): Partial<Record<PermModule, PagePerm>> {
   const out: Partial<Record<PermModule, PagePerm>> = {};
-  for (const m of ALL_MODULES) out[m] = { view: true, ops: { ...all } };
+  for (const m of ALL_MODULES) out[m] = { view: false, ops: {} };
   return out;
 }
 
@@ -55,7 +46,7 @@ export function defaultPagePerms(): Partial<Record<PermModule, PagePerm>> {
  * 角色生效权限的“严格”展开：把命中角色（或人员覆盖）的 pages 展开为全模块表。
  * 角色里未显式出现的模块一律视为 view:false（未勾选 = 不可见），避免被全开基底误放行，
  * 使“没勾选的页面不显示”真正成立。仅用于已命中角色/覆盖的账号；未命中任何角色的账号
- * 仍走 defaultPagePerms() 全开兜底（系统管理员/开箱即用）。
+ * 未命中任何角色的账号走 noPagePerms() 默认拒绝。
  */
 function strictPagePerms(pages: Partial<Record<PermModule, PagePerm>> | undefined): Partial<Record<PermModule, PagePerm>> {
   const out: Partial<Record<PermModule, PagePerm>> = {};
@@ -101,8 +92,8 @@ export interface ResolvedPerm {
   overridden: boolean;
   /**
    * 是否命中过任何角色/覆盖。
-   * false 表示走的是 defaultPagePerms() 全开兜底（开箱即用，未配置任何权限）。
-   * 服务端鉴权据此判断：命中角色才收紧，未命中则放行（与前端语义一致）。
+   * false 表示未配置任何角色 → 走 noPagePerms() 默认拒绝（所有页面不可见）。
+   * 服务端与前端语义一致：未配置 = 无权限，需管理员在「权限管理」里为对应主体配置角色。
    */
   matched: boolean;
 }
@@ -155,7 +146,7 @@ export function resolvePerm(person: Person | null, cfg: HomeConfig | undefined |
         matched: true,
       };
     }
-    return { pages: defaultPagePerms(), dataScope: null, overridden: false, matched: false };
+    return { pages: noPagePerms(), dataScope: null, overridden: false, matched: false };
   }
 
   if (account && account.key) {
@@ -171,7 +162,7 @@ export function resolvePerm(person: Person | null, cfg: HomeConfig | undefined |
     }
   }
 
-  return { pages: defaultPagePerms(), dataScope: null, overridden: false, matched: false };
+  return { pages: noPagePerms(), dataScope: null, overridden: false, matched: false };
 }
 
 /**

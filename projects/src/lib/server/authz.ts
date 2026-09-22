@@ -17,7 +17,7 @@ import {
  *
  * 语义与前端保持一致（见 perm.ts）：
  *   - admin 账号                → 全放行
- *   - 未命中任何角色/覆盖        → 全放行（开箱即用的兜底）
+ *   - 未命中任何角色/覆盖        → 默认拒绝（所有页面不可见、无任何操作）
  *   - 命中角色/覆盖             → 严格按该角色的 pages/ops 判定
  */
 
@@ -28,7 +28,7 @@ export class ForbiddenError extends Error {
   }
 }
 
-/** 权限计算结果：'all' 表示不受限（管理员或未配置角色） */
+/** 权限计算结果：'all' 表示不受限（仅管理员）；其余按解析出的 pages 严格判定 */
 export type AccountPerm = { resolved: ResolvedPerm; matched: boolean } | 'all';
 
 export async function loadAccountPerm(account: AuthAccount): Promise<AccountPerm> {
@@ -84,7 +84,7 @@ export async function assertModuleOp(
 ): Promise<void> {
   const perm = await loadAccountPerm(account);
   if (perm === 'all') return;
-  if (!perm.matched) return; // 未配置任何角色 → 与前端一致，放行
+  // 未命中角色（matched=false）→ noPagePerms() 全部 view:false，走下面统一判定 = 拒绝
   if (!mod) return;
   if (!canView(perm.resolved, mod)) {
     throw new ForbiddenError(`没有权限访问「${mod}」`);
@@ -107,6 +107,5 @@ export async function canManageHomeConfig(account: AuthAccount): Promise<boolean
 async function canManage(account: AuthAccount, mod: PermModule): Promise<boolean> {
   const perm = await loadAccountPerm(account);
   if (perm === 'all') return true;
-  if (!perm.matched) return true;
   return canView(perm.resolved, mod) && canOper(perm.resolved, mod, 'manage');
 }
