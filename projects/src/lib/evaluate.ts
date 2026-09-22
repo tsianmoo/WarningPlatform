@@ -60,10 +60,10 @@ function normalizeEdge(raw: AnyEdgeLike, idx: number): FlowEdge {
 
 /** 将任意值转为毫秒时间戳（Date / 字符串 / 数字） */
 function tsNum(v: unknown): number {
-  if (v == null) return Number.NaN;
-  if (v instanceof Date) return v.getTime();
-  const d = new Date(v as string | number);
-  return Number.isNaN(d.getTime()) ? Number.NaN : d.getTime();
+  // 统一走 toDate 的宽松解析：兼容 Excel 序列、8 位 YYYYMMDD（如 20260101）、中文日期等。
+  // 旧实现直接 new Date(v)：数字 20260101 会被当成 1970 年的毫秒时间戳，导致时间窗过滤全军覆没。
+  const d = toDate(v);
+  return d ? d.getTime() : Number.NaN;
 }
 
 /** 判断行内日期值是否落在对比窗口（含截止日整天）内 */
@@ -2134,6 +2134,15 @@ function evalNode(
         ...mLabels.map((m) => [m, ''] as const),
         ...(cmpEnabled.length ? mLabels.flatMap(cmpColNames) : []),
       ]);
+      // 诊断：为什么是 0 组？行数据未加载成功 / 时间窗与数据日期范围不匹配是最常见的两个原因
+      const diagG =
+        srcRows.length === 0
+          ? (rs.t?.rowCount ?? 0) > 0
+            ? `⚠️ 「${rs.from}」登记有 ${rs.t.rowCount} 行数据，但云端实际加载到 0 行——通常是上次上传时行数据写入失败。请到「数据表管理」重新上传该表的 Excel 文件即可恢复。`
+            : `⚠️ 数据源为空：「${rs.from}」内没有任何行数据，请先到「数据表管理」上传数据。`
+          : gd.dateField && gd.timeWindow && rows0.length === 0
+            ? `⚠️ 时间窗过滤后 0 行：表内共 ${srcRows.length} 行，但没有一行的「${gd.dateField}」落在所选时间窗内。请检查时间窗是否与数据实际日期范围匹配（数据是 ${new Date().getFullYear()} 年还是往年？），或勾选「不限日期」先验证分组是否正常。`
+            : undefined;
       const finalOut = out.length ? out : [emptyRow];
       const idx = metrics.findIndex((m) => m.key === metricField);
       const defaultMLabel = idx >= 0 ? mLabels[idx] : (gd.resultLabel || `${fnLabel(gd.metricFn || 'sum')}(${gd.metricFieldLabel || metricField})`);
@@ -2147,6 +2156,7 @@ function evalNode(
             ? { label: mLabels[0] || defaultMLabel, value: String(finalOut[0][mLabels[0]] ?? ''), kind: 'column' as const, col: mLabels[0] }
             : undefined,
         note: `来自「${rs.from}」按 ${dimLabels.join('、')} 分组，${mLabels.join('、')}，共 ${out.length} 组。`,
+        diag: diagG,
       };
       }
     }

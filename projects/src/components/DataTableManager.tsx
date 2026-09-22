@@ -407,18 +407,21 @@ export function DataTableManager() {
                               <div
                                 key={t.id}
                                 onClick={() => setActiveTable(t.id)}
-                                className={`group flex cursor-pointer items-center justify-between rounded-lg border px-3 py-1.5 transition ${
+                                className={`group flex cursor-pointer items-center justify-between rounded-xl border px-3 py-2 transition ${
                                   t.id === activeId
                                     ? 'border-gray-300 bg-gray-50 shadow-sm'
                                     : 'border-transparent hover:border-gray-200 hover:bg-gray-50/50'
                                 }`}
                               >
-                                <div className="flex min-w-0 items-center gap-2">
-                                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-gray-100 text-gray-500">
-                                    <Table2 size={11} strokeWidth={1.7} />
+                                <div className="flex min-w-0 items-center gap-2.5">
+                                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-500">
+                                    <Table2 size={14} strokeWidth={1.7} />
                                   </span>
                                   <div className="min-w-0">
-                                    <div className="truncate text-xs font-medium text-gray-800">{t.name}</div>
+                                    <div className="truncate text-sm font-medium text-gray-800">{t.name}</div>
+                                    <div className="mt-0.5 text-xs text-gray-400">
+                                      {t.rowCount.toLocaleString()} 行 · {t.fields.length} 字段
+                                    </div>
                                   </div>
                                 </div>
                                 <div className="flex shrink-0 items-center gap-0.5">
@@ -555,7 +558,7 @@ export function DataTableManager() {
                       </button>
                     )}
                   </div>
-                  <p className="mt-1.5 text-xs text-gray-400">共 {active.rowCount.toLocaleString()} 行 · {active.fields.length} 个字段 · 点击「标签值 / 类型」可标签化并用于规则配置</p>
+                  <p className="mt-1.5 text-xs text-gray-400">共 {active.fields.length} 个字段 · 点击「标签值 / 类型」可标签化并用于规则配置</p>
                 </div>
               </div>
 
@@ -715,7 +718,7 @@ export function DataTableManager() {
       </AlertDialog>
 
       <AlertDialog open={!!openUpdate} onOpenChange={(v) => !v && setOpenUpdate(null)}>
-        <AlertDialogContent className="max-h-[86vh] overflow-y-auto">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>更新数据表「{openUpdate?.t.name}」</AlertDialogTitle>
             <AlertDialogDescription>
@@ -749,7 +752,7 @@ export function DataTableManager() {
                 </table>
               </div>
 
-              <div className="mt-4 max-h-[45vh] overflow-y-auto rounded-xl border border-gray-150">
+              <div className="mt-4 overflow-hidden rounded-xl border border-gray-150">
                 <div className="flex items-center gap-3 border-b border-gray-100 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500">
                   字段对比
                   <span className="text-emerald-600">新增 +{fieldDiff.added.length}</span>

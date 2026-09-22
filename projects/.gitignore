@@ -166,3 +166,7 @@ Desktop.ini
 
 # 部署时由 scripts/vendor-oracle.sh 生成，避免提交 Oracle Instant Client（~232MB）
 /.oracle_ic/
+
+# 本地运行时产物
+/logs/
+/.next-home/

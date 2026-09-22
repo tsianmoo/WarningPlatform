@@ -308,6 +308,26 @@ function NodeShell({ fnode, children, width = 300, immediate = false }: { fnode:
   };
   const tables = useRuleTables();
   const preview = useNodePreview();
+  // —— 结果命名输入：本地受控 + 防抖提交 ——
+  // 旧实现每敲一键就 updateNodeData + writeDraft，整棵节点树同步重绘；
+  // 中文输入法组合期间被外部受控值打断，表现为「录一个字母闪一下 / 丢字」。
+  // 现在输入值只由本地 state 驱动，停顿 300ms 或失焦时才写回草稿。
+  const committedRl = ((fnode.data as { resultLabel?: string } | undefined)?.resultLabel ?? '');
+  const [rlInput, setRlInput] = useState(committedRl);
+  const rlDirtyRef = useRef(false);
+  const rlTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    // 外部值变化（保存/取消/复制节点）且本地没有未提交的输入时，跟随外部
+    if (!rlDirtyRef.current) setRlInput(committedRl);
+  }, [committedRl]);
+  useEffect(() => () => {
+    if (rlTimerRef.current) window.clearTimeout(rlTimerRef.current);
+  }, []);
+  const commitRl = (v: string) => {
+    const cur = (fnode.data ?? {}) as Record<string, unknown>;
+    updateNodeData(fnode.id, { ...cur, resultLabel: v } as never);
+    writeDraft(fnode.id, { resultLabel: v });
+  };
   const handlePreview = (e: React.MouseEvent) => {
     e.stopPropagation();
     const draft = getDraft(fnode.id);
@@ -334,17 +354,6 @@ function NodeShell({ fnode, children, width = 300, immediate = false }: { fnode:
   const handleDiscard = (e: React.MouseEvent) => {
     e.stopPropagation();
     discardDraft(fnode.id);
-  };
-  const committedResultName = (fnode.data as { resultLabel?: string } | undefined)?.resultLabel ?? '';
-  const [resultName, setResultName] = useState(committedResultName);
-  const composing = useRef(false);
-  useEffect(() => {
-    if (!composing.current) setResultName(committedResultName);
-  }, [committedResultName]);
-  const commitResultName = (v: string) => {
-    const cur = (fnode.data ?? {}) as Record<string, unknown>;
-    updateNodeData(fnode.id, { ...cur, resultLabel: v } as never);
-    writeDraft(fnode.id, { resultLabel: v });
   };
   return (
     <div
@@ -401,18 +410,18 @@ function NodeShell({ fnode, children, width = 300, immediate = false }: { fnode:
       <div className="nodrag border-t border-gray-100 px-3 py-1.5">
         <div className="mb-1 text-[10px] text-gray-400">结果命名</div>
         <input
-          value={resultName}
-          onCompositionStart={() => (composing.current = true)}
-          onCompositionEnd={(e) => {
-            composing.current = false;
-            const v = e.currentTarget.value;
-            setResultName(v);
-            commitResultName(v);
-          }}
+          value={rlInput}
           onChange={(e) => {
             const v = e.target.value;
-            setResultName(v);
-            if (!composing.current) commitResultName(v);
+            setRlInput(v);
+            rlDirtyRef.current = true;
+            if (rlTimerRef.current) window.clearTimeout(rlTimerRef.current);
+            rlTimerRef.current = window.setTimeout(() => commitRl(v), 300);
+          }}
+          onBlur={() => {
+            if (rlTimerRef.current) window.clearTimeout(rlTimerRef.current);
+            rlDirtyRef.current = false;
+            commitRl(rlInput);
           }}
           disabled={readOnly}
           placeholder="给本组件命名（将显示在标题括号内）"
@@ -1703,7 +1712,6 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
   const update = useNodeUpdater(id);
   const tables = useRuleTables();
   const expr = d.expr ?? null;
-  const [rlVal, setRlVal] = useState<string>(typeof d.resultLabel === 'string' ? d.resultLabel : '');
   // 可引用的节点输出（含标量单值与列结果，如已过天数/开单天数等）
   const allNodes = useNodes();
   useDraftVersion(); // 订阅上游节点草稿变化，节点结果字段/引用实时刷新
@@ -1977,19 +1985,6 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-gray-400">结果名</span>
-              <input
-                value={rlVal}
-                onChange={(e) => setRlVal(e.target.value)}
-                onBlur={() => {
-                  const v = rlVal.trim();
-                  if (v !== (typeof d.resultLabel === 'string' ? d.resultLabel : '')) update({ resultLabel: v });
-                }}
-                placeholder="如：未开单天数"
-                className="min-w-0 flex-1 rounded-md border px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-cyan-400"
-              />
-            </div>
           </>
         ) : (
           <>
@@ -2014,19 +2009,6 @@ const ComputeNode = memo(({ id, data }: NodeProps) => {
               </option>
             ))}
           </select>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-gray-400">结果名</span>
-          <input
-            value={rlVal}
-            onChange={(e) => setRlVal(e.target.value)}
-            onBlur={() => {
-              const v = rlVal.trim();
-              if (v !== (typeof d.resultLabel === 'string' ? d.resultLabel : '')) update({ resultLabel: v });
-            }}
-            placeholder="如：近7日总金额"
-            className="min-w-0 flex-1 rounded-md border px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-cyan-400"
-          />
         </div>
         {/* 参与运算的其它节点结果 */}
         <div className="rounded-md border border-cyan-100 bg-cyan-50/40 p-1.5">

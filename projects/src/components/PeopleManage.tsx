@@ -1,12 +1,32 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Users, Phone, Plus, Pencil, Trash2, Crosshair, KeyRound } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Users, Phone, Plus, Pencil, Trash2, Crosshair, KeyRound, ChevronRight, ShieldCheck } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { resolvePerm, canOper } from '@/lib/perm';
 import { classifyField } from '@/components/DealerSourceModal';
 import type { DataTable, Organization, Person, Store } from '@/lib/types';
 import { toast } from 'sonner';
+
+/** 登录账号（服务端 accounts 表，接口不会下发密码哈希） */
+interface AccountRow {
+  id: string;
+  username: string;
+  displayName: string;
+  subjectType: 'person' | 'dealer' | 'store' | 'employee' | 'admin';
+  subjectId: string | null;
+  enabled: boolean;
+  mustChangePassword: boolean;
+  lastLoginAt: string | null;
+}
+
+const SUBJECT_TEXT: Record<string, string> = {
+  admin: '系统管理员',
+  person: '员工',
+  employee: '员工',
+  dealer: '经销商',
+  store: '店仓',
+};
 
 export function PeopleManage() {
   const { state, addPerson, updatePerson, removePerson, addOrg, updateOrg, removeOrg, moveOrg } = useStore();
@@ -27,6 +47,84 @@ export function PeopleManage() {
   const [fTitle, setFTitle] = useState('');
   const [fPost, setFPost] = useState('');
   const [fScope, setFScope] = useState('');
+
+  // ---------------------------------------------------------------------
+  // 登录账号（accounts 表）—— 与「人员档案」不是一回事：
+  // 系统管理员（admin）只有登录账号、没有人员档案，因此需要单独一块来管。
+  // 只有管理员能看/操作，权限由服务端 /api/auth/accounts 强制校验。
+  // ---------------------------------------------------------------------
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [acctOpen, setAcctOpen] = useState(false);
+  const [accts, setAccts] = useState<AccountRow[]>([]);
+  const [acctLoaded, setAcctLoaded] = useState(false);
+  const [acctBusy, setAcctBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    setIsAdmin(localStorage.getItem('dn_auth_type') === 'admin');
+  }, []);
+
+  const loadAccounts = async (): Promise<AccountRow[]> => {
+    try {
+      const res = await fetch('/api/auth/accounts', { cache: 'no-store' });
+      if (!res.ok) return [];
+      const j = (await res.json()) as { accounts?: AccountRow[] };
+      const rows = j.accounts ?? [];
+      setAccts(rows);
+      setAcctLoaded(true);
+      return rows;
+    } catch {
+      return [];
+    }
+  };
+
+  const toggleAccounts = () => {
+    const next = !acctOpen;
+    setAcctOpen(next);
+    if (next && !acctLoaded) void loadAccounts();
+  };
+
+  /** 重置某登录账号的密码（不传新密码 = 回到初始密码） */
+  const resetAccountPassword = async (accountId: string, newPassword?: string): Promise<boolean> => {
+    setAcctBusy(accountId);
+    try {
+      const res = await fetch('/api/auth/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, newPassword }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { password?: string; error?: string };
+      if (!res.ok) {
+        toast.error(j.error || '重置失败，请稍后重试');
+        return false;
+      }
+      toast.success(`密码已重置为 ${j.password ?? ''}，请告知对方登录后自行修改`);
+      await loadAccounts();
+      return true;
+    } catch {
+      toast.error('网络异常，请重试');
+      return false;
+    } finally {
+      setAcctBusy(null);
+    }
+  };
+
+  /** 人员列表里的「重置密码」：真正改登录凭据（旧版只改了档案里的展示字段，不影响登录） */
+  const resetPersonPassword = async (p: Person) => {
+    const np = window.prompt(`为「${p.name}」设置新的登录密码：\n（留空 = 重置为系统初始密码）`, '');
+    if (np === null) return;
+    const pwd = np.trim();
+    if (pwd && !(pwd.length >= 8 && /[A-Za-z]/.test(pwd) && /[0-9]/.test(pwd))) {
+      toast.error('新密码至少 8 位，且需同时包含字母和数字');
+      return;
+    }
+    const rows = accts.length > 0 ? accts : await loadAccounts();
+    const target = rows.find((a) => a.subjectType === 'person' && a.subjectId === p.id);
+    if (!target) {
+      toast.error('未找到该用户的登录账号（请确认该用户已保存账号名后重试）');
+      return;
+    }
+    await resetAccountPassword(target.id, pwd || undefined);
+  };
 
   const scopeOptions = useMemo(() => {
     const set = new Set<string>();
@@ -76,6 +174,76 @@ export function PeopleManage() {
 
   return (
     <div className="flex h-full flex-col overflow-y-auto px-8 pb-10 pt-6">
+      {isAdmin && (
+        <div className="mb-4 rounded-xl border border-gray-200 bg-white">
+          <button onClick={toggleAccounts} className="flex w-full items-center gap-2 px-4 py-3 text-left">
+            <ShieldCheck size={16} strokeWidth={1.75} className="text-gray-400" />
+            <span className="text-sm font-semibold text-gray-800">登录账号</span>
+            <span className="text-[11px] text-gray-400">
+              {acctLoaded ? `共 ${accts.length} 个` : '仅管理员可见'}
+            </span>
+            <ChevronRight
+              size={16}
+              className={`ml-auto text-gray-400 transition-transform ${acctOpen ? 'rotate-90' : ''}`}
+            />
+          </button>
+          {acctOpen && (
+            <div className="border-t border-gray-100 px-4 py-3">
+              {!acctLoaded && <div className="py-3 text-center text-xs text-gray-400">加载中…</div>}
+              {acctLoaded && accts.length === 0 && (
+                <div className="py-3 text-center text-xs text-gray-400">暂无登录账号</div>
+              )}
+              <div className="space-y-2">
+                {accts.map((a) => (
+                  <div key={a.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-900 text-xs font-semibold text-white">
+                      {(a.displayName || a.username).slice(0, 1)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium text-gray-800">{a.displayName || a.username}</span>
+                        <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-600">
+                          {SUBJECT_TEXT[a.subjectType] ?? a.subjectType}
+                        </span>
+                        {!a.enabled && (
+                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">已停用</span>
+                        )}
+                        {a.mustChangePassword && (
+                          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600">待改初始密码</span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
+                        <span className="font-mono">@{a.username}</span>
+                        <span>
+                          最后登录：
+                          {a.lastLoginAt ? new Date(a.lastLoginAt).toLocaleString('zh-CN', { hour12: false }) : '从未登录'}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      disabled={acctBusy === a.id}
+                      onClick={() => {
+                        if (window.confirm(`将「${a.displayName || a.username}」的密码重置为系统初始密码？\n该用户下次登录须自行修改。`)) {
+                          void resetAccountPassword(a.id);
+                        }
+                      }}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      <KeyRound size={12} />
+                      {acctBusy === a.id ? '处理中…' : '重置密码'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 text-[11px] leading-relaxed text-gray-400">
+                重置后的密码取自项目根目录 <code className="rounded bg-gray-100 px-1">.env.local</code> 的
+                <code className="ml-1 rounded bg-gray-100 px-1">DEFAULT_INITIAL_PASSWORD</code>。
+                系统管理员账号（admin）在此维护；员工/经销商/店仓账号由对应档案自动生成。
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       <div className="grid gap-6 grid-cols-[280px_1fr]">
         {/* 左侧：部门（组织）列表 */}
         <div className="rounded-xl border border-gray-200 bg-white p-2">
@@ -245,12 +413,9 @@ export function PeopleManage() {
                 <div className="flex shrink-0 items-center gap-1">
                   {can('resetPwd', p.id) && (
                   <button
-                    onClick={() => {
-                      const np = window.prompt(`为「${p.name}」设置新的登录密码：`, p.password || '');
-                      if (np !== null) { updatePerson({ ...p, password: np }); toast.success('已重置登录密码'); }
-                    }}
+                    onClick={() => void resetPersonPassword(p)}
                     className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                    title="重置密码"
+                    title="重置登录密码"
                   >
                     <KeyRound size={14} />
                   </button>

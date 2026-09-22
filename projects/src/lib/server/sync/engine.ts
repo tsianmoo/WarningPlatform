@@ -42,13 +42,13 @@ async function persist(inst: SyncInstance): Promise<void> {
 }
 
 export async function getTask(id: string): Promise<SyncTask | null> {
-  return getRow('sync_tasks', id);
+  return getRow<SyncTask>('sync_tasks', id);
 }
 export async function getDataset(id: string): Promise<SyncDataset | null> {
-  return getRow('sync_datasets', id);
+  return getRow<SyncDataset>('sync_datasets', id);
 }
 export async function getDatasource(id: string): Promise<DataSource | null> {
-  return getRow('sync_data_sources', id);
+  return getRow<DataSource>('sync_data_sources', id);
 }
 
 function resolveValue(raw: string | undefined, wm: number | string | undefined, baseline: number | undefined): string {

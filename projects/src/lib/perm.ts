@@ -99,6 +99,12 @@ export interface ResolvedPerm {
   dataScope: DataScope | null;
   /** 是否命中用户自定义覆盖 */
   overridden: boolean;
+  /**
+   * 是否命中过任何角色/覆盖。
+   * false 表示走的是 defaultPagePerms() 全开兜底（开箱即用，未配置任何权限）。
+   * 服务端鉴权据此判断：命中角色才收紧，未命中则放行（与前端语义一致）。
+   */
+  matched: boolean;
 }
 
 /** 权限主体身份：主体类型 + 主体标识（岗位名 / 经销商编号 / 店仓编号 / 员工编号） */
@@ -126,13 +132,17 @@ export function resolvePerm(person: Person | null, cfg: HomeConfig | undefined |
 
   if (person) {
     const overrides: PersonPermOverride[] = cfg?.permOverrides ?? [];
-    const ov = overrides.find((o) => o && o.enabled !== false);
+    // 必须按 personId 精确归属匹配。
+    // 旧版这里写的是 overrides.find((o) => o && o.enabled !== false) —— 不看归属，
+    // 只要库里存在任意一条启用的覆盖，所有登录用户都会套用它，属于越权。
+    const ov = overrides.find((o) => o && o.personId === person.id && o.enabled !== false);
     if (ov) {
       const m = migrateOverride(ov);
       return {
         pages: strictPagePerms(m.pages),
         dataScope: m.dataScope ?? null,
         overridden: true,
+        matched: true,
       };
     }
     const role = person.post ? findRoleBySubject(roles, 'post', person.post) : undefined;
@@ -142,9 +152,10 @@ export function resolvePerm(person: Person | null, cfg: HomeConfig | undefined |
         pages: strictPagePerms(m.pages),
         dataScope: m.dataScope ?? null,
         overridden: false,
+        matched: true,
       };
     }
-    return { pages: defaultPagePerms(), dataScope: null, overridden: false };
+    return { pages: defaultPagePerms(), dataScope: null, overridden: false, matched: false };
   }
 
   if (account && account.key) {
@@ -155,11 +166,12 @@ export function resolvePerm(person: Person | null, cfg: HomeConfig | undefined |
         pages: strictPagePerms(m.pages),
         dataScope: m.dataScope ?? null,
         overridden: false,
+        matched: true,
       };
     }
   }
 
-  return { pages: defaultPagePerms(), dataScope: null, overridden: false };
+  return { pages: defaultPagePerms(), dataScope: null, overridden: false, matched: false };
 }
 
 /**

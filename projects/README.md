@@ -4,11 +4,26 @@
 
 ## 文档
 
-- 数据库表结构文档：[docs/DB_SCHEMA.md](docs/DB_SCHEMA.md)
+- **本地部署与改造说明（先看这个）**：[docs/本地部署与改造说明.md](docs/本地部署与改造说明.md)
+- 数据库表结构文档（由实际库导出）：[docs/DB_SCHEMA.md](docs/DB_SCHEMA.md)
 
 ## 快速开始
 
-### 启动开发服务器
+### 本地启动（推荐）
+
+已部署在本机 PostgreSQL 16 上，一条命令拉起数据库与应用：
+
+```bash
+bash scripts/local-start.sh     # 或 pnpm local:start
+```
+
+启动后打开 [http://127.0.0.1:3100](http://127.0.0.1:3100)，用 `admin / wi15afvb` 登录（首次登录强制改密）。
+
+> 端口默认 3100：macOS 的「隔空播放接收器」占用 5000，直接用 5000 会 `EADDRINUSE`。
+
+停止：`bash scripts/local-stop.sh`
+
+### 启动开发服务器（扣子 CLI）
 
 ```bash
 coze-dev dev

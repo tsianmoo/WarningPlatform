@@ -414,23 +414,7 @@ export function buildAlertsForRule(
   });
 }
 
-const LS_KEY_BASE = 'alert-platform-v1';
-
-/**
- * 本地缓存键按登录账号隔离。
- *
- * 旧版是全局单键 `alert-platform-v1`：多人共用一台电脑时，后登录的人
- * 会先看到上一个人的缓存数据（服务端请求返回前的那一帧，或者请求失败时一直看到）。
- * 现在以账号 id 作为后缀，各账号互不可见。
- */
-function lsKey(): string {
-  try {
-    const id = localStorage.getItem('dn_account_id');
-    return id ? `${LS_KEY_BASE}::${id}` : LS_KEY_BASE;
-  } catch {
-    return LS_KEY_BASE;
-  }
-}
+const LS_KEY = 'alert-platform-v1';
 const STATE_API = '/api/state';
 const ROWS_API = (id: string) => `/api/tables/${encodeURIComponent(id)}/rows`;
 /** 远端持久化是否可用（首次拉取成功后置为 true） */
@@ -476,36 +460,10 @@ function stripRowsClient(t: DataTable): DataTable {
   return next;
 }
 
-/**
- * 会话失效处理：清掉本地登录标记并回登录页。
- *
- * 旧版这里是静默失败：接口 401 就退回 localStorage，用户界面照常能用、
- * 但所有改动都写不进数据库（下次刷新全没了），属于最容易被误判成「数据丢失」的坑。
- */
-function handleSessionExpired(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.removeItem('dn_auth');
-    localStorage.removeItem('dn_auth_type');
-    localStorage.removeItem('dn_auth_id');
-    localStorage.removeItem('dn_account_id');
-  } catch {
-    /* ignore */
-  }
-  if (!window.location.pathname.startsWith('/login')) {
-    window.location.replace('/login');
-  }
-}
-
 /** 从服务端数据库拉取持久化数据 */
 async function fetchRemoteState(): Promise<Partial<AppState> | null> {
   try {
     const res = await fetch(STATE_API, { cache: 'no-store' });
-    if (res.status === 401) {
-      remoteAvailable = false;
-      handleSessionExpired();
-      return null;
-    }
     if (!res.ok) return null;
     const json = (await res.json()) as { tables?: DataTable[]; rules?: AlertRule[]; alerts?: AlertTask[]; groups?: RuleGroup[]; tableGroups?: DataTableGroup[]; orgs?: Organization[]; persons?: Person[]; employees?: Employee[]; hrAttributes?: HrAttribute[]; dealers?: Dealer[]; stores?: Store[]; config?: HomeConfig; locks?: RuleLockMap; error?: string };
     if (json.error) return null;
@@ -519,7 +477,7 @@ async function fetchRemoteState(): Promise<Partial<AppState> | null> {
 /** 本地缓存里是否有用户数据（用于首次迁移到数据库） */
 function readLocalCache(): { tables: DataTable[]; rules: AlertRule[] } | null {
   try {
-    const raw = localStorage.getItem(lsKey());
+    const raw = localStorage.getItem(LS_KEY);
     if (!raw) return null;
     const parsed = migrateState(JSON.parse(raw) as AppState);
     if (!parsed || !Array.isArray(parsed.tables)) return null;
@@ -531,50 +489,16 @@ function readLocalCache(): { tables: DataTable[]; rules: AlertRule[] } | null {
   }
 }
 
-/**
- * 显式删除通道。
- *
- * 服务端已改为「只 upsert、绝不按入参删除」，因此每次删除都必须在这里显式声明目标 id。
- * 旧版依赖「客户端快照全量覆盖」顺带完成删除，一旦某次快照不完整就会误删其它人的数据。
- */
-interface RemoteDeletions {
-  ruleIds?: string[];
-  groupIds?: string[];
-  tableIds?: string[];
-  tableGroupIds?: string[];
-  dealerIds?: string[];
-  storeIds?: string[];
-  personIds?: string[];
-  employeeIds?: string[];
-  orgIds?: string[];
-  hrAttributeIds?: string[];
-  alertIds?: string[];
-  clearAlerts?: boolean;
-  /** 被移除的角色（按主体类型 + 标识定位，roles 表是复合主键，没有单列 id） */
-  roleKeys?: { post: string; subjectKind?: string }[];
-  /** 被移除的单人权限覆盖 */
-  overridePersonIds?: string[];
-}
-
-async function deleteRemote(drop: RemoteDeletions): Promise<void> {
-  const keys = Object.keys(drop).filter((k) => k !== 'clearAlerts') as (keyof RemoteDeletions)[];
-  if (keys.length === 0) return;
+/** 显式删除规则/分组（绝不依赖"客户端快照全量覆盖"来做隐式删除，避免误删其它标签/会话新建的记录） */
+async function deleteRemote(drop: { ruleIds?: string[]; groupIds?: string[]; clearAlerts?: boolean }): Promise<void> {
+  if (!drop || (!Array.isArray(drop.ruleIds) && !Array.isArray(drop.groupIds))) return;
   try {
-    const res = await fetch(STATE_API, {
+    await fetch(STATE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ del: drop }),
+      body: JSON.stringify({ del: { ruleIds: drop.ruleIds ?? [], groupIds: drop.groupIds ?? [], clearAlerts: !!drop.clearAlerts } }),
     });
-    if (res.status === 401) {
-      remoteAvailable = false;
-      handleSessionExpired();
-    } else if (res.status === 403) {
-      const j = (await res.json().catch(() => null)) as { error?: string } | null;
-      console.warn('[persist] 权限不足，未删除:', j?.error ?? res.status);
-    }
-  } catch {
-    /* 删除失败不阻塞前台操作，用户下次进入时会看到该项仍在 */
-  }
+  } catch { /* 前台删除不阻塞，失败由下次全量 upsert 补偿目标集合即可 */ }
 }
 
 /** 把当前状态全量同步到服务端数据库（失败返回 false，保留本地缓存） */
@@ -596,15 +520,7 @@ async function pushRemoteState(state: AppState, opts?: { clearAlertsAll?: boolea
       body: JSON.stringify({ tables: state.tables.map(stripRowsClient), rules: state.rules, alerts: state.alerts, groups: state.ruleGroups ?? [], tableGroups: state.tableGroups ?? [], orgs: state.orgs ?? [], persons: state.persons ?? [], employees: state.employees ?? [], hrAttributes: state.hrAttributes ?? [], dealers: state.dealers ?? [], stores: state.stores ?? [], config: { ...state.config, permissions: state.permissions ?? [], permOverrides: state.permOverrides ?? [] }, locks: state.locks ?? {}, clearAlertsAll: opts?.clearAlertsAll }),
     });
     if (!res.ok) {
-      if (res.status === 401) {
-        remoteAvailable = false;
-        handleSessionExpired();
-      } else if (res.status === 403) {
-        const j = (await res.json().catch(() => null)) as { error?: string } | null;
-        console.warn('[persist] 权限不足，本次未写入:', j?.error ?? res.status);
-      } else {
-        console.warn('[persist] 云端同步失败', res.status);
-      }
+      console.warn('[persist] 云端同步失败', res.status);
       return false;
     }
     // 部分实体同步失败（返回体 errors 非空）也可视为未完全落库，透出供日志排查
@@ -760,7 +676,7 @@ function migrateState(raw: AppState | null): AppState {
 
 function loadInitial(): AppState {
   try {
-    const raw = localStorage.getItem(lsKey());
+    const raw = localStorage.getItem(LS_KEY);
     if (raw) {
       return migrateState(JSON.parse(raw) as AppState);
     }
@@ -1154,26 +1070,10 @@ function reducer(state: AppState, action: { type: string; payload?: unknown }): 
       const patch = action.payload as HomeConfig | ((c: HomeConfig) => HomeConfig);
       return { ...state, config: typeof patch === 'function' ? patch(state.config) : { ...state.config, ...patch } };
     }
-    case 'SET_PERMISSIONS': {
-      const next = Array.isArray(action.payload) ? (action.payload as RolePerm[]) : state.permissions;
-      // 角色走「以本次提交为准」：算出被移除的角色，显式通知服务端清理。
-      // 不这样做的话，删掉的角色仍留在库里继续生效（只 upsert 不删除的副作用）。
-      const kept = new Set(next.map((p) => `${p.post}\u0000${p.subjectKind ?? 'post'}`));
-      const removed = (state.permissions ?? [])
-        .filter((p) => !kept.has(`${p.post}\u0000${p.subjectKind ?? 'post'}`))
-        .map((p) => ({ post: p.post, subjectKind: p.subjectKind ?? 'post' }));
-      if (removed.length > 0) void deleteRemote({ roleKeys: removed });
-      return { ...state, permissions: next };
-    }
-    case 'SET_PERM_OVERRIDES': {
-      const next = Array.isArray(action.payload) ? (action.payload as PersonPermOverride[]) : state.permOverrides;
-      const kept = new Set(next.map((o) => String(o.personId ?? '')).filter(Boolean));
-      const removed = (state.permOverrides ?? [])
-        .map((o) => String(o.personId ?? ''))
-        .filter((id) => id && !kept.has(id));
-      if (removed.length > 0) void deleteRemote({ overridePersonIds: removed });
-      return { ...state, permOverrides: next };
-    }
+    case 'SET_PERMISSIONS':
+      return { ...state, permissions: Array.isArray(action.payload) ? (action.payload as RolePerm[]) : state.permissions };
+    case 'SET_PERM_OVERRIDES':
+      return { ...state, permOverrides: Array.isArray(action.payload) ? (action.payload as PersonPermOverride[]) : state.permOverrides };
     case 'RESET':
       return loadInitialState();
     default:
@@ -1346,7 +1246,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     try {
-      localStorage.setItem(lsKey(), JSON.stringify(state));
+      localStorage.setItem(LS_KEY, JSON.stringify(state));
     } catch {
       /* ignore */
     }
@@ -1383,41 +1283,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       remotePersist,
       addTable: (t) => dispatch('ADD_TABLE', t),
       updateTable: (id, patch) => dispatch('UPDATE_TABLE', { id, patch }),
-      removeTable: (id) => {
-        dispatch('REMOVE_TABLE', id);
-        void deleteRemote({ tableIds: [id] });
-      },
+      removeTable: (id) => dispatch('REMOVE_TABLE', id),
       saveTableRows: async (id, rows) => {
-        // 大表（数万行）一次性整包 POST 容易因请求体过大/超时静默失败（浅秋零售单 7.6 万行就是这样丢的），
-        // 超过阈值时改为分片：第一片 start（清空重写），后续片 append，单片失败重试 3 次。
-        const all = (rows ?? []) as Record<string, unknown>[];
-        const CHUNK = 4000;
-        const post = async (payload: Record<string, unknown>) => {
+        try {
           const res = await fetch(ROWS_API(id), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({ rows: rows ?? [] }),
           });
           return res.ok;
-        };
-        try {
-          if (all.length <= CHUNK) {
-            return await post({ rows: all });
-          }
-          for (let i = 0; i < all.length; i += CHUNK) {
-            const phase = i === 0 ? 'start' : 'append';
-            let ok = false;
-            for (let attempt = 0; attempt < 3 && !ok; attempt++) {
-              try {
-                ok = await post({ rows: all.slice(i, i + CHUNK), phase, offset: i });
-              } catch {
-                ok = false;
-              }
-              if (!ok) await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
-            }
-            if (!ok) return false; // 某片彻底失败：返回 false，前端提示重新上传
-          }
-          return true;
         } catch {
           return false;
         }
@@ -1486,10 +1360,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         dispatch('ADD_TABLE_GROUP', g);
         return g;
       },
-      removeTableGroup: (id) => {
-        dispatch('REMOVE_TABLE_GROUP', id);
-        void deleteRemote({ tableGroupIds: [id] });
-      },
+      removeTableGroup: (id) => dispatch('REMOVE_TABLE_GROUP', id),
       updateTableGroup: (id, name) => dispatch('UPDATE_TABLE_GROUP', { id, name }),
       addAlert: (alert) => dispatch('ADD_ALERT', alert),
       updateAlertStatus: (alertId, patch) => dispatch('UPDATE_ALERT', { alertId, patch }),
@@ -1503,10 +1374,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return org;
       },
       updateOrg: (o) => dispatch('UPDATE_ORG', { id: o.id, patch: o }),
-      removeOrg: (id) => {
-        dispatch('REMOVE_ORG', id);
-        void deleteRemote({ orgIds: [id] });
-      },
+      removeOrg: (id) => dispatch('REMOVE_ORG', id),
       replEmployees: (list) => dispatch('REPLACE_EMPLOYEES', list),
       addEmployee: (e) => {
         const emp: Employee = { ...e, id: uid('emp'), createdAt: Date.now() };
@@ -1514,40 +1382,28 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return emp;
       },
       updateEmployee: (e) => dispatch('UPDATE_EMPLOYEE', { id: e.id, patch: e }),
-      removeEmployee: (id) => {
-        dispatch('REMOVE_EMPLOYEE', id);
-        void deleteRemote({ employeeIds: [id] });
-      },
+      removeEmployee: (id) => dispatch('REMOVE_EMPLOYEE', id),
       addPerson: (p) => {
         const person: Person = { ...p, id: uid('person'), createdAt: Date.now() };
         dispatch('ADD_PERSON', person);
         return person;
       },
       updatePerson: (p) => dispatch('UPDATE_PERSON', { id: p.id, patch: p }),
-      removePerson: (id) => {
-        dispatch('REMOVE_PERSON', id);
-        void deleteRemote({ personIds: [id] });
-      },
+      removePerson: (id) => dispatch('REMOVE_PERSON', id),
       addHrAttribute: (a) => {
         const attr: HrAttribute = { id: uid('hrattr'), name: a.name, items: a.items ?? [], sort: a.sort ?? state.hrAttributes.length, category: a.category ?? 'person', createdAt: Date.now() };
         dispatch('ADD_HRATTR', attr);
         return attr;
       },
       updateHrAttribute: (a) => dispatch('UPDATE_HRATTR', { id: a.id, patch: a }),
-      removeHrAttribute: (id) => {
-        dispatch('REMOVE_HRATTR', id);
-        void deleteRemote({ hrAttributeIds: [id] });
-      },
+      removeHrAttribute: (id) => dispatch('REMOVE_HRATTR', id),
       addDealer: (d) => {
         const dealer: Dealer = { ...d, id: uid('dealer'), sort: d.sort ?? state.dealers.length, createdAt: Date.now() };
         dispatch('ADD_DEALER', dealer);
         return dealer;
       },
       updateDealer: (d) => dispatch('UPDATE_DEALER', { id: d.id, patch: d }),
-      removeDealer: (id) => {
-        dispatch('REMOVE_DEALER', id);
-        void deleteRemote({ dealerIds: [id] });
-      },
+      removeDealer: (id) => dispatch('REMOVE_DEALER', id),
       moveDealer: (id, dir) => {
         const arr = [...state.dealers].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
         const idx = arr.findIndex((d) => d.id === id);
@@ -1562,10 +1418,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return store;
       },
       updateStore: (s) => dispatch('UPDATE_STORE', { id: s.id, patch: s }),
-      removeStore: (id) => {
-        dispatch('REMOVE_STORE', id);
-        void deleteRemote({ storeIds: [id] });
-      },
+      removeStore: (id) => dispatch('REMOVE_STORE', id),
       moveStore: (id, dir) => {
         const arr = [...state.stores].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
         const idx = arr.findIndex((s) => s.id === id);

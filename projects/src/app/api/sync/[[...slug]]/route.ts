@@ -8,6 +8,8 @@ import { renderSql } from '@/lib/server/sync/cron';
 import { qualIdent } from '@/lib/server/sync/dialects';
 import { scheduler } from '@/lib/server/sync/scheduler';
 import { requestStop } from '@/lib/server/sync/engine';
+import { requireAccount } from '@/lib/server/auth';
+import { assertModuleOp } from '@/lib/server/authz';
 import type { DataSource, SyncDataset, SyncTask, AlertChannel, AuditEntry } from '@/lib/sync/types';
 
 const TABLES = {
@@ -19,8 +21,40 @@ const TABLES = {
   audit: 'sync_audit',
 };
 
+/**
+ * 已认证的操作用户名。
+ *
+ * 修正的旧设计：旧版直接读请求头 `x-user` 当身份，客户端想写谁就写谁，
+ * 审计日志（是谁触发了同步/改了任务）完全不可信。
+ * 现在改为：进入路由时先校验会话，把服务端解析出的账号名写进 WeakMap，
+ * 后续 me() 只认这个值，头里的 x-user 不再被信任。
+ */
+const ACTOR = new WeakMap<object, string>();
+
 function me(req: NextRequest): string {
-  return req.headers.get('x-user') || 'system';
+  return ACTOR.get(req) ?? 'system';
+}
+
+/**
+ * 会话 + 授权闸门。
+ * 返回 null 表示通过；返回 Response 表示应直接回给客户端。
+ */
+async function guard(req: NextRequest, method: 'GET' | 'POST' | 'PUT' | 'DELETE'): Promise<NextResponse | null> {
+  let account;
+  try {
+    account = await requireAccount();
+  } catch {
+    return NextResponse.json({ error: '未登录或会话已过期' }, { status: 401 });
+  }
+  ACTOR.set(req, account.displayName || account.username);
+  try {
+    // 读接口要求能看到「数据同步平台」；写接口还要求具备任一写操作权限
+    await assertModuleOp(account, 'datasync', method === 'GET' ? [] : ['create', 'edit', 'delete', 'run', 'manage', 'upload']);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '没有权限';
+    return NextResponse.json({ error: msg }, { status: 403 });
+  }
+  return null;
 }
 
 function fail(e: unknown, status = 500) {
@@ -111,6 +145,8 @@ async function dispatch(req: NextRequest, path: string[], method: 'GET' | 'POST'
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ slug?: string[] }> }) {
+  const denied = await guard(req, 'GET');
+  if (denied) return denied;
   const p = await params;
   const path = p.slug || [];
   try {
@@ -120,6 +156,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
   }
 }
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug?: string[] }> }) {
+  const denied = await guard(req, 'POST');
+  if (denied) return denied;
   const p = await params;
   try {
     return await dispatch(req, p.slug || [], 'POST');
@@ -128,6 +166,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   }
 }
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ slug?: string[] }> }) {
+  const denied = await guard(req, 'PUT');
+  if (denied) return denied;
   const p = await params;
   try {
     return await dispatch(req, p.slug || [], 'PUT');
@@ -136,6 +176,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ slug
   }
 }
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ slug?: string[] }> }) {
+  const denied = await guard(req, 'DELETE');
+  if (denied) return denied;
   const p = await params;
   try {
     return await dispatch(req, p.slug || [], 'DELETE');

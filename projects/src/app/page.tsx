@@ -25,6 +25,25 @@ import { resolvePerm, canView, resolveAuthAccount } from '@/lib/perm';
 
 type View = 'home' | 'tables' | 'apitable' | 'formtable' | 'rules' | 'new' | 'edit' | 'alerts' | 'people' | 'attrs' | 'dealer' | 'store' | 'emp' | 'homecfg' | 'perms' | 'navcfg' | 'brandcfg';
 
+/** 当前登录账号（来自 /api/auth/me）。注意它和「人事档案 Person」是两回事：
+ *  系统管理员只有账号、没有人事档案，所以「修改资料」不能依赖 Person 是否存在。 */
+interface LoginAccount {
+  id: string;
+  username: string;
+  displayName: string;
+  subjectType: 'person' | 'dealer' | 'store' | 'employee' | 'admin';
+  subjectId: string | null;
+  mustChangePassword: boolean;
+}
+
+const SUBJECT_LABEL: Record<string, string> = {
+  admin: '系统管理员',
+  person: '员工账号',
+  employee: '员工账号',
+  dealer: '经销商账号',
+  store: '店仓账号',
+};
+
 function hexToRgba(hex: string, alpha: number): string {
   const h = (hex || '#000000').replace('#', '');
   const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
@@ -94,9 +113,49 @@ function Shell() {
   const toggleGroup = (g: string) => setOpenGroup((cur) => (cur === g ? null : g));
   const [showProfile, setShowProfile] = useState(false);
   const [draft, setDraft] = useState<Person | null>(null);
-  const openProfile = () => { setDraft(me ? { ...me } : null); setShowProfile(true); };
+  const [acct, setAcct] = useState<LoginAccount | null>(null);
+  const [pwd, setPwd] = useState({ old: '', next: '', confirm: '' });
+  const [pwdMsg, setPwdMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pwdBusy, setPwdBusy] = useState(false);
+  // 旧版这里用 `draft` 是否为空决定弹窗是否渲染，而 draft 来自「人事档案 Person」，
+  // 管理员账号没有人事档案 → 点「修改资料」弹窗一片空白。
+  // 现在弹窗恒显示，账号信息与改密码不依赖 Person。
+  const openProfile = () => {
+    setDraft(me ? { ...me } : null);
+    setPwd({ old: '', next: '', confirm: '' });
+    setPwdMsg(null);
+    setShowProfile(true);
+    void fetch('/api/auth/me', { cache: 'no-store' })
+      .then((r) => (r.ok ? (r.json() as Promise<{ account?: LoginAccount }>) : null))
+      .then((j) => setAcct(j?.account ?? null))
+      .catch(() => setAcct(null));
+  };
   const saveProfile = () => {
     if (draft) { updatePerson(draft); localStorage.setItem('dn_auth', draft.name); setMeName(draft.name); setShowProfile(false); setDraft(null); }
+  };
+  const submitPassword = async () => {
+    if (pwdBusy) return;
+    if (!pwd.old || !pwd.next) { setPwdMsg({ ok: false, text: '请填写原密码与新密码' }); return; }
+    if (pwd.next !== pwd.confirm) { setPwdMsg({ ok: false, text: '两次输入的新密码不一致' }); return; }
+    setPwdBusy(true);
+    try {
+      const res = await fetch('/api/auth/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPassword: pwd.old, newPassword: pwd.next }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setPwdMsg({ ok: false, text: j.error || '修改失败，请稍后重试' });
+        return;
+      }
+      setPwd((c) => ({ ...c, old: '', next: '', confirm: '' }));
+      setPwdMsg({ ok: true, text: '密码修改成功，其它设备上的登录已失效。' });
+    } catch {
+      setPwdMsg({ ok: false, text: '网络异常，请重试' });
+    } finally {
+      setPwdBusy(false);
+    }
   };
 
   const [meName, setMeName] = useState('');
@@ -130,7 +189,14 @@ function Shell() {
   const logout = () => {
     setMeName('');
     navigate('home');
+    // 关键：先让服务端销毁会话（清 dn_session Cookie + sessions 记录）。
+    // 旧版只清了 localStorage 里的显示名，会话 Cookie 仍然有效，
+    // 换个人打开浏览器 / 拿到 Cookie 依旧是登录态，等于没有退出。
+    void fetch('/api/auth/logout', { method: 'POST', keepalive: true }).catch(() => {});
     localStorage.removeItem('dn_auth');
+    localStorage.removeItem('dn_auth_type');
+    localStorage.removeItem('dn_auth_id');
+    localStorage.removeItem('dn_account_id');
     router.push('/login');
   };
 
@@ -426,37 +492,117 @@ function Shell() {
         {readyUI ? content : loadingUI}
       </main>
 
-      {showProfile && draft && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-96 rounded-xl bg-white p-5 shadow-xl">
-            <h3 className="mb-4 text-base font-semibold">修改资料</h3>
+      {showProfile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowProfile(false)}>
+          <div
+            className="max-h-[86vh] w-[440px] overflow-y-auto rounded-xl bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-base font-semibold">修改资料</h3>
+              <button
+                onClick={() => setShowProfile(false)}
+                className="rounded-md px-2 py-0.5 text-lg leading-none text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                title="关闭"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* 当前登录账号：不依赖人事档案，管理员也一定有内容 */}
+            <div className="mb-4 flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50/70 p-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
+                {(acct?.displayName || draft?.name || meName || '用').slice(0, 1)}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium text-gray-800">
+                  {acct?.displayName || draft?.name || meName || '—'}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-gray-400">
+                  <span className="font-mono">@{acct?.username || '—'}</span>
+                  <span className="rounded bg-white px-1.5 py-0.5 text-gray-500">
+                    {SUBJECT_LABEL[acct?.subjectType ?? ''] ?? '登录账号'}
+                  </span>
+                  {acct?.mustChangePassword && (
+                    <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-600">待修改初始密码</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* 个人资料：仅当人事档案里存在对应记录时才可编辑 */}
+            {draft ? (
+              <>
+                <div className="mb-2 text-xs font-semibold text-gray-400">个人资料</div>
+                <div className="space-y-3">
+                  {[
+                    ['姓名', 'name'],
+                    ['账号', 'username'],
+                    ['职位', 'title'],
+                    ['岗位', 'post'],
+                    ['手机', 'phone'],
+                    ['邮箱', 'email'],
+                    ['地址', 'address'],
+                    ['生日', 'birthday'],
+                  ].map(([label, key]) => (
+                    <label key={key} className="flex items-center gap-3 text-sm">
+                      <span className="w-20 shrink-0 text-gray-500">{label}</span>
+                      <input
+                        value={(draft as unknown as Record<string, string>)[key] ?? ''}
+                        onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
+                        className="flex-1 rounded-md border px-2 py-1.5 outline-none focus:border-blue-400"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/50 p-3 text-xs leading-relaxed text-gray-500">
+                当前是系统管理员账号，没有对应的人事档案，因此没有可编辑的个人资料。
+                日常改密请用下方的「修改密码」。
+              </div>
+            )}
+
+            {/* 修改密码：所有账号都可用 */}
+            <div className="mt-5 mb-2 text-xs font-semibold text-gray-400">修改密码</div>
             <div className="space-y-3">
-              {[
-                ['姓名', 'name'],
-                ['账号', 'username'],
-                ['职位', 'title'],
-                ['岗位', 'post'],
-                ['手机', 'phone'],
-                ['邮箱', 'email'],
-                ['地址', 'address'],
-                ['生日', 'birthday'],
-              ].map(([label, key]) => (
+              {([
+                ['原密码', 'old', 'current-password'],
+                ['新密码', 'next', 'new-password'],
+                ['确认新密码', 'confirm', 'new-password'],
+              ] as const).map(([label, key, autoComplete]) => (
                 <label key={key} className="flex items-center gap-3 text-sm">
-                  <span className="w-12 shrink-0 text-gray-500">{label}</span>
+                  <span className="w-20 shrink-0 text-gray-500">{label}</span>
                   <input
-                    value={(draft as unknown as Record<string, string>)[key] ?? ''}
-                    onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
+                    type="password"
+                    autoComplete={autoComplete}
+                    value={pwd[key]}
+                    onChange={(e) => setPwd((c) => ({ ...c, [key]: e.target.value }))}
                     className="flex-1 rounded-md border px-2 py-1.5 outline-none focus:border-blue-400"
                   />
                 </label>
               ))}
+              <div className="pl-[92px] text-[11px] text-gray-400">至少 8 位，且需同时包含字母和数字</div>
+              {pwdMsg && (
+                <div className={`pl-[92px] text-xs ${pwdMsg.ok ? 'text-green-600' : 'text-red-500'}`}>{pwdMsg.text}</div>
+              )}
             </div>
-            <div className="mt-5 flex justify-end gap-2">
+
+            <div className="mt-5 flex items-center justify-end gap-2">
               <button onClick={() => setShowProfile(false)} className="rounded-md px-4 py-1.5 text-sm text-gray-500 hover:bg-gray-100">
-                取消
+                关闭
               </button>
-              <button onClick={saveProfile} className="rounded-md bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700">
-                保存
+              {draft && (
+                <button onClick={saveProfile} className="rounded-md border border-gray-200 px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50">
+                  保存资料
+                </button>
+              )}
+              <button
+                onClick={() => void submitPassword()}
+                disabled={pwdBusy}
+                className="rounded-md bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-60"
+              >
+                {pwdBusy ? '提交中…' : '修改密码'}
               </button>
             </div>
           </div>

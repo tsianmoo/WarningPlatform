@@ -5,7 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 COZE_WORKSPACE_PATH="$PROJECT_DIR"
 
-PORT=5000
+# macOS 上 5000 端口默认被「隔空播放接收器」(ControlCenter) 占用，
+# 因此这里允许用 PORT / DEPLOY_RUN_PORT 覆盖，避免生产启动直接撞端口。
+PORT="${PORT:-5000}"
 DEPLOY_RUN_PORT="${DEPLOY_RUN_PORT:-$PORT}"
 
 

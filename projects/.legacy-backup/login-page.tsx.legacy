@@ -8,18 +8,16 @@ import { DEFAULT_HOME_CONFIG, normalizeHomeConfig, type HomeConfig } from '@/lib
 export default function LoginPage() {
   const router = useRouter();
   const [cfg, setCfg] = useState<HomeConfig>(DEFAULT_HOME_CONFIG);
+  const [users, setUsers] = useState<{ username?: string; password?: string; name: string; type: string; id?: string }[]>([]);
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [captchaText, setCaptchaText] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pick, setPick] = useState<(typeof users)[number][] | null>(null);
   const captchaRef = useRef<HTMLCanvasElement>(null);
-
-  // 初始密码登录后必须改密（服务端 must_change_password 标记）
-  const [forceChange, setForceChange] = useState(false);
-  const [newPwd, setNewPwd] = useState('');
-  const [newPwd2, setNewPwd2] = useState('');
+  const TYPE_LABEL: Record<string, string> = { person: '人员', dealer: '经销商', store: '店仓', employee: '员工' };
 
   const genCaptcha = () => {
     const s = Math.random().toString(36).slice(2, 6);
@@ -56,25 +54,29 @@ export default function LoginPage() {
   }
 
   useEffect(() => {
-    // 已登录则直接进入系统
-    fetch('/api/auth/me', { cache: 'no-store' })
-      .then((r) => (r.ok ? router.replace('/') : null))
-      .catch(() => {});
-
-    // 登录页样式配置走公开接口：只返回视觉配置，
-    // 绝不返回业务数据（旧版这里拉 /api/state，把全部账号含明文密码下发给了匿名调用方）。
-    fetch('/api/public/login-config', { cache: 'no-store' })
+    fetch('/api/state')
       .then((r) => r.json())
-      .then((j) => setCfg(normalizeHomeConfig(j?.config)))
+      .then((j) => {
+        setCfg(normalizeHomeConfig(j?.config));
+        type Row = { id?: string; username?: string; password?: string; name?: string; code?: string };
+        // 经销商/店仓/员工等业务账号未单独设密码时，回退到初始密码 123456，保证可登录
+        const toAcct = (r: Row, type: string) => ({ username: (r.username ?? r.code) || '', password: r.password || '123456', name: r.name || r.code || r.username || '', type, id: r.id || '' });
+        const all = [
+          ...(Array.isArray(j?.persons) ? (j.persons as Row[]).map((p) => toAcct(p, 'person')) : []),
+          ...(Array.isArray(j?.dealers) ? (j.dealers as Row[]).map((d) => toAcct(d, 'dealer')) : []),
+          ...(Array.isArray(j?.stores) ? (j.stores as Row[]).map((s) => toAcct(s, 'store')) : []),
+          ...(Array.isArray(j?.employees) ? (j.employees as Row[]).map((e) => toAcct(e, 'employee')) : []),
+        ];
+        setUsers(all);
+      })
       .catch(() => {});
     const c = genCaptcha();
     if (document.fonts?.ready) document.fonts.ready.then(() => drawCaptcha(c));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const refreshCaptcha = () => drawCaptcha(genCaptcha());
 
-  const doLogin = async () => {
+  const doLogin = () => {
     setError('');
     if (!account.trim() || !password) {
       setError('请输入账号和密码');
@@ -86,71 +88,31 @@ export default function LoginPage() {
       setCode('');
       return;
     }
-    setLoading(true);
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: account.trim(), password }),
-      });
-      const j = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        account?: { id?: string; displayName?: string; subjectType?: string; subjectId?: string | null; mustChangePassword?: boolean };
-      };
-      if (!res.ok) {
-        setError(j.error || '登录失败');
-        refreshCaptcha();
-        setCode('');
-        setLoading(false);
-        return;
-      }
-      const who = j.account?.displayName || account.trim();
-      localStorage.setItem('dn_auth', who);
-      localStorage.setItem('dn_auth_type', j.account?.subjectType || 'person');
-      localStorage.setItem('dn_auth_id', j.account?.subjectId || '');
-      // 账号唯一 id：用于把浏览器本地缓存按账号隔离，避免多人共用一台电脑时串数据
-      localStorage.setItem('dn_account_id', j.account?.id || '');
-
-      if (j.account?.mustChangePassword) {
-        setForceChange(true);
-        setLoading(false);
-        return;
-      }
-      router.replace('/');
-    } catch {
-      setError('网络异常，请重试');
-      setLoading(false);
+    const exact = users.filter((p) => p.username === account.trim() && p.password === password);
+    const isDefaultAdmin = account.trim() === 'admin' && password === '123456';
+    if (!exact.length && !isDefaultAdmin) {
+      setError('账号或密码错误');
+      return;
     }
+    let user = exact.find(Boolean);
+    if (exact.length > 1) {
+      // 多个账号共用同一编号（如店仓号与经销商号重复）时，按类型优先级自动登录，不弹层
+      const P: Record<string, number> = { store: 0, employee: 1, dealer: 2, person: 3 };
+      user = [...exact].sort((a, b) => (P[a.type] ?? 9) - (P[b.type] ?? 9))[0];
+    }
+    setLoading(true);
+    const who = user ? user.name : '管理员';
+    localStorage.setItem('dn_auth', who);
+    if (user) { localStorage.setItem('dn_auth_type', user.type); localStorage.setItem('dn_auth_id', user.id || ''); }
+    setTimeout(() => router.replace('/'), 350);
   };
 
-  const doChangePassword = async () => {
-    setError('');
-    if (newPwd.length < 8 || !/[A-Za-z]/.test(newPwd) || !/[0-9]/.test(newPwd)) {
-      setError('新密码至少 8 位，且需同时包含字母和数字');
-      return;
-    }
-    if (newPwd !== newPwd2) {
-      setError('两次输入的新密码不一致');
-      return;
-    }
+  const pickAccount = (u: (typeof users)[number]) => {
+    setPick(null);
     setLoading(true);
-    try {
-      const res = await fetch('/api/auth/password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldPassword: password, newPassword: newPwd }),
-      });
-      const j = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) {
-        setError(j.error || '修改失败');
-        setLoading(false);
-        return;
-      }
-      router.replace('/');
-    } catch {
-      setError('网络异常，请重试');
-      setLoading(false);
-    }
+    localStorage.setItem('dn_auth', u.name);
+    if (u.type) { localStorage.setItem('dn_auth_type', u.type); localStorage.setItem('dn_auth_id', u.id || ''); }
+    setTimeout(() => router.replace('/'), 350);
   };
 
   const bgStyle =
@@ -399,38 +361,26 @@ export default function LoginPage() {
         ),
       )}
 
-      {forceChange && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="mx-4 w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-            <div className="mb-1 text-base font-semibold text-gray-800">首次登录，请设置新密码</div>
-            <p className="mb-4 text-xs text-gray-400">
-              当前使用的是初始密码，出于安全考虑需要先修改。新密码至少 8 位，且同时包含字母和数字。
-            </p>
-            <div className="flex flex-col gap-3">
-              <input
-                type="password"
-                value={newPwd}
-                onChange={(e) => setNewPwd(e.target.value)}
-                placeholder="新密码"
-                className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
-              />
-              <input
-                type="password"
-                value={newPwd2}
-                onChange={(e) => setNewPwd2(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && doChangePassword()}
-                placeholder="确认新密码"
-                className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
-              />
-              {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</div>}
-              <button
-                onClick={doChangePassword}
-                disabled={loading}
-                className="rounded-lg bg-gray-900 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
-              >
-                {loading ? '提交中…' : '确认修改并进入系统'}
-              </button>
+      {pick && pick.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => setPick(null)}>
+          <div className="mx-4 w-full max-w-xs rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-sm font-semibold text-gray-800">检测到多个同名账号，请选择登录身份</div>
+            <p className="mb-4 text-xs text-gray-400">账号「{account.trim()}」在以下类型中均存在</p>
+            <div className="flex flex-col gap-2">
+              {pick.map((u, i) => (
+                <button
+                  key={i}
+                  onClick={() => pickAccount(u)}
+                  className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 transition hover:border-blue-400 hover:bg-blue-50"
+                >
+                  <span className="font-medium">{u.name || u.username}</span>
+                  <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-500">{TYPE_LABEL[u.type] || u.type}</span>
+                </button>
+              ))}
             </div>
+            <button onClick={() => setPick(null)} className="mt-4 w-full rounded-lg border border-gray-200 py-2 text-sm text-gray-500 hover:bg-gray-50">
+              取消
+            </button>
           </div>
         </div>
       )}

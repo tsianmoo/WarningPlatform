@@ -1,755 +1,1548 @@
-import { getSupabaseClient } from '@/storage/database/supabase-client';
-import type { AlertRule, AlertStatus, AlertTask, AttrCategory, DataTable, DataTableGroup, Dealer, Employee, HomeConfig, HrAttribute, Organization, Person, RuleGroup, Store } from '@/lib/types';
+import type { PoolClient } from 'pg';
+import {
+  query,
+  queryOne,
+  execute,
+  withTransaction,
+  asArray,
+  asObject,
+  toMs,
+  toMsOrNull,
+  msToTs,
+} from '@/storage/database/db';
+import { hashPassword, DEFAULT_INITIAL_PASSWORD } from '@/lib/server/auth';
+import type {
+  AlertRule,
+  AlertStatus,
+  AlertTask,
+  AlertComment,
+  AttrCategory,
+  DataTable,
+  DataTableGroup,
+  Dealer,
+  Employee,
+  ExecutionRecord,
+  HomeConfig,
+  HrAttribute,
+  Organization,
+  Person,
+  PersonPermOverride,
+  RolePerm,
+  RuleGroup,
+  Schedule,
+  Store,
+} from '@/lib/types';
 
-// 时间戳强制整型（毫秒），避免浮点值写入 bigint 列失败导致整批同步中断
-const ts = (v?: number | null, fb = Date.now()) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? Math.floor(n) : fb;
+/**
+ * 数据访问层（重写版）。
+ *
+ * 与旧版 repo.ts 的根本差异：
+ *   1. 不再「以入参为准删除库中其余行」。所有 sync* 只做增量 upsert；
+ *      删除必须走显式的 delete*，且一律软删除（deleted_at）。
+ *      旧版这套 delete-stale 语义是历史「数据莫名消失」的根因。
+ *   2. 不再走 Supabase PostgREST（原先还要靠 spawn python 读环境变量），
+ *      改用统一的 pg 连接池 + 真实 SQL。
+ *   3. 时间统一 timestamptz；与前端毫秒数的换算集中在 db.ts。
+ *   4. 权限、留言、状态流转、工单归属门店/经销商全部落成真表；
+ *      旧版这些字段要么塞 jsonb、要么根本存不下来。
+ */
+
+export type RuleLock = { owner: string; at: number };
+export type RuleLockMap = Record<string, RuleLock>;
+
+// ============================================================================
+// 通用工具
+// ============================================================================
+
+/** 空串转 null，避免外键列被空串污染 */
+const nn = (v: unknown): string | null => {
+  const s = v === null || v === undefined ? '' : String(v).trim();
+  return s === '' ? null : s;
 };
 
-// Supabase-js select 单次默认最多返回 1000 行，需按 range 分页取全量，否则超千行会被静默截断、
-// 再经全量同步把库中超出的行当 stale 删掉（真丢数据）。
-async function selectAllRows<T>(
-  client: ReturnType<typeof getSupabaseClient>,
+/** 批量 upsert。表名与列名均来自本文件字面量，无注入面。 */
+async function upsertRows(
+  tx: PoolClient,
   table: string,
-  orders: ReadonlyArray<[string, boolean]>, // [column, ascending]
-  limit = 1000,
-): Promise<T[]> {
-  const rows: T[] = [];
-  for (let from = 0; ; from += limit) {
-    let q = client.from(table).select('*').range(from, from + limit - 1);
-    for (const [col, asc] of orders) q = q.order(col, { ascending: asc });
-    const { data, error } = await q;
-    if (error) throw new Error(`读取${table}失败: ${error.message}`);
-    const batch = (data ?? []) as T[];
-    rows.push(...batch);
-    if (batch.length < limit) break;
-  }
-  return rows;
-}
+  columns: string[],
+  rows: unknown[][],
+  conflictCols: string[],
+  chunkSize = 200
+): Promise<void> {
+  if (rows.length === 0) return;
+  const setClause = columns
+    .filter((c) => !conflictCols.includes(c))
+    .map((c) => `${c}=EXCLUDED.${c}`)
+    .join(', ');
 
-async function selectAllIds(client: ReturnType<typeof getSupabaseClient>, table: string, limit = 1000): Promise<string[]> {
-  const rows: string[] = [];
-  for (let from = 0; ; from += limit) {
-    const { data, error } = await client.from(table).select('id').range(from, from + limit - 1);
-    if (error) throw new Error(`读取${table}的ID失败: ${error.message}`);
-    const batch = (data as { id: string }[] | null) ?? [];
-    rows.push(...batch.map((r) => r.id));
-    if (batch.length < limit) break;
-  }
-  return rows;
-}
-
-// 库中存在但本次提交集合里没有的行 = 待删除的 stale（分页取全量 id 后再差集，避免超千行误删）
-async function computeStale(client: ReturnType<typeof getSupabaseClient>, table: string, keep: Set<string>): Promise<string[]> {
-  const existing = await selectAllIds(client, table);
-  return existing.filter((id) => !keep.has(id));
-}
-
-interface TableRow {
-  id: string;
-  name: string;
-  file_name: string;
-  row_count: number;
-  created_at: number;
-  data: DataTable;
-  updated_at?: string;
-}
-
-type TableDataRow = Record<string, string | number | boolean> | Record<string, unknown>;
-
-/** 剥离全量 rows（含 prev 快照里的 rows），只保留元数据，避免单 jsonb 超限 */
-function stripRows(t: DataTable): DataTable {
-  const { rows: _rows, prev, ...meta } = t;
-  const next: DataTable = { ...meta };
-  if (prev) next.prev = { ...prev, rows: undefined };
-  return next;
-}
-
-interface RuleRow {
-  id: string;
-  name: string;
-  status: string;
-  created_at: number;
-  updated_at_ms: number;
-  data: AlertRule;
-}
-
-interface AlertRow {
-  id: string;
-  rule_id: string | null;
-  rule_name: string | null;
-  level: string | null;
-  title: string | null;
-  content: string | null;
-  reason: string | null;
-  condition_desc: string | null;
-  preview: AlertTask['preview'] | null;
-  dept: string | null;
-  assignee: string | null;
-  status: string | null;
-  handoff_to: string | null;
-  accepted_at: number | null;
-  started_at: number | null;
-  handled_at: number | null;
-  resolution: string | null;
-  failed_reason: string | null;
-  plan: string | null;
-  comments: Array<{ id: string; by: string; text: string; at: number; replies?: Array<{ id: string; by: string; text: string; at: number }> }> | null;
-  created_at: number;
-  updated_at: number;
-}
-
-function toAlertTask(r: AlertRow): AlertTask {
-  return {
-    id: r.id,
-    ruleId: r.rule_id ?? '',
-    ruleName: r.rule_name ?? '',
-    level: (r.level as AlertTask['level']) ?? 'warn',
-    title: r.title ?? '',
-    content: r.content ?? '',
-    reason: r.reason ?? undefined,
-    conditionDesc: r.condition_desc ?? undefined,
-    preview: r.preview ?? undefined,
-    createdBy: (r.preview as { createdBy?: string } | null)?.createdBy ?? undefined,
-    dept: r.dept ?? '',
-    assignee: r.assignee ?? '',
-    status: (r.status as AlertStatus) ?? 'new',
-    handoffTo: r.handoff_to ?? undefined,
-    acceptedAt: r.accepted_at ?? undefined,
-    startedAt: r.started_at ?? undefined,
-    handledAt: r.handled_at ?? undefined,
-    resolution: r.resolution ?? undefined,
-    failedReason: r.failed_reason ?? undefined,
-    plan: r.plan ?? undefined,
-    comments: r.comments ?? undefined,
-    createdAt: r.created_at ?? Date.now(),
-    updatedAt: r.updated_at ?? Date.now(),
-  };
-}
-
-/** 读取全部预警（按创建时间倒序） */
-export async function getAllAlerts(): Promise<AlertTask[]> {
-  const client = getSupabaseClient();
-  const rows = await selectAllRows<AlertRow>(client, 'alert_tasks', [['created_at', false]]);
-  return rows.map(toAlertTask);
-}
-
-/** 全量覆盖式保存预警（以入参为准，删除库中多余的预警） */
-export async function syncAlerts(alerts: AlertTask[], opts?: { clearAll?: boolean }): Promise<void> {
-  const client = getSupabaseClient();
-  const rows = alerts.map((a) => ({
-    id: a.id ?? `alert_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-    rule_id: a.ruleId,
-    rule_name: a.ruleName,
-    level: a.level,
-    title: a.title,
-    content: a.content,
-    reason: a.reason ?? null,
-    condition_desc: a.conditionDesc ?? null,
-    preview: a.preview || a.createdBy ? { ...a.preview, createdBy: a.createdBy, columns: a.preview?.columns ?? [], rows: a.preview?.rows ?? [] } : null,
-    dept: a.dept,
-    assignee: a.assignee,
-    status: a.status,
-    handoff_to: a.handoffTo ?? null,
-    accepted_at: a.acceptedAt ?? null,
-    started_at: a.startedAt ?? null,
-    handled_at: a.handledAt ?? null,
-    resolution: a.resolution ?? null,
-    failed_reason: a.failedReason ?? null,
-    plan: a.plan ?? null,
-    comments: a.comments ?? null,
-    created_at: ts(a.createdAt),
-    updated_at: ts(a.updatedAt),
-  }));
-
-  if (rows.length > 0) {
-    const { error } = await client.from('alert_tasks').upsert(rows, { onConflict: 'id' });
-    if (error) throw new Error(`保存预警失败: ${error.message}`);
-  } else if (opts?.clearAll) {
-    // 用户在主界面主动「清空全部」，删除库中所有预警
-    const { error: delErr } = await client.from('alert_tasks').delete().neq('id', '');
-    if (delErr) throw new Error(`清空预警失败: ${delErr.message}`);
-    return;
-  } else {
-    // 本次提交为空集合时不清空库中已有预警，避免前端某次空同步误删全部业务预警
-    return;
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize);
+    const params: unknown[] = [];
+    const tuples = chunk.map((r) => {
+      const ph = r.map((v) => {
+        params.push(v);
+        return `$${params.length}`;
+      });
+      return `(${ph.join(', ')})`;
+    });
+    const sql =
+      `INSERT INTO ${table} (${columns.join(', ')}) VALUES ${tuples.join(', ')}` +
+      (setClause
+        ? ` ON CONFLICT (${conflictCols.join(', ')}) DO UPDATE SET ${setClause}`
+        : ` ON CONFLICT DO NOTHING`);
+    await tx.query(sql, params as never[]);
   }
 }
 
-/** 读取所有数据表（按创建时间升序）。返回的元数据剥离全量 rows（rows 存 data_tables_row）。
- *  首次遇到旧格式（data.rows 仍在元数据里且行表未迁移）时自动迁移到行表，保证存量数据不丢。 */
-export async function getAllTables(): Promise<DataTable[]> {
-  const client = getSupabaseClient();
-  const rows = await selectAllRows<TableRow>(client, 'data_tables', [['created_at', true]]);
-  const out: DataTable[] = [];
-  for (const r of rows) {
-    const t = r.data as DataTable;
-    const legacyRows = t.rows as unknown as TableDataRow[] | undefined;
-    if (!(await hasTableRows(t.id)) && Array.isArray(legacyRows) && legacyRows.length > 0) {
-      await replaceTableRows(t.id, legacyRows);
+/** 软删除 */
+async function softDelete(tx: PoolClient, table: string, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await tx.query(
+    `UPDATE ${table} SET deleted_at = now() WHERE id = ANY($1::text[]) AND deleted_at IS NULL`,
+    [ids]
+  );
+}
+
+/** 写审计日志（旧版业务侧完全空白） */
+export async function writeAudit(
+  actor: string | null,
+  action: string,
+  targetType?: string | null,
+  targetId?: string | null,
+  detail?: unknown,
+  ip?: string | null
+): Promise<void> {
+  try {
+    await execute(
+      `INSERT INTO audit_log (actor, actor_ip, action, target_type, target_id, detail)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [actor, ip ?? null, action, targetType ?? null, targetId ?? null, detail ? JSON.stringify(detail) : null]
+    );
+  } catch (err) {
+    console.error('[audit] 写入失败:', (err as Error).message);
+  }
+}
+
+// ============================================================================
+// 账号：密码 hash 统一收口到 accounts 表（旧版明文散落在 4 张业务表）
+// ============================================================================
+
+interface AccountSeed {
+  id: string;
+  username: string;
+  displayName: string;
+  subjectType: 'person' | 'dealer' | 'store' | 'employee';
+  subjectId: string;
+}
+
+/**
+ * 保证业务档案存在对应登录账号。
+ * 已存在则只同步展示名与归属，绝不覆盖已设置的密码。
+ */
+async function ensureAccounts(tx: PoolClient, seeds: AccountSeed[]): Promise<void> {
+  const valid = seeds.filter((s) => s.username.trim() !== '');
+  if (valid.length === 0) return;
+
+  const idSet = new Set(valid.map((s) => s.id));
+  const usernames = Array.from(new Set(valid.map((s) => s.username)));
+  const existing = await tx.query<{ id: string; username: string }>(
+    `SELECT id, lower(username) AS username FROM accounts
+      WHERE lower(username) = ANY($1::text[]) OR id = ANY($2::text[])`,
+    [usernames.map((u) => u.toLowerCase()), Array.from(idSet)]
+  );
+  const takenUsername = new Set(existing.rows.map((r) => r.username));
+  const existingId = new Set(existing.rows.map((r) => r.id));
+
+  const inserts: unknown[][] = [];
+  const updates: AccountSeed[] = [];
+
+  for (const s of valid) {
+    if (takenUsername.has(s.username.toLowerCase())) {
+      // 用户名已被占用：只有确认是本实体（id 相同）才更新归属
+      if (existingId.has(s.id)) updates.push(s);
+      continue;
     }
-    out.push(stripRows(t));
-  }
-  return out;
-}
-
-/** 全量覆盖式保存数据表（以入参为准，删除库中多余的表） */
-export async function syncTables(tables: DataTable[]): Promise<void> {
-  const client = getSupabaseClient();
-  const rows = tables.map((t) => ({
-    id: t.id,
-    name: t.name,
-    file_name: t.fileName ?? '',
-    row_count: t.rowCount ?? 0,
-    created_at: ts(t.createdAt),
-    data: stripRows(t),
-  }));
-
-  if (rows.length > 0) {
-    // 逐表 upsert：元数据已剥离全量 rows（rows 走 data_tables_row），单请求体积可控
-    for (const r of rows) {
-      const { error } = await client.from('data_tables').upsert([r], { onConflict: 'id' });
-      if (error) throw new Error(`保存数据表失败: ${error.message}`);
+    if (existingId.has(s.id)) {
+      updates.push(s);
+      continue;
     }
-  }
-
-  // 删除已被前端移除的表（并同步清理其行数据）
-  const keep = new Set(tables.map((t) => t.id));
-  const staleIds = await computeStale(client, 'data_tables', keep);
-  for (const id of staleIds) {
-    const [delMeta, delRows] = await Promise.all([
-      client.from('data_tables').delete().eq('id', id),
-      client.from('data_tables_row').delete().eq('id', id),
+    inserts.push([
+      s.id,
+      s.username,
+      await hashPassword(DEFAULT_INITIAL_PASSWORD),
+      s.displayName,
+      s.subjectType,
+      s.subjectId,
+      true, // must_change_password：初始密码首次登录必须修改
+      true,
     ]);
-    if (delMeta.error) throw new Error(`删除数据表失败: ${delMeta.error.message}`);
-    if (delRows.error) throw new Error(`删除数据表行失败: ${delRows.error.message}`);
+  }
+
+  if (inserts.length > 0) {
+    await upsertRows(
+      tx,
+      'accounts',
+      ['id', 'username', 'password_hash', 'display_name', 'subject_type', 'subject_id',
+       'must_change_password', 'enabled'],
+      inserts,
+      ['id']
+    );
+  }
+  for (const s of updates) {
+    await tx.query(
+      `UPDATE accounts SET display_name = $2, subject_type = $3, subject_id = $4 WHERE id = $1`,
+      [s.id, s.displayName, s.subjectType, s.subjectId]
+    );
   }
 }
 
-const ROW_BATCH = 500;
-
-/** 覆盖式保存某表全量行：清空旧行后按批写入 data_tables_row（一行一个 jsonb，规避单 jsonb 超限） */
-export async function replaceTableRows(tableId: string, rows: TableDataRow[]): Promise<void> {
-  const client = getSupabaseClient();
-  await client.from('data_tables_row').delete().eq('id', tableId);
-  for (let from = 0; from < rows.length; from += ROW_BATCH) {
-    const chunk = rows.slice(from, from + ROW_BATCH).map((r, i) => ({ id: tableId, seq: from + i, data: r }));
-    const { error } = await client.from('data_tables_row').insert(chunk);
-    if (error) throw new Error(`保存数据表行失败(${tableId} @${from}): ${error.message}`);
-  }
+/** 停用某类主体名下所有账号 */
+async function disableAccounts(tx: PoolClient, subjectType: string, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await tx.query(
+    `UPDATE accounts SET enabled = false WHERE subject_type = $1 AND subject_id = ANY($2::text[])`,
+    [subjectType, ids]
+  );
 }
 
-/** 读取某表全量行（按 seq 升序，分页取全量，避免超千行截断） */
-export async function getAllTableRows(tableId: string): Promise<TableDataRow[]> {
-  const client = getSupabaseClient();
-  const out: TableDataRow[] = [];
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await client
-      .from('data_tables_row')
-      .select('seq,data')
-      .eq('id', tableId)
-      .order('seq', { ascending: true })
-      .range(from, from + 999);
-    if (error) throw new Error(`读取数据表行失败: ${error.message}`);
-    const batch = (data ?? []) as { seq: number; data: TableDataRow }[];
-    out.push(...batch.map((r) => r.data));
-    if (batch.length < 1000) break;
-  }
-  return out;
-}
-
-/** 某表是否已存在行数据（用于判断旧格式 rows 是否需要迁移） */
-async function hasTableRows(tableId: string): Promise<boolean> {
-  const client = getSupabaseClient();
-  const { data, error } = await client.from('data_tables_row').select('seq').eq('id', tableId).limit(1);
-  if (error) throw new Error(`校验数据表行失败: ${error.message}`);
-  return Array.isArray(data) && data.length > 0;
-}
-
-/** 读取所有规则 */
-export async function getAllRules(): Promise<AlertRule[]> {
-  const client = getSupabaseClient();
-  const rows = await selectAllRows<RuleRow>(client, 'alert_rules', [['created_at', true]]);
-  return rows.map((r) => r.data as AlertRule);
-}
-
-/** 增量式保存规则：仅 upsert 入参中的规则，绝不按“本次提交集合”删库中其它规则。
- *  破坏性删除只经 deleteRules()（显式提交的 ruleIds），避免任何标签/会话的旧快照
- *  全量覆盖时误删其它标签/电脑新建的规则（这是历史“规则莫名消失”的根因）。 */
-export async function syncRules(rules: AlertRule[]): Promise<void> {
-  const client = getSupabaseClient();
-  const rows = rules.map((r) => ({
-    id: r.id,
-    name: r.name,
-    status: r.status,
-    created_at: ts(r.createdAt),
-    updated_at_ms: r.updatedAt ?? Date.now(),
-    data: r,
-  }));
-
-  if (rows.length > 0) {
-    const { error } = await client.from('alert_rules').upsert(rows, { onConflict: 'id' });
-    if (error) throw new Error(`保存规则失败: ${error.message}`);
-  }
-}
-
-/** 显式删除规则（及可选的其名下预警）。由前端删除操作显式触发，不经任何全量覆盖。 */
-export async function deleteRules(ruleIds: string[], opts?: { clearAlerts?: boolean }): Promise<void> {
-  if (!Array.isArray(ruleIds) || ruleIds.length === 0) return;
-  const client = getSupabaseClient();
-  const { error } = await client.from('alert_rules').delete().in('id', ruleIds);
-  if (error) throw new Error(`删除规则失败: ${error.message}`);
-  if (opts?.clearAlerts) {
-    const { error: aErr } = await client.from('alert_tasks').delete().in('rule_id', ruleIds);
-    if (aErr) throw new Error(`删除规则预警失败: ${aErr.message}`);
-  }
-}
-
-interface RuleGroupRow {
-  id: string;
-  name: string;
-  created_at: number;
-}
-
-function toRuleGroup(row: RuleGroupRow): RuleGroup {
-  return { id: row.id, name: row.name, createdAt: row.created_at };
-}
-
-export async function getAllRuleGroups(): Promise<RuleGroup[]> {
-  const client = getSupabaseClient();
-  const rows = await selectAllRows<RuleGroupRow>(client, 'rule_groups', [['created_at', true]]);
-  return rows.map(toRuleGroup);
-}
-
-export async function syncRuleGroups(groups: RuleGroup[]): Promise<void> {
-  const client = getSupabaseClient();
-  const rows = groups.map((g) => ({
-    id: g.id,
-    name: g.name,
-    created_at: ts(g.createdAt),
-  }));
-  if (rows.length > 0) {
-    const { error } = await client.from('rule_groups').upsert(rows, { onConflict: 'id' });
-    if (error) throw new Error(`保存分组失败: ${error.message}`);
-  }
-}
-
-/** 显式删除规则分组（不经全量覆盖） */
-export async function deleteRuleGroups(groupIds: string[]): Promise<void> {
-  if (!Array.isArray(groupIds) || groupIds.length === 0) return;
-  const client = getSupabaseClient();
-  const { error } = await client.from('rule_groups').delete().in('id', groupIds);
-  if (error) throw new Error(`删除分组失败: ${error.message}`);
-}
-
-/** 读取所有数据表分组 */
-export async function getAllTableGroups(): Promise<DataTableGroup[]> {
-  const client = getSupabaseClient();
-  const rows = await selectAllRows<{ id: string; name: string; created_at: number }>(client, 'table_groups', [['created_at', true]]);
-  return rows.map((g) => ({ id: g.id, name: g.name, createdAt: g.created_at ?? Date.now() }));
-}
-
-/** 全量覆盖式保存数据表分组 */
-export async function syncTableGroups(groups: DataTableGroup[]): Promise<void> {
-  const client = getSupabaseClient();
-  const rows = groups.map((g) => ({ id: g.id, name: g.name, created_at: ts(g.createdAt) }));
-  if (rows.length > 0) {
-    const { error } = await client.from('table_groups').upsert(rows, { onConflict: 'id' });
-    if (error) throw new Error(`保存数据表分组失败: ${error.message}`);
-  }
-  const keep = new Set(groups.map((g) => g.id));
-  const staleIds = await computeStale(client, 'table_groups', keep);
-  if (staleIds.length > 0) {
-    const { error: delErr } = await client.from('table_groups').delete().in('id', staleIds);
-    if (delErr) throw new Error(`删除数据表分组失败: ${delErr.message}`);
-  }
-}
+// ============================================================================
+// 组织架构
+// ============================================================================
 
 interface OrgRow {
   id: string;
   name: string;
   kind: string;
   parent_id: string | null;
-  sort: number;
-  created_at: number;
+  sort: number | string;
+  created_at: Date | string;
 }
 
-function toOrg(r: OrgRow): Organization {
-  return {
-    id: r.id,
-    name: r.name,
-    kind: (r.kind as Organization['kind']) ?? '其他',
-    parentId: r.parent_id ?? undefined,
-    sort: r.sort ?? 0,
-    createdAt: r.created_at ?? Date.now(),
-  };
-}
+const toOrg = (r: OrgRow): Organization => ({
+  id: r.id,
+  name: r.name,
+  kind: (r.kind as Organization['kind']) ?? '其他',
+  parentId: r.parent_id ?? undefined,
+  sort: Number(r.sort ?? 0),
+  createdAt: toMs(r.created_at),
+});
 
 export async function getAllOrganizations(): Promise<Organization[]> {
-  const client = getSupabaseClient();
-  const rows = await selectAllRows<OrgRow>(client, 'organizations', [['sort', true], ['created_at', true]]);
+  const rows = await query<OrgRow>(
+    `SELECT id, name, kind, parent_id, sort, created_at
+       FROM organizations WHERE deleted_at IS NULL ORDER BY sort, created_at`
+  );
   return rows.map(toOrg);
 }
 
 export async function syncOrganizations(orgs: Organization[]): Promise<void> {
-  const client = getSupabaseClient();
-  const rows = orgs.map((o) => ({
-    id: o.id,
-    name: o.name,
-    kind: o.kind,
-    parent_id: o.parentId ?? null,
-    sort: o.sort ?? 0,
-    created_at: ts(o.createdAt),
-  }));
-  if (rows.length > 0) {
-    const { error } = await client.from('organizations').upsert(rows, { onConflict: 'id' });
-    if (error) throw new Error(`保存组织架构失败: ${error.message}`);
-    const keep = new Set(orgs.map((o) => o.id));
-    const staleIds = await computeStale(client, 'organizations', keep);
-    if (staleIds.length > 0) {
-      const { error: delErr } = await client.from('organizations').delete().in('id', staleIds);
-      if (delErr) throw new Error(`删除组织失败: ${delErr.message}`);
-    }
-  }
+  await withTransaction((tx) =>
+    upsertRows(
+      tx,
+      'organizations',
+      ['id', 'name', 'kind', 'parent_id', 'sort', 'deleted_at'],
+      orgs.map((o) => [o.id, o.name, o.kind ?? '其他', nn(o.parentId), Number(o.sort ?? 0), null]),
+      ['id']
+    )
+  );
 }
+
+export async function deleteOrganizations(ids: string[]): Promise<void> {
+  await withTransaction((tx) => softDelete(tx, 'organizations', ids));
+}
+
+// ============================================================================
+// 经销商
+// ============================================================================
+
+interface DealerRow {
+  id: string;
+  name: string;
+  code: string | null;
+  contact: string | null;
+  phone: string | null;
+  address: string | null;
+  birthday: string | null;
+  enabled: boolean;
+  attrs: unknown;
+  province: string | null;
+  city: string | null;
+  district: string | null;
+  sort: number | string;
+  created_at: Date | string;
+}
+
+const toDealer = (r: DealerRow): Dealer => ({
+  id: r.id,
+  name: r.name,
+  code: r.code ?? undefined,
+  contact: r.contact ?? undefined,
+  phone: r.phone ?? undefined,
+  address: r.address ?? undefined,
+  birthday: r.birthday ?? undefined,
+  enabled: r.enabled ?? true,
+  attrs: asObject<Record<string, string>>(r.attrs, {}),
+  province: r.province ?? undefined,
+  city: r.city ?? undefined,
+  district: r.district ?? undefined,
+  sort: Number(r.sort ?? 0),
+  createdAt: toMs(r.created_at),
+});
+
+const DEALER_COLS = [
+  'id', 'name', 'code', 'contact', 'phone', 'address', 'birthday', 'enabled', 'attrs',
+  'province', 'city', 'district', 'sort', 'deleted_at',
+];
+
+const dealerValues = (d: Dealer): unknown[] => [
+  d.id, d.name, nn(d.code), nn(d.contact), nn(d.phone), nn(d.address), nn(d.birthday),
+  d.enabled ?? true, JSON.stringify(d.attrs ?? {}), nn(d.province), nn(d.city), nn(d.district),
+  Number(d.sort ?? 0), null,
+];
+
+export async function getAllDealers(): Promise<Dealer[]> {
+  const rows = await query<DealerRow>(
+    `SELECT id, name, code, contact, phone, address, birthday, enabled, attrs,
+            province, city, district, sort, created_at
+       FROM dealers WHERE deleted_at IS NULL ORDER BY sort, created_at`
+  );
+  return rows.map(toDealer);
+}
+
+export async function syncDealers(dealers: Dealer[]): Promise<void> {
+  await withTransaction(async (tx) => {
+    await upsertRows(tx, 'dealers', DEALER_COLS, dealers.map(dealerValues), ['id']);
+    await ensureAccounts(
+      tx,
+      dealers.filter((d) => nn(d.code)).map((d) => ({
+        id: `acct_dealer_${d.id}`,
+        username: String(d.code),
+        displayName: d.name,
+        subjectType: 'dealer' as const,
+        subjectId: d.id,
+      }))
+    );
+  });
+}
+
+export async function deleteDealers(ids: string[]): Promise<void> {
+  await withTransaction(async (tx) => {
+    await softDelete(tx, 'dealers', ids);
+    await tx.query(`UPDATE stores SET dealer_id = NULL WHERE dealer_id = ANY($1::text[])`, [ids]);
+    await tx.query(`UPDATE employees SET dealer_id = NULL WHERE dealer_id = ANY($1::text[])`, [ids]);
+    await tx.query(`UPDATE persons SET dealer_id = NULL WHERE dealer_id = ANY($1::text[])`, [ids]);
+    await disableAccounts(tx, 'dealer', ids);
+  });
+}
+
+// ============================================================================
+// 店仓
+// ============================================================================
+
+interface StoreRow extends Omit<DealerRow, 'province' | 'city'> {
+  dealer_id: string | null;
+  brand: string | null;
+  company: string | null;
+  department: string | null;
+  sales_area: string | null;
+  allow_retail: boolean;
+}
+
+const toStore = (r: StoreRow): Store => ({
+  id: r.id,
+  name: r.name,
+  code: r.code ?? undefined,
+  contact: r.contact ?? undefined,
+  phone: r.phone ?? undefined,
+  address: r.address ?? undefined,
+  birthday: r.birthday ?? undefined,
+  enabled: r.enabled ?? true,
+  attrs: asObject<Record<string, string>>(r.attrs, {}),
+  dealerId: r.dealer_id ?? undefined,
+  brand: r.brand ?? undefined,
+  company: r.company ?? undefined,
+  department: r.department ?? undefined,
+  salesArea: r.sales_area ?? undefined,
+  district: r.district ?? undefined,
+  allowRetail: r.allow_retail ?? false,
+  sort: Number(r.sort ?? 0),
+  createdAt: toMs(r.created_at),
+});
+
+const STORE_COLS = [
+  'id', 'name', 'code', 'contact', 'phone', 'address', 'birthday', 'enabled', 'attrs',
+  'dealer_id', 'brand', 'company', 'department', 'sales_area', 'district', 'allow_retail',
+  'sort', 'deleted_at',
+];
+
+const storeValues = (s: Store): unknown[] => [
+  s.id, s.name, nn(s.code), nn(s.contact), nn(s.phone), nn(s.address), nn(s.birthday),
+  s.enabled ?? true, JSON.stringify(s.attrs ?? {}), nn(s.dealerId), nn(s.brand), nn(s.company),
+  nn(s.department), nn(s.salesArea), nn(s.district), s.allowRetail ?? false,
+  Number(s.sort ?? 0), null,
+];
+
+export async function getAllStores(): Promise<Store[]> {
+  const rows = await query<StoreRow>(
+    `SELECT id, name, code, contact, phone, address, birthday, enabled, attrs,
+            dealer_id, brand, company, department, sales_area, district, allow_retail,
+            sort, created_at
+       FROM stores WHERE deleted_at IS NULL ORDER BY sort, created_at`
+  );
+  return rows.map(toStore);
+}
+
+export async function syncStores(stores: Store[]): Promise<void> {
+  await withTransaction(async (tx) => {
+    await upsertRows(tx, 'stores', STORE_COLS, stores.map(storeValues), ['id']);
+    await ensureAccounts(
+      tx,
+      stores.filter((s) => nn(s.code)).map((s) => ({
+        id: `acct_store_${s.id}`,
+        username: String(s.code),
+        displayName: s.name,
+        subjectType: 'store' as const,
+        subjectId: s.id,
+      }))
+    );
+  });
+}
+
+export async function deleteStores(ids: string[]): Promise<void> {
+  await withTransaction(async (tx) => {
+    await softDelete(tx, 'stores', ids);
+    await tx.query(`UPDATE employees SET store_id = NULL WHERE store_id = ANY($1::text[])`, [ids]);
+    await tx.query(`UPDATE persons SET store_id = NULL WHERE store_id = ANY($1::text[])`, [ids]);
+    await disableAccounts(tx, 'store', ids);
+  });
+}
+
+// ============================================================================
+// 员工
+// ============================================================================
+
+interface EmployeeRow {
+  id: string;
+  code: string | null;
+  name: string;
+  dealer_id: string | null;
+  store_id: string | null;
+  post: string | null;
+  on_duty: boolean;
+  enabled: boolean;
+  attrs: unknown;
+  sort: number | string;
+  created_at: Date | string;
+}
+
+const toEmployee = (r: EmployeeRow): Employee => ({
+  id: r.id,
+  code: r.code ?? undefined,
+  name: r.name,
+  dealerId: r.dealer_id ?? undefined,
+  storeId: r.store_id ?? undefined,
+  post: r.post ?? undefined,
+  onDuty: r.on_duty ?? true,
+  enabled: r.enabled ?? true,
+  attrs: asObject<Record<string, string>>(r.attrs, {}),
+  sort: Number(r.sort ?? 0),
+  createdAt: toMs(r.created_at),
+});
+
+const EMPLOYEE_COLS = [
+  'id', 'code', 'name', 'dealer_id', 'store_id', 'post',
+  'on_duty', 'enabled', 'attrs', 'sort', 'deleted_at',
+];
+
+const employeeValues = (e: Employee): unknown[] => [
+  e.id, nn(e.code), e.name, nn(e.dealerId), nn(e.storeId), nn(e.post),
+  e.onDuty ?? true, e.enabled ?? true, JSON.stringify(e.attrs ?? {}), Number(e.sort ?? 0), null,
+];
+
+export async function getAllEmployees(): Promise<Employee[]> {
+  const rows = await query<EmployeeRow>(
+    `SELECT id, code, name, dealer_id, store_id, post, on_duty, enabled, attrs, sort, created_at
+       FROM employees WHERE deleted_at IS NULL ORDER BY sort, created_at`
+  );
+  return rows.map(toEmployee);
+}
+
+export async function syncEmployees(employees: Employee[]): Promise<void> {
+  await withTransaction(async (tx) => {
+    await upsertRows(tx, 'employees', EMPLOYEE_COLS, employees.map(employeeValues), ['id']);
+    await ensureAccounts(
+      tx,
+      employees.filter((e) => nn(e.code)).map((e) => ({
+        id: `acct_employee_${e.id}`,
+        username: String(e.code),
+        displayName: e.name,
+        subjectType: 'employee' as const,
+        subjectId: e.id,
+      }))
+    );
+  });
+}
+
+export async function deleteEmployees(ids: string[]): Promise<void> {
+  await withTransaction(async (tx) => {
+    await softDelete(tx, 'employees', ids);
+    await disableAccounts(tx, 'employee', ids);
+  });
+}
+
+// ============================================================================
+// 人员
+// ============================================================================
 
 interface PersonRow {
   id: string;
   name: string;
   org_id: string | null;
   title: string | null;
+  post: string | null;
   supervisor_id: string | null;
-  manage_scope: Person['manageScope'] | null;
   phone: string | null;
   email: string | null;
   username: string | null;
   id_card: string | null;
   address: string | null;
   birthday: string | null;
-  password: string | null;
-  post: string | null;
   dealer_id: string | null;
   store_id: string | null;
   enabled: boolean;
-  sort: number;
-  created_at: number;
+  sort: number | string;
+  created_at: Date | string;
+  scope_data: unknown;
 }
 
-function toPerson(r: PersonRow): Person {
+const toPerson = (r: PersonRow): Person => {
+  const scope = asObject<Person['manageScope'] | null>(r.scope_data, null);
+  const hasScope =
+    !!scope && (!!scope.tableId || !!scope.field || (scope.filters?.length ?? 0) > 0 ||
+      (scope.storeIds?.length ?? 0) > 0 || !!scope.storeAttrName || !!scope.desc);
   return {
     id: r.id,
     name: r.name,
     orgId: r.org_id ?? '',
     title: r.title ?? undefined,
     post: r.post ?? undefined,
-    dealerId: r.dealer_id ?? undefined,
-    storeId: r.store_id ?? undefined,
     supervisorId: r.supervisor_id ?? undefined,
-    manageScope: r.manage_scope ?? undefined,
     phone: r.phone ?? undefined,
     email: r.email ?? undefined,
     username: r.username ?? undefined,
     idCard: r.id_card ?? undefined,
     address: r.address ?? undefined,
     birthday: r.birthday ?? undefined,
-    password: r.password ?? undefined,
+    dealerId: r.dealer_id ?? undefined,
+    storeId: r.store_id ?? undefined,
     enabled: r.enabled ?? true,
-    sort: r.sort ?? 0,
-    createdAt: r.created_at ?? Date.now(),
+    sort: Number(r.sort ?? 0),
+    createdAt: toMs(r.created_at),
+    manageScope: hasScope ? (scope as Person['manageScope']) : undefined,
   };
-}
+};
+
+const PERSON_COLS = [
+  'id', 'name', 'org_id', 'title', 'post', 'supervisor_id', 'phone', 'email',
+  'username', 'id_card', 'address', 'birthday', 'dealer_id', 'store_id',
+  'enabled', 'sort', 'deleted_at',
+];
+
+const personValues = (p: Person): unknown[] => [
+  p.id, p.name, nn(p.orgId), nn(p.title), nn(p.post), nn(p.supervisorId), nn(p.phone),
+  nn(p.email), nn(p.username), nn(p.idCard), nn(p.address), nn(p.birthday),
+  nn(p.dealerId), nn(p.storeId), p.enabled ?? true, Number(p.sort ?? 0), null,
+];
 
 export async function getAllPersons(): Promise<Person[]> {
-  const client = getSupabaseClient();
-  const rows = await selectAllRows<PersonRow>(client, 'persons', [['sort', true], ['created_at', true]]);
+  const rows = await query<PersonRow>(
+    `SELECT p.id, p.name, p.org_id, p.title, p.post, p.supervisor_id, p.phone, p.email,
+            p.username, p.id_card, p.address, p.birthday, p.dealer_id, p.store_id,
+            p.enabled, p.sort, p.created_at,
+            s.data AS scope_data
+       FROM persons p
+       LEFT JOIN person_data_scopes s ON s.person_id = p.id
+      WHERE p.deleted_at IS NULL
+      ORDER BY p.sort, p.created_at`
+  );
   return rows.map(toPerson);
 }
 
 export async function syncPersons(persons: Person[]): Promise<void> {
-  const client = getSupabaseClient();
-  const rows = persons.map((p) => ({
-    id: p.id,
-    name: p.name,
-    org_id: p.orgId ?? '',
-    title: p.title ?? null,
-    post: p.post ?? null,
-    dealer_id: p.dealerId ?? null,
-    store_id: p.storeId ?? null,
-    supervisor_id: p.supervisorId ?? null,
-    manage_scope: p.manageScope ?? null,
-    phone: p.phone ?? null,
-    email: p.email ?? null,
-    username: p.username ?? null,
-    id_card: p.idCard ?? null,
-    address: p.address ?? null,
-    birthday: p.birthday ?? null,
-    password: p.password ?? null,
-    enabled: p.enabled ?? true,
-    sort: p.sort ?? 0,
-    created_at: ts(p.createdAt),
-  }));
-  if (rows.length > 0) {
-    const { error } = await client.from('persons').upsert(rows, { onConflict: 'id' });
-    if (error) throw new Error(`保存人事架构失败: ${error.message}`);
-    const keep = new Set(persons.map((p) => p.id));
-    const staleIds = await computeStale(client, 'persons', keep);
-    if (staleIds.length > 0) {
-      const { error: delErr } = await client.from('persons').delete().in('id', staleIds);
-      if (delErr) throw new Error(`删除人员失败: ${delErr.message}`);
+  await withTransaction(async (tx) => {
+    await upsertRows(tx, 'persons', PERSON_COLS, persons.map(personValues), ['id']);
+
+    // 管理范围由本人独占，replacement 语义安全
+    const withScope = persons.filter((p) => p.manageScope);
+    const withoutScope = persons.filter((p) => !p.manageScope).map((p) => p.id);
+    if (withScope.length > 0) {
+      await upsertRows(
+        tx,
+        'person_data_scopes',
+        ['person_id', 'table_id', 'filters', 'store_ids', 'description', 'data'],
+        withScope.map((p) => [
+          p.id,
+          nn(p.manageScope?.tableId),
+          JSON.stringify(p.manageScope?.filters ?? []),
+          p.manageScope?.storeIds ?? [],
+          nn(p.manageScope?.desc),
+          JSON.stringify(p.manageScope ?? {}),
+        ]),
+        ['person_id']
+      );
     }
-  }
+    if (withoutScope.length > 0) {
+      await tx.query(`DELETE FROM person_data_scopes WHERE person_id = ANY($1::text[])`, [withoutScope]);
+    }
+
+    await ensureAccounts(
+      tx,
+      persons.map((p) => ({
+        id: `acct_person_${p.id}`,
+        username: String(nn(p.username) ?? p.name),
+        displayName: p.name,
+        subjectType: 'person' as const,
+        subjectId: p.id,
+      }))
+    );
+  });
 }
 
+export async function deletePersons(ids: string[]): Promise<void> {
+  await withTransaction(async (tx) => {
+    await softDelete(tx, 'persons', ids);
+    await disableAccounts(tx, 'person', ids);
+  });
+}
+
+// ============================================================================
+// 人事属性字典
+// ============================================================================
+
+interface HrAttrRow {
+  id: string;
+  name: string;
+  items: unknown;
+  category: string;
+  sort: number | string;
+  created_at: Date | string;
+}
+
+const toHrAttr = (r: HrAttrRow): HrAttribute => ({
+  id: r.id,
+  name: r.name,
+  items: asArray<{ id: string; name: string }>(r.items, []),
+  category: (r.category ?? 'person') as AttrCategory,
+  sort: Number(r.sort ?? 0),
+  createdAt: toMs(r.created_at),
+});
+
 export async function getAllHrAttributes(): Promise<HrAttribute[]> {
-  const client = getSupabaseClient();
-  const rows = await selectAllRows<HrAttribute>(client, 'hr_attributes', [['sort', true]]);
-  return rows.map((a) => ({
-    id: a.id,
-    name: a.name,
-    items: a.items ?? [],
-    sort: a.sort ?? 0,
-    category: (a.category ?? 'person') as AttrCategory,
-    createdAt: a.createdAt ?? 0,
-  }));
+  const rows = await query<HrAttrRow>(
+    `SELECT id, name, items, category, sort, created_at
+       FROM hr_attributes WHERE deleted_at IS NULL ORDER BY sort, created_at`
+  );
+  return rows.map(toHrAttr);
 }
 
 export async function syncHrAttributes(attributes: HrAttribute[]): Promise<void> {
-  const client = getSupabaseClient();
-  const rows = attributes.map((a) => ({
-    id: a.id,
-    name: a.name,
-    items: a.items ?? [],
-    sort: a.sort ?? 0,
-    category: a.category ?? 'person',
-    created_at: ts(a.createdAt),
-  }));
-  if (rows.length > 0) {
-    const { error } = await client.from('hr_attributes').upsert(rows, { onConflict: 'id' });
-    if (error) throw new Error(`保存人事属性失败: ${error.message}`);
-    const keep = new Set(attributes.map((a) => a.id));
-    const staleIds = await computeStale(client, 'hr_attributes', keep);
-    if (staleIds.length > 0) {
-      const { error: delErr } = await client.from('hr_attributes').delete().in('id', staleIds);
-      if (delErr) throw new Error(`删除属性失败: ${delErr.message}`);
-    }
-  }
+  await withTransaction((tx) =>
+    upsertRows(
+      tx,
+      'hr_attributes',
+      ['id', 'name', 'items', 'category', 'sort', 'deleted_at'],
+      attributes.map((a) => [
+        a.id, a.name, JSON.stringify(a.items ?? []), a.category ?? 'person', Number(a.sort ?? 0), null,
+      ]),
+      ['id']
+    )
+  );
 }
 
-interface DictRow {
+export async function deleteHrAttributes(ids: string[]): Promise<void> {
+  await withTransaction((tx) => softDelete(tx, 'hr_attributes', ids));
+}
+
+// ============================================================================
+// 数据表（含行级存储）
+// ============================================================================
+
+interface DataTableRow {
   id: string;
   name: string;
-  sort: number;
-  created_at: number;
-  code?: string | null;
-  contact?: string | null;
-  phone?: string | null;
-  address?: string | null;
-  password?: string | null;
-  birthday?: string | null;
-  enabled?: boolean | null;
-  attrs?: Record<string, string> | null;
-  dealer_id?: string | null;
-  store_id?: string | null;
-  post?: string | null;
-  on_duty?: boolean | null;
-  brand?: string | null;
-  company?: string | null;
-  department?: string | null;
-  sales_area?: string | null;
-  district?: string | null;
-  allow_retail?: boolean | null;
-  province?: string | null;
-  city?: string | null;
+  file_name: string;
+  row_count: number | string;
+  group_id: string | null;
+  group_name: string | null;
+  fields: unknown;
+  preview_rows: unknown;
+  relations: unknown;
+  prev_snapshot: unknown;
+  created_at: Date | string;
 }
 
-function toDealer(r: DictRow): Dealer {
+/** DB 行 → 前端 DataTable。group 由 group_id 关联出的名称回填，UI 无需改动。 */
+function toDataTable(r: DataTableRow): DataTable {
+  const prev = asObject<DataTable['prev'] | null>(r.prev_snapshot, null);
   return {
     id: r.id,
     name: r.name,
-    sort: r.sort ?? 0,
-    createdAt: r.created_at ?? 0,
-    code: r.code ?? undefined,
-    contact: r.contact ?? undefined,
-    phone: r.phone ?? undefined,
-    address: r.address ?? undefined,
-    password: r.password ?? undefined,
-    birthday: r.birthday ?? undefined,
-    enabled: r.enabled ?? true,
-    attrs: r.attrs ?? undefined,
-    province: r.province ?? undefined,
-    city: r.city ?? undefined,
-    district: r.district ?? undefined,
+    fileName: r.file_name ?? '',
+    createdAt: toMs(r.created_at),
+    rowCount: Number(r.row_count ?? 0),
+    fields: asArray<DataTable['fields'][number]>(r.fields, []),
+    previewRows: asArray<Record<string, string>>(r.preview_rows, []),
+    relations: asArray<NonNullable<DataTable['relations']>[number]>(r.relations, []),
+    group: r.group_name ?? '',
+    ...(prev ? { prev } : {}),
   };
 }
 
-function toStore(r: DictRow): Store {
+export async function getAllTables(): Promise<DataTable[]> {
+  const rows = await query<DataTableRow>(
+    `SELECT t.id, t.name, t.file_name, t.row_count, t.group_id, g.name AS group_name,
+            t.fields, t.preview_rows, t.relations, t.prev_snapshot, t.created_at
+       FROM data_tables t
+       LEFT JOIN data_table_groups g ON g.id = t.group_id
+      WHERE t.deleted_at IS NULL
+      ORDER BY t.created_at`
+  );
+  return rows.map(toDataTable);
+}
+
+export async function syncTables(tables: DataTable[]): Promise<void> {
+  await withTransaction(async (tx) => {
+    // group 在 UI 里是「名称」，这里解析为 group_id（旧版直接存名称字符串，改分组名即断链）
+    const names = Array.from(
+      new Set(tables.map((t) => (t.group ?? '').trim()).filter((n) => n !== ''))
+    );
+    const nameToId = new Map<string, string>();
+    if (names.length > 0) {
+      const found = await tx.query<{ id: string; name: string }>(
+        `SELECT id, name FROM data_table_groups WHERE name = ANY($1::text[]) AND deleted_at IS NULL`,
+        [names]
+      );
+      for (const g of found.rows) nameToId.set(g.name, g.id);
+    }
+
+    await upsertRows(
+      tx,
+      'data_tables',
+      ['id', 'name', 'file_name', 'row_count', 'group_id', 'fields', 'preview_rows',
+       'relations', 'prev_snapshot', 'deleted_at'],
+      tables.map((t) => [
+        t.id,
+        t.name,
+        t.fileName ?? '',
+        Number(t.rowCount ?? 0),
+        nameToId.get((t.group ?? '').trim()) ?? null,
+        JSON.stringify(t.fields ?? []),
+        JSON.stringify(t.previewRows ?? []),
+        JSON.stringify(t.relations ?? []),
+        t.prev ? JSON.stringify(t.prev) : null,
+        null,
+      ]),
+      ['id']
+    );
+  });
+}
+
+export async function deleteTables(ids: string[]): Promise<void> {
+  await withTransaction((tx) => softDelete(tx, 'data_tables', ids));
+}
+
+export async function getAllTableGroups(): Promise<DataTableGroup[]> {
+  const rows = await query<{ id: string; name: string; created_at: Date | string }>(
+    `SELECT id, name, created_at FROM data_table_groups
+      WHERE deleted_at IS NULL ORDER BY sort, created_at`
+  );
+  return rows.map((g) => ({ id: g.id, name: g.name, createdAt: toMs(g.created_at) }));
+}
+
+export async function syncTableGroups(groups: DataTableGroup[]): Promise<void> {
+  await withTransaction((tx) =>
+    upsertRows(
+      tx,
+      'data_table_groups',
+      ['id', 'name', 'sort', 'deleted_at'],
+      groups.map((g, i) => [g.id, g.name, i, null]),
+      ['id']
+    )
+  );
+}
+
+export async function deleteTableGroups(ids: string[]): Promise<void> {
+  await withTransaction(async (tx) => {
+    await softDelete(tx, 'data_table_groups', ids);
+    // 组被删后其下数据表置为未分组，避免出现指向已删组的空分组
+    await tx.query(`UPDATE data_tables SET group_id = NULL WHERE group_id = ANY($1::text[])`, [ids]);
+  });
+}
+
+/** 在事务内向表末尾插入一批行（row_index 从 startIdx 起） */
+async function insertRowsChunk(
+  tx: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+  tableId: string,
+  chunk: Record<string, unknown>[],
+  startIdx: number
+): Promise<void> {
+  const CHUNK = 500;
+  for (let from = 0; from < chunk.length; from += CHUNK) {
+    const part = chunk.slice(from, from + CHUNK);
+    const params: unknown[] = [];
+    const tuples = part.map((r, i) => {
+      params.push(tableId, startIdx + from + i, JSON.stringify(r ?? {}));
+      const base = params.length - 2;
+      return `($${base}, $${base + 1}, $${base + 2})`;
+    });
+    await tx.query(
+      `INSERT INTO data_table_rows (table_id, row_index, data) VALUES ${tuples.join(', ')}
+       ON CONFLICT (table_id, row_index) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
+      params as never[]
+    );
+  }
+}
+
+/**
+ * 覆盖式保存某表全量行。
+ * 修正旧版两个问题：
+ *   1. 用事务包裹，删除 + 写入原子完成，并发读不会命中「空表窗口」
+ *   2. 先 upsert 再删除多余行（而不是先 DELETE 全表），进一步缩小空窗
+ */
+export async function replaceTableRows(
+  tableId: string,
+  rows: Record<string, unknown>[]
+): Promise<void> {
+  await withTransaction(async (tx) => {
+    await insertRowsChunk(tx, tableId, rows, 0);
+    await tx.query(`DELETE FROM data_table_rows WHERE table_id = $1 AND row_index >= $2`, [
+      tableId,
+      rows.length,
+    ]);
+  });
+}
+
+/**
+ * 分片上传支持：先清空表（phase=start 时调用），再按偏移量追加行（phase=append 时调用）。
+ * 大表（数万行）一次性整包 POST 容易因请求体过大/超时失败，客户端改为分片后由这两个函数承接。
+ */
+export async function clearTableRows(tableId: string): Promise<void> {
+  await execute(`DELETE FROM data_table_rows WHERE table_id = $1`, [tableId]);
+}
+
+export async function appendTableRows(
+  tableId: string,
+  rows: Record<string, unknown>[],
+  offset = 0
+): Promise<void> {
+  await withTransaction(async (tx) => {
+    await insertRowsChunk(tx, tableId, rows, offset);
+  });
+}
+
+export async function getAllTableRows(tableId: string): Promise<Record<string, unknown>[]> {
+  const out: Record<string, unknown>[] = [];
+  const PAGE = 5000;
+  for (let from = 0; ; from += PAGE) {
+    const rows = await query<{ data: unknown }>(
+      `SELECT data FROM data_table_rows WHERE table_id = $1 ORDER BY row_index LIMIT $2 OFFSET $3`,
+      [tableId, PAGE, from]
+    );
+    for (const r of rows) out.push(asObject<Record<string, unknown>>(r.data, {}));
+    if (rows.length < PAGE) break;
+  }
+  return out;
+}
+
+// ============================================================================
+// 预警规则
+// ============================================================================
+
+interface RuleRow {
+  id: string;
+  name: string;
+  group_id: string | null;
+  description: string;
+  created_by: string | null;
+  status: string;
+  table_ids: string[] | null;
+  flow: unknown;
+  targets: unknown;
+  created_at: Date | string;
+  updated_at: Date | string;
+  schedule_data: unknown;
+  execs: unknown;
+}
+
+const toExecution = (v: unknown, ruleId: string): ExecutionRecord => {
+  const e = asObject<Record<string, unknown>>(v, {});
+  return {
+    id: String(e.id ?? ''),
+    ruleId,
+    scheduledAt: e.scheduledAt ? new Date(String(e.scheduledAt)).toISOString() : '',
+    triggeredAt: e.triggeredAt ? new Date(String(e.triggeredAt)).toISOString() : '',
+    status: (e.status as ExecutionRecord['status']) ?? 'pending',
+    completionDesc: (e.completionDesc as string) ?? undefined,
+    nextTriggerAt: e.nextTriggerAt ? new Date(String(e.nextTriggerAt)).toISOString() : undefined,
+    actionNote: (e.actionNote as string) ?? undefined,
+    history: asArray<{ at: string; note: string }>(e.history, []),
+  };
+};
+
+const toRule = (r: RuleRow): AlertRule => {
+  const sched = asObject<Partial<Schedule> | null>(r.schedule_data, null);
+  const schedule: Schedule = {
+    repeatType: (sched?.repeatType as Schedule['repeatType']) ?? 'daily',
+    timeOfDay: sched?.timeOfDay ?? '09:00',
+    weekdays: sched?.weekdays ?? [],
+    monthDays: sched?.monthDays ?? [],
+    customInterval: sched?.customInterval ?? 1,
+    startDate: sched?.startDate ?? '',
+    endDate: sched?.endDate ?? '',
+    nextTriggerAt: sched?.nextTriggerAt ?? '',
+  };
   return {
     id: r.id,
     name: r.name,
-    sort: r.sort ?? 0,
-    createdAt: r.created_at ?? 0,
-    code: r.code ?? undefined,
-    contact: r.contact ?? undefined,
-    phone: r.phone ?? undefined,
-    address: r.address ?? undefined,
-    password: r.password ?? undefined,
-    birthday: r.birthday ?? undefined,
-    enabled: r.enabled ?? true,
-    attrs: r.attrs ?? undefined,
-    dealerId: r.dealer_id ?? undefined,
-    brand: r.brand ?? undefined,
-    company: r.company ?? undefined,
-    department: r.department ?? undefined,
-    salesArea: r.sales_area ?? undefined,
-    district: r.district ?? undefined,
-    allowRetail: r.allow_retail ?? undefined,
+    groupId: r.group_id ?? undefined,
+    description: r.description ?? '',
+    createdBy: r.created_by ?? undefined,
+    tableIds: r.table_ids ?? [],
+    status: (r.status as AlertRule['status']) ?? 'draft',
+    createdAt: toMs(r.created_at),
+    updatedAt: toMs(r.updated_at),
+    flow: asObject<AlertRule['flow']>(r.flow, { nodes: [], edges: [] }),
+    schedule,
+    targets: asObject<AlertRule['targets']>(r.targets, {
+      mode: 'manual', departments: [], personnel: [],
+    }),
+    executions: asArray<unknown>(r.execs, []).map((e) => toExecution(e, r.id)),
   };
+};
+
+export async function getAllRules(): Promise<AlertRule[]> {
+  const rows = await query<RuleRow>(
+    `SELECT r.id, r.name, r.group_id, r.description, r.created_by, r.status, r.table_ids,
+            r.flow, r.targets, r.created_at, r.updated_at,
+            jsonb_build_object(
+              'repeatType', s.repeat_type,
+              'timeOfDay', s.time_of_day,
+              'weekdays', to_jsonb(s.weekdays),
+              'monthDays', to_jsonb(s.month_days),
+              'customInterval', s.custom_interval,
+              'startDate', to_char(s.start_date, 'YYYY-MM-DD'),
+              'endDate', to_char(s.end_date, 'YYYY-MM-DD'),
+              'nextTriggerAt', s.next_trigger_at
+            ) AS schedule_data,
+            COALESCE((
+              SELECT jsonb_agg(jsonb_build_object(
+                       'id', e.id,
+                       'scheduledAt', e.scheduled_at,
+                       'triggeredAt', e.triggered_at,
+                       'nextTriggerAt', e.next_trigger_at,
+                       'status', e.status,
+                       'completionDesc', e.completion_desc,
+                       'actionNote', e.action_note,
+                       'history', e.history)
+                     ORDER BY e.created_at)
+                FROM rule_executions e WHERE e.rule_id = r.id
+            ), '[]'::jsonb) AS execs
+       FROM alert_rules r
+       LEFT JOIN rule_schedules s ON s.rule_id = r.id
+      WHERE r.deleted_at IS NULL
+      ORDER BY r.created_at`
+  );
+  return rows.map(toRule);
 }
 
-export async function getAllDealers(): Promise<Dealer[]> {
-  const client = getSupabaseClient();
-  const rows = await selectAllRows<DictRow>(client, 'dealers', [['sort', true]]);
-  return rows.map(toDealer);
-}
+/** 增量 upsert 规则（绝不按入参删除其它规则） */
+export async function syncRules(rules: AlertRule[]): Promise<void> {
+  await withTransaction(async (tx) => {
+    await upsertRows(
+      tx,
+      'alert_rules',
+      ['id', 'name', 'group_id', 'description', 'created_by', 'status', 'table_ids',
+       'flow', 'targets', 'deleted_at'],
+      rules.map((r) => [
+        r.id, r.name, nn(r.groupId), r.description ?? '', nn(r.createdBy), r.status ?? 'draft',
+        r.tableIds ?? [],
+        JSON.stringify(r.flow ?? { nodes: [], edges: [] }),
+        JSON.stringify(r.targets ?? {}),
+        null,
+      ]),
+      ['id']
+    );
 
-export async function syncDealers(dealers: Dealer[]): Promise<void> {
-  const client = getSupabaseClient();
-  const rows = dealers.map((d) => ({
-    id: d.id,
-    name: d.name,
-    sort: d.sort ?? 0,
-    created_at: ts(d.createdAt),
-    code: d.code ?? null,
-    contact: d.contact ?? null,
-    phone: d.phone ?? null,
-    address: d.address ?? null,
-    password: d.password ?? null,
-    birthday: d.birthday ?? null,
-    enabled: d.enabled ?? true,
-    attrs: d.attrs ?? null,
-    province: d.province ?? null,
-    city: d.city ?? null,
-    district: d.district ?? null,
-  }));
-  if (rows.length > 0) {
-    const { error } = await client.from('dealers').upsert(rows, { onConflict: 'id' });
-    if (error) throw new Error(`保存经销商失败: ${error.message}`);
-    const keep = new Set(dealers.map((d) => d.id));
-    const staleIds = await computeStale(client, 'dealers', keep);
-    if (staleIds.length > 0) {
-      const { error: delErr } = await client.from('dealers').delete().in('id', staleIds);
-      if (delErr) throw new Error(`删除经销商失败: ${delErr.message}`);
+    const withSched = rules.filter((r) => r.schedule);
+    if (withSched.length > 0) {
+      await upsertRows(
+        tx,
+        'rule_schedules',
+        ['rule_id', 'repeat_type', 'time_of_day', 'weekdays', 'month_days',
+         'custom_interval', 'start_date', 'end_date', 'next_trigger_at'],
+        withSched.map((r) => [
+          r.id,
+          r.schedule?.repeatType ?? 'daily',
+          nn(r.schedule?.timeOfDay),
+          r.schedule?.weekdays ?? [],
+          r.schedule?.monthDays ?? [],
+          Number(r.schedule?.customInterval ?? 1),
+          nn(r.schedule?.startDate),
+          nn(r.schedule?.endDate),
+          r.schedule?.nextTriggerAt ? new Date(r.schedule.nextTriggerAt) : null,
+        ]),
+        ['rule_id']
+      );
     }
-  }
-}
 
-export async function getAllStores(): Promise<Store[]> {
-  const client = getSupabaseClient();
-  const rows = await selectAllRows<DictRow>(client, 'stores', [['sort', true]]);
-  return rows.map(toStore);
-}
-
-export async function syncStores(stores: Store[]): Promise<void> {
-  const client = getSupabaseClient();
-  const rows = stores.map((s) => ({
-    id: s.id,
-    name: s.name,
-    sort: s.sort ?? 0,
-    created_at: ts(s.createdAt),
-    code: s.code ?? null,
-    contact: s.contact ?? null,
-    phone: s.phone ?? null,
-    address: s.address ?? null,
-    password: s.password ?? null,
-    birthday: s.birthday ?? null,
-    enabled: s.enabled ?? true,
-    attrs: s.attrs ?? null,
-    dealer_id: s.dealerId ?? null,
-    brand: s.brand ?? null,
-    company: s.company ?? null,
-    department: s.department ?? null,
-    sales_area: s.salesArea ?? null,
-    district: s.district ?? null,
-    allow_retail: s.allowRetail ?? null,
-  }));
-  if (rows.length > 0) {
-    const { error } = await client.from('stores').upsert(rows, { onConflict: 'id' });
-    if (error) throw new Error(`保存店仓失败: ${error.message}`);
-  }
-  if (rows.length > 0) {
-    const keep = new Set(stores.map((s) => s.id));
-    const staleIds = await computeStale(client, 'stores', keep);
-    if (staleIds.length > 0) {
-      const { error: delErr } = await client.from('stores').delete().in('id', staleIds);
-      if (delErr) throw new Error(`删除店仓失败: ${delErr.message}`);
+    // 执行记录属于规则自身 → 按规则范围 replacement（只影响本规则，安全）
+    for (const r of rules) {
+      const execs = r.executions ?? [];
+      if (execs.length === 0) continue;
+      await upsertRows(
+        tx,
+        'rule_executions',
+        ['id', 'rule_id', 'status', 'scheduled_at', 'triggered_at', 'next_trigger_at',
+         'completion_desc', 'action_note', 'history'],
+        execs.map((e) => [
+          e.id,
+          r.id,
+          e.status ?? 'pending',
+          e.scheduledAt ? new Date(e.scheduledAt) : null,
+          e.triggeredAt ? new Date(e.triggeredAt) : null,
+          e.nextTriggerAt ? new Date(e.nextTriggerAt) : null,
+          nn(e.completionDesc),
+          nn(e.actionNote),
+          JSON.stringify(e.history ?? []),
+        ]),
+        ['id']
+      );
+      await tx.query(`DELETE FROM rule_executions WHERE rule_id = $1 AND id <> ALL($2::text[])`, [
+        r.id,
+        execs.map((e) => e.id),
+      ]);
     }
-  }
+  });
 }
 
-function toEmployee(r: DictRow): Employee {
+/** 显式删除规则（软删除 + 可选清理其名下工单） */
+export async function deleteRules(
+  ruleIds: string[],
+  opts?: { clearAlerts?: boolean }
+): Promise<void> {
+  if (ruleIds.length === 0) return;
+  await withTransaction(async (tx) => {
+    await softDelete(tx, 'alert_rules', ruleIds);
+    if (opts?.clearAlerts) {
+      await tx.query(
+        `UPDATE alert_tasks SET deleted_at = now()
+          WHERE rule_id = ANY($1::text[]) AND deleted_at IS NULL`,
+        [ruleIds]
+      );
+    }
+  });
+}
+
+// ============================================================================
+// 规则分组
+// ============================================================================
+
+export async function getAllRuleGroups(): Promise<RuleGroup[]> {
+  const rows = await query<{ id: string; name: string; created_at: Date | string }>(
+    `SELECT id, name, created_at FROM rule_groups WHERE deleted_at IS NULL ORDER BY created_at`
+  );
+  return rows.map((g) => ({ id: g.id, name: g.name, createdAt: toMs(g.created_at) }));
+}
+
+export async function syncRuleGroups(groups: RuleGroup[]): Promise<void> {
+  await withTransaction((tx) =>
+    upsertRows(
+      tx,
+      'rule_groups',
+      ['id', 'name', 'deleted_at'],
+      groups.map((g) => [g.id, g.name, null]),
+      ['id']
+    )
+  );
+}
+
+export async function deleteRuleGroups(groupIds: string[]): Promise<void> {
+  if (groupIds.length === 0) return;
+  await withTransaction(async (tx) => {
+    await softDelete(tx, 'rule_groups', groupIds);
+    await tx.query(`UPDATE alert_rules SET group_id = NULL WHERE group_id = ANY($1::text[])`, [groupIds]);
+  });
+}
+
+// ============================================================================
+// 规则编辑锁（替代旧版塞在 home_config.config.locks 的 jsonb）
+// ============================================================================
+
+export async function getRuleLocks(): Promise<RuleLockMap> {
+  await execute(`DELETE FROM rule_edit_locks WHERE expires_at < now()`);
+  const rows = await query<{ rule_id: string; owner: string; acquired_at: Date | string }>(
+    `SELECT rule_id, owner, acquired_at FROM rule_edit_locks`
+  );
+  const out: RuleLockMap = {};
+  for (const r of rows) out[r.rule_id] = { owner: r.owner, at: toMs(r.acquired_at) };
+  return out;
+}
+
+export async function setRuleLock(ruleId: string, owner: string, ttlMs: number): Promise<void> {
+  await execute(
+    `INSERT INTO rule_edit_locks (rule_id, owner, expires_at)
+     VALUES ($1, $2, now() + ($3 || ' milliseconds')::interval)
+     ON CONFLICT (rule_id) DO UPDATE
+       SET owner = EXCLUDED.owner, acquired_at = now(), expires_at = EXCLUDED.expires_at
+     WHERE rule_edit_locks.expires_at < now() OR rule_edit_locks.owner = EXCLUDED.owner`,
+    [ruleId, owner, String(ttlMs)]
+  );
+}
+
+export async function deleteRuleLock(ruleId: string, owner: string): Promise<void> {
+  await execute(`DELETE FROM rule_edit_locks WHERE rule_id = $1 AND owner = $2`, [ruleId, owner]);
+}
+
+// ============================================================================
+// 预警工单
+// ============================================================================
+
+interface TaskRow {
+  id: string;
+  rule_id: string | null;
+  rule_name: string;
+  level: string;
+  priority: string | null;
+  title: string;
+  content: string;
+  reason: string | null;
+  condition_desc: string | null;
+  preview: unknown;
+  dept: string;
+  assignee: string;
+  handoff_to: string | null;
+  created_by: string | null;
+  status: string;
+  resolution: string | null;
+  failed_reason: string | null;
+  plan: string | null;
+  notified: string[] | null;
+  dims: unknown;
+  accepted_at: Date | string | null;
+  started_at: Date | string | null;
+  handled_at: Date | string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+  store_ids: string[] | null;
+  dealer_ids: string[] | null;
+}
+
+function toTask(r: TaskRow, comments: AlertComment[]): AlertTask {
+  const preview = asObject<AlertTask['preview'] | null>(r.preview, null);
   return {
     id: r.id,
-    code: r.code ?? undefined,
-    name: r.name ?? '',
-    dealerId: r.dealer_id ?? undefined,
-    storeId: r.store_id ?? undefined,
-    post: r.post ?? undefined,
-    onDuty: r.on_duty ?? true,
-    enabled: r.enabled ?? true,
-    password: r.password ?? undefined,
-    attrs: r.attrs ?? undefined,
-    sort: r.sort ?? 0,
-    createdAt: r.created_at ?? 0,
+    ruleId: r.rule_id ?? '',
+    ruleName: r.rule_name ?? '',
+    level: (r.level as AlertTask['level']) ?? 'warn',
+    priority: r.priority ?? undefined,
+    title: r.title ?? '',
+    content: r.content ?? '',
+    reason: r.reason ?? undefined,
+    conditionDesc: r.condition_desc ?? undefined,
+    preview: preview ?? undefined,
+    createdBy: r.created_by ?? preview?.createdBy ?? undefined,
+    dept: r.dept ?? '',
+    assignee: r.assignee ?? '',
+    handoffTo: r.handoff_to ?? undefined,
+    status: (r.status as AlertStatus) ?? 'new',
+    resolution: r.resolution ?? undefined,
+    failedReason: r.failed_reason ?? undefined,
+    plan: r.plan ?? undefined,
+    notified: r.notified ?? [],
+    dims: asObject<AlertTask['dims'] | undefined>(r.dims, undefined),
+    storeIds: r.store_ids ?? [],
+    dealerIds: r.dealer_ids ?? [],
+    acceptedAt: toMsOrNull(r.accepted_at),
+    startedAt: toMsOrNull(r.started_at),
+    handledAt: toMsOrNull(r.handled_at),
+    comments: comments.length > 0 ? comments : undefined,
+    createdAt: toMs(r.created_at),
+    updatedAt: toMs(r.updated_at),
   };
 }
 
-export async function getAllEmployees(): Promise<Employee[]> {
-  const client = getSupabaseClient();
-  const rows = await selectAllRows<DictRow>(client, 'employees', [['sort', true]]);
-  return rows.map(toEmployee);
-}
+/** 读取全部预警（含留言、归属门店/经销商） */
+export async function getAllAlerts(): Promise<AlertTask[]> {
+  const rows = await query<TaskRow>(
+    `SELECT t.*,
+            COALESCE((SELECT array_agg(s.store_id) FROM alert_task_stores s WHERE s.task_id = t.id), '{}') AS store_ids,
+            COALESCE((SELECT array_agg(d.dealer_id) FROM alert_task_dealers d WHERE d.task_id = t.id), '{}') AS dealer_ids
+       FROM alert_tasks t
+      WHERE t.deleted_at IS NULL
+      ORDER BY t.created_at DESC`
+  );
+  if (rows.length === 0) return [];
 
-export async function syncEmployees(employees: Employee[]): Promise<void> {
-  const client = getSupabaseClient();
-  const rows = employees.map((e) => ({
-    id: e.id,
-    code: e.code ?? null,
-    name: e.name ?? '',
-    dealer_id: e.dealerId ?? null,
-    store_id: e.storeId ?? null,
-    post: e.post ?? null,
-    on_duty: e.onDuty ?? true,
-    enabled: e.enabled ?? true,
-    password: e.password ?? null,
-    attrs: e.attrs ?? null,
-    sort: e.sort ?? 0,
-    created_at: ts(e.createdAt, 0),
-  }));
-  if (rows.length > 0) {
-    const { error } = await client.from('employees').upsert(rows, { onConflict: 'id' });
-    if (error) throw new Error(`保存员工失败: ${error.message}`);
-    const keep = new Set(employees.map((e) => e.id));
-    const staleIds = await computeStale(client, 'employees', keep);
-    if (staleIds.length > 0) {
-      const { error: delErr } = await client.from('employees').delete().in('id', staleIds);
-      if (delErr) throw new Error(`删除员工失败: ${delErr.message}`);
+  const commentRows = await query<{
+    id: string;
+    task_id: string;
+    parent_id: string | null;
+    author: string;
+    text: string;
+    created_at: Date | string;
+  }>(
+    `SELECT id, task_id, parent_id, author, text, created_at
+       FROM alert_comments
+      WHERE task_id = ANY($1::text[]) AND deleted_at IS NULL
+      ORDER BY created_at`,
+    [rows.map((r) => r.id)]
+  );
+
+  const byTask = new Map<string, AlertComment[]>();
+  const replyPool = new Map<string, { by: string; text: string; at: number }[]>();
+  for (const c of commentRows) {
+    if (!c.parent_id) {
+      const list = byTask.get(c.task_id) ?? [];
+      list.push({ id: c.id, by: c.author, text: c.text, at: toMs(c.created_at), replies: [] });
+      byTask.set(c.task_id, list);
+    } else {
+      const list = replyPool.get(c.parent_id) ?? [];
+      list.push({ by: c.author, text: c.text, at: toMs(c.created_at) });
+      replyPool.set(c.parent_id, list);
     }
   }
+  const replyIds = new Map<string, string[]>();
+  for (const c of commentRows) {
+    if (!c.parent_id) continue;
+    const arr = replyIds.get(c.parent_id) ?? [];
+    arr.push(c.id);
+    replyIds.set(c.parent_id, arr);
+  }
+  for (const [taskId, list] of byTask) {
+    void taskId;
+    for (const parent of list) {
+      const infos = replyPool.get(parent.id);
+      const ids = replyIds.get(parent.id) ?? [];
+      parent.replies = infos ? infos.map((r, i) => ({ id: ids[i] ?? `reply_${i}`, ...r })) : [];
+    }
+  }
+
+  return rows.map((r) => toTask(r, byTask.get(r.id) ?? []));
 }
+
+/**
+ * 增量保存预警。
+ * 修正旧版：旧版按「入参为准删除库中多余预警」；
+ * 现在只 upsert，清空必须显式 clearAll，删除必须走 deleteAlerts()。
+ */
+export async function syncAlerts(
+  alerts: AlertTask[],
+  opts?: { clearAll?: boolean; actor?: string | null }
+): Promise<void> {
+  if (alerts.length === 0) {
+    if (opts?.clearAll) {
+      await withTransaction(async (tx) => {
+        await tx.query(`UPDATE alert_tasks SET deleted_at = now() WHERE deleted_at IS NULL`);
+      });
+      await writeAudit(opts.actor ?? null, 'alert.clearAll', 'alert_tasks', null);
+    }
+    return;
+  }
+
+  const ids = alerts.map((a) => a.id);
+
+  // 姓名 → 人员 id：旧版把「人名」当外键存，改名即断链；这里补上真外键
+  const names = Array.from(
+    new Set(
+      alerts.flatMap((a) => [nn(a.assignee), nn(a.createdBy)]).filter((v): v is string => !!v)
+    )
+  );
+  const personByName = new Map<string, string>();
+  if (names.length > 0) {
+    const pr = await query<{ id: string; name: string }>(
+      `SELECT id, name FROM persons WHERE name = ANY($1::text[]) AND deleted_at IS NULL`,
+      [names]
+    );
+    for (const p of pr) if (!personByName.has(p.name)) personByName.set(p.name, p.id);
+  }
+
+  const prevRows = await query<{ id: string; status: string }>(
+    `SELECT id, status FROM alert_tasks WHERE id = ANY($1::text[])`,
+    [ids]
+  );
+  const prevStatus = new Map(prevRows.map((r) => [r.id, r.status]));
+
+  await withTransaction(async (tx) => {
+    await upsertRows(
+      tx,
+      'alert_tasks',
+      ['id', 'rule_id', 'rule_name', 'level', 'priority', 'title', 'content', 'reason',
+       'condition_desc', 'preview', 'dept', 'assignee', 'assignee_person_id', 'handoff_to',
+       'created_by', 'created_by_person_id', 'status', 'resolution', 'failed_reason', 'plan',
+       'notified', 'dims', 'accepted_at', 'started_at', 'handled_at', 'deleted_at'],
+      alerts.map((a) => [
+        a.id,
+        nn(a.ruleId),
+        a.ruleName ?? '',
+        a.level ?? 'warn',
+        nn(a.priority),
+        a.title ?? '',
+        a.content ?? '',
+        nn(a.reason),
+        nn(a.conditionDesc),
+        a.preview ? JSON.stringify(a.preview) : null,
+        a.dept ?? '',
+        a.assignee ?? '',
+        personByName.get(nn(a.assignee) ?? '') ?? null,
+        nn(a.handoffTo),
+        nn(a.createdBy),
+        personByName.get(nn(a.createdBy) ?? '') ?? null,
+        a.status ?? 'new',
+        nn(a.resolution),
+        nn(a.failedReason),
+        nn(a.plan),
+        a.notified ?? [],
+        a.dims ? JSON.stringify(a.dims) : null,
+        msToTs(a.acceptedAt),
+        msToTs(a.startedAt),
+        msToTs(a.handledAt),
+        null,
+      ]),
+      ['id']
+    );
+
+    // 状态流转历史：与库中旧状态不同才记录（旧版完全缺失的审计能力）
+    const logRows: unknown[][] = [];
+    for (const a of alerts) {
+      const old = prevStatus.get(a.id);
+      const now = a.status ?? 'new';
+      if (old === undefined) {
+        logRows.push([a.id, null, now, opts?.actor ?? nn(a.createdBy)]);
+      } else if (old !== now) {
+        logRows.push([a.id, old, now, opts?.actor ?? null]);
+      }
+    }
+    if (logRows.length > 0) {
+      const params: unknown[] = [];
+      const tuples = logRows.map((r) => {
+        const ph = r.map((v) => {
+          params.push(v);
+          return `$${params.length}`;
+        });
+        return `(${ph.join(', ')})`;
+      });
+      await tx.query(
+        `INSERT INTO alert_task_status_log (task_id, from_status, to_status, operator)
+         VALUES ${tuples.join(', ')}`,
+        params as never[]
+      );
+    }
+
+    // 归属门店 / 经销商：属于工单自身 → 按工单范围 replacement 安全
+    await tx.query(`DELETE FROM alert_task_stores WHERE task_id = ANY($1::text[])`, [ids]);
+    await tx.query(`DELETE FROM alert_task_dealers WHERE task_id = ANY($1::text[])`, [ids]);
+
+    const storePairs: [string, string][] = [];
+    const dealerPairs: [string, string][] = [];
+    for (const a of alerts) {
+      for (const s of a.storeIds ?? []) if (s) storePairs.push([a.id, s]);
+      for (const d of a.dealerIds ?? []) if (d) dealerPairs.push([a.id, d]);
+    }
+    // 门店/经销商可能已删除 → JOIN 过滤，避免外键报错
+    if (storePairs.length > 0) {
+      await tx.query(
+        `INSERT INTO alert_task_stores (task_id, store_id)
+         SELECT x.a, x.b FROM unnest($1::text[], $2::text[]) AS x(a, b)
+           JOIN stores s ON s.id = x.b
+         ON CONFLICT DO NOTHING`,
+        [storePairs.map((p) => p[0]), storePairs.map((p) => p[1])]
+      );
+    }
+    if (dealerPairs.length > 0) {
+      await tx.query(
+        `INSERT INTO alert_task_dealers (task_id, dealer_id)
+         SELECT x.a, x.b FROM unnest($1::text[], $2::text[]) AS x(a, b)
+           JOIN dealers d ON d.id = x.b
+         ON CONFLICT DO NOTHING`,
+        [dealerPairs.map((p) => p[0]), dealerPairs.map((p) => p[1])]
+      );
+    }
+
+    // 留言：整份提交（含回复）→ upsert + 软删本次未提交的
+    const commentRows: unknown[][] = [];
+    const keepByTask = new Map<string, string[]>();
+    for (const a of alerts) {
+      const keep: string[] = [];
+      for (const c of a.comments ?? []) {
+        keep.push(c.id);
+        commentRows.push([c.id, a.id, null, c.by ?? '', c.text ?? '']);
+        for (const rep of c.replies ?? []) {
+          keep.push(rep.id);
+          commentRows.push([rep.id, a.id, c.id, rep.by ?? '', rep.text ?? '']);
+        }
+      }
+      if (keep.length > 0) keepByTask.set(a.id, keep);
+    }
+    if (commentRows.length > 0) {
+      await upsertRows(
+        tx,
+        'alert_comments',
+        ['id', 'task_id', 'parent_id', 'author', 'text'],
+        commentRows,
+        ['id']
+      );
+      for (const [taskId, keep] of keepByTask) {
+        await tx.query(
+          `UPDATE alert_comments SET deleted_at = now()
+            WHERE task_id = $1 AND deleted_at IS NULL AND id <> ALL($2::text[])`,
+          [taskId, keep]
+        );
+      }
+    }
+  });
+}
+
+/** 显式删除工单（软删除） */
+export async function deleteAlerts(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await withTransaction((tx) => softDelete(tx, 'alert_tasks', ids));
+}
+
+/** 某工单的状态流转历史 */
+export async function getAlertStatusLog(taskId: string) {
+  const rows = await query<{
+    id: string; from_status: string | null; to_status: string;
+    operator: string | null; note: string | null; at: Date | string;
+  }>(
+    `SELECT id, from_status, to_status, operator, note, at
+       FROM alert_task_status_log WHERE task_id = $1 ORDER BY at`,
+    [taskId]
+  );
+  return rows.map((r) => ({
+    id: r.id, fromStatus: r.from_status, toStatus: r.to_status,
+    operator: r.operator, note: r.note, at: toMs(r.at),
+  }));
+}
+
+// ============================================================================
+// 配置 / 权限
+// ============================================================================
 
 export async function getHomeConfig(): Promise<HomeConfig | null> {
-  const client = getSupabaseClient();
-  const { data, error } = await client.from('home_config').select('config').eq('id', 'home').single();
-  if (error) return null;
-  return (data?.config as HomeConfig) ?? null;
+  const row = await queryOne<{ data: unknown }>(`SELECT data FROM app_config WHERE id = 'singleton'`);
+  return row ? asObject<HomeConfig | null>(row.data, null) : null;
 }
 
 export async function saveHomeConfig(config: HomeConfig): Promise<void> {
-  const client = getSupabaseClient();
-  const { error } = await client.from('home_config').upsert(
-    { id: 'home', config, updated_at: ts(undefined, Date.now()) },
-    { onConflict: 'id' }
+  await withTransaction(async (tx) => {
+    await tx.query(
+      `INSERT INTO app_config (id, data) VALUES ('singleton', $1)
+       ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
+      [JSON.stringify(config ?? {})]
+    );
+
+    const permissions = Array.isArray(config?.permissions) ? config.permissions : [];
+    const overrides = Array.isArray(config?.permOverrides) ? config.permOverrides : [];
+
+    if (permissions.length > 0) {
+      await upsertRows(
+        tx,
+        'roles',
+        ['post', 'subject_kind', 'name', 'pages', 'modules', 'data_scope', 'data_scope_type'],
+        permissions.map((p) => [
+          p.post,
+          p.subjectKind ?? 'post',
+          // RolePerm 未定义 name，展示名沿用主体标识（与旧数据语义一致）
+          p.post,
+          JSON.stringify(p.pages ?? {}),
+          JSON.stringify(p.modules ?? {}),
+          JSON.stringify(p.dataScope ?? {}),
+          p.dataScope?.type ?? 'self',
+        ]),
+        ['post', 'subject_kind']
+      );
+    }
+
+    // 单用户覆盖：按 personId 精确归属（旧版无 personId，导致任一人的覆盖会作用于所有人）
+    const withId = overrides.filter((o) => nn(o.personId));
+    if (withId.length > 0) {
+      await upsertRows(
+        tx,
+        'person_perm_overrides',
+        ['person_id', 'data'],
+        withId.map((o) => [String(o.personId), JSON.stringify(o)]),
+        ['person_id']
+      );
+    }
+  });
+}
+
+/**
+ * 删除角色。
+ *
+ * roles 是纯配置表（复合主键 post + subject_kind，无 deleted_at，也无人引用），
+ * 「这一行不存在」就等于「没有配置这个角色」，因此这里是物理删除。
+ * 必须显式调用：saveHomeConfig 只做 upsert，不清理未提交的行，
+ * 否则在界面上删掉的角色会留在库里继续生效。
+ */
+export async function deleteRoles(keys: { post: string; subjectKind?: string }[]): Promise<void> {
+  if (keys.length === 0) return;
+  await execute(
+    `DELETE FROM roles
+      WHERE (post, subject_kind) IN (SELECT * FROM unnest($1::text[], $2::text[]))`,
+    [keys.map((k) => k.post), keys.map((k) => k.subjectKind ?? 'post')]
   );
-  if (error) throw new Error(`保存首页配置失败: ${error.message}`);
+}
+
+/** 删除单人权限覆盖（同样是配置表，行不存在即代表未覆盖） */
+export async function deletePermOverrides(personIds: string[]): Promise<void> {
+  if (personIds.length === 0) return;
+  await execute(`DELETE FROM person_perm_overrides WHERE person_id = ANY($1::text[])`, [personIds]);
+}
+
+export async function getPermissions(): Promise<RolePerm[]> {
+  const rows = await query<{
+    post: string; subject_kind: string; name: string;
+    pages: unknown; modules: unknown; data_scope: unknown;
+  }>(`SELECT post, subject_kind, name, pages, modules, data_scope FROM roles ORDER BY subject_kind, post`);
+  return rows.map((r) => ({
+    post: r.post,
+    subjectKind: r.subject_kind as RolePerm['subjectKind'],
+    pages: asObject<RolePerm['pages']>(r.pages, {}),
+    modules: asObject<RolePerm['modules']>(r.modules, {}),
+    dataScope: asObject<RolePerm['dataScope']>(r.data_scope, null),
+  })) as RolePerm[];
+}
+
+export async function getPermOverrides(): Promise<PersonPermOverride[]> {
+  const rows = await query<{ data: unknown }>(`SELECT data FROM person_perm_overrides`);
+  return rows
+    .map((r) => asObject<PersonPermOverride | null>(r.data, null))
+    .filter((v): v is PersonPermOverride => !!v);
+}
+
+// ============================================================================
+// 看板统计（旧版因整对象 jsonb，这些数在 SQL 层根本算不出来，只能在浏览器遍历）
+// ============================================================================
+
+export async function getDashboardStats() {
+  const row = await queryOne<Record<string, string>>(
+    `SELECT
+       (SELECT count(*) FROM alert_tasks WHERE deleted_at IS NULL) AS total,
+       (SELECT count(*) FROM alert_tasks WHERE deleted_at IS NULL
+          AND status IN ('new','accepted','processing')) AS open,
+       (SELECT count(*) FROM alert_tasks WHERE deleted_at IS NULL AND status = 'done') AS done,
+       (SELECT count(*) FROM alert_tasks WHERE deleted_at IS NULL AND status = 'failed') AS failed,
+       (SELECT count(*) FROM alert_rules WHERE deleted_at IS NULL AND status = 'active') AS active_rules,
+       (SELECT count(*) FROM alert_tasks WHERE deleted_at IS NULL
+          AND created_at >= now() - interval '7 days') AS last7`
+  );
+  return {
+    total: Number(row?.total ?? 0),
+    open: Number(row?.open ?? 0),
+    done: Number(row?.done ?? 0),
+    failed: Number(row?.failed ?? 0),
+    activeRules: Number(row?.active_rules ?? 0),
+    last7Days: Number(row?.last7 ?? 0),
+  };
 }

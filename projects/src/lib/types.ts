@@ -1458,6 +1458,12 @@ export interface RolePerm {
 
 /** 单用户自定义覆盖（优先级高于岗位模板） */
 export interface PersonPermOverride {
+  /**
+   * 归属人员 id。
+   * 必须存在：旧版没有这个字段，perm.ts 只能取「第一个 enabled 的覆盖」，
+   * 导致任意一个人配了自定义权限后，所有登录用户都会套用同一份覆盖（越权）。
+   */
+  personId?: string;
   /** 是否启用自定义（否则用岗位模板） */
   enabled?: boolean;
   pages?: Partial<Record<PermModule, PagePerm>>;
