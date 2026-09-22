@@ -1,7 +1,7 @@
 // ============ 数据同步模块 领域类型 ============
 // 自包含模块，不侵入预警规则引擎。持久化走独立 JSONB 表。
 
-export type DbType = 'oracle' | 'mysql' | 'postgresql' | 'sqlserver' | 'starrocks';
+export type DbType = 'oracle' | 'mysql' | 'postgresql' | 'sqlserver' | 'starrocks' | 'paimon';
 
 export const DB_TYPE_LABEL: Record<DbType, string> = {
   oracle: 'Oracle',
@@ -9,6 +9,7 @@ export const DB_TYPE_LABEL: Record<DbType, string> = {
   postgresql: 'PostgreSQL',
   sqlserver: 'SQL Server',
   starrocks: 'StarRocks',
+  paimon: 'Paimon',
 };
 
 export type DataSourceHealth = 'normal' | 'abnormal' | 'unknown';

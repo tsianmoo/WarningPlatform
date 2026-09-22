@@ -94,6 +94,8 @@ async function getOracle(): Promise<Driver> {
   return oracleDriverPromise;
 }
 
+let paimonDriverPromise: Promise<Driver> | null = null;
+
 /** 驱动的编码集支持集（用于界面展示能力） */
 export const DRIVER_SUPPORTED: Record<DbType, boolean> = {
   oracle: true,
@@ -101,12 +103,17 @@ export const DRIVER_SUPPORTED: Record<DbType, boolean> = {
   postgresql: false,
   sqlserver: false,
   starrocks: false,
+  paimon: false,
 };
 
 /** 按类型取驱动实例（未实现的类型抛异常） */
 export async function getDriver(type: DbType): Promise<Driver> {
   if (type === 'oracle') return getOracle();
-  throw new Error(`驱动「${type}」尚未接入，当前仅支持 Oracle（其他类型接入中）`);
+  if (type === 'paimon') {
+    if (!paimonDriverPromise) paimonDriverPromise = import('@/lib/server/sync/paimon').then((m) => m.paimonDriver);
+    return paimonDriverPromise;
+  }
+  throw new Error(`驱动「${type}」尚未接入，当前支持 Oracle、Paimon（其他类型接入中）`);
 }
 
 export async function getDriverUnsafe(type: DbType): Promise<Driver | null> {

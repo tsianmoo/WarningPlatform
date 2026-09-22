@@ -5,11 +5,11 @@ import { api } from './api';
 import { Field, Modal, Badge, btnPrimary, btnGhost, inputCls, Empty, useToast, usePerm } from './ui';
 import type { DataSource, ColumnMeta, TableMeta } from '@/lib/sync/types';
 
-const DB_TYPES = ['oracle', 'mysql', 'postgresql', 'sqlserver', 'starrocks'] as const;
+const DB_TYPES = ['oracle', 'paimon', 'mysql', 'postgresql', 'sqlserver', 'starrocks'] as const;
 const TYPE_LABEL: Record<string, string> = {
-  oracle: 'Oracle', mysql: 'MySQL', postgresql: 'PostgreSQL', sqlserver: 'SQL Server', starrocks: 'StarRocks',
+  oracle: 'Oracle', paimon: 'Paimon', mysql: 'MySQL', postgresql: 'PostgreSQL', sqlserver: 'SQL Server', starrocks: 'StarRocks',
 };
-const DEFAULT_PORT: Record<string, number> = { oracle: 1521, mysql: 3306, postgresql: 5432, sqlserver: 1433, starrocks: 9030 };
+const DEFAULT_PORT: Record<string, number> = { oracle: 1521, paimon: 8165, mysql: 3306, postgresql: 5432, sqlserver: 1433, starrocks: 9030 };
 
 function emptyDs(): Partial<DataSource> {
   return {
@@ -159,9 +159,9 @@ export default function DatasourceManager() {
                     <div className="text-xs text-gray-400">{ds.key}</div>
                   </td>
                   <td className="px-3 py-2">
-                    <Badge color={ds.type === 'oracle' ? 'red' : 'blue'}>{TYPE_LABEL[ds.type] || ds.type}</Badge>
+                    <Badge color={ds.type === 'oracle' ? 'red' : ds.type === 'paimon' ? 'yellow' : 'blue'}>{TYPE_LABEL[ds.type] || ds.type}</Badge>
                   </td>
-                  <td className="px-3 py-2 text-gray-600">{ds.host}:{ds.port}</td>
+                  <td className="px-3 py-2 text-gray-600">{ds.type === 'paimon' ? `${ds.host}:${ds.port}` : `${ds.host}:${ds.port}`}</td>
                   <td className="px-3 py-2 text-gray-600">{ds.dbName}</td>
                   <td className="px-3 py-2 text-gray-600">{ds.group}</td>
                   <td className="px-3 py-2">
@@ -192,24 +192,43 @@ export default function DatasourceManager() {
             <Field label="显示名称"><input className={inputCls} value={editing.label} onChange={(e) => set('label', e.target.value)} /></Field>
             <Field label="类型">
               <select className={inputCls} value={editing.type} onChange={(e) => { const t = e.target.value; set('type', t); set('port', DEFAULT_PORT[t] || 1521); }}>
-                {DB_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABEL[t]} {t === 'oracle' ? '✔' : '(待接入)'}</option>)}
+                {DB_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABEL[t]} {t === 'oracle' || t === 'paimon' ? '✔' : '(待接入)'}</option>)}
               </select>
             </Field>
-            <Field label="主机"><input className={inputCls} value={editing.host} onChange={(e) => set('host', e.target.value)} placeholder="192.168.1.10" /></Field>
+            {editing.type === 'paimon' && (
+              <Field label="连接串（hdfs:// 主机:端口/仓库路径）" className="col-span-3">
+                <div className="rounded border border-blue-100 bg-blue-50 px-2.5 py-1.5 text-xs text-blue-700">
+                  将按 <span className="font-mono">hdfs://{editing.host || '主机'}:{editing.port || 8165}/{editing.dbName || 'paimon'}</span> 连接，无需用户名密码。
+                  元数据通过 WebHDFS/HttpFS 读取（默认探测端口 {String(editing.port)}→9870→14000，可在连接参数指定 webhdfsPort/httpFsPort）；
+                  如需 SQL 查询/同步，请在连接参数配置 Flink SQL Gateway：<span className="font-mono">sqlGateway=http://主机:8083</span>
+                </div>
+              </Field>
+            )}
+            <Field label="主机"><input className={inputCls} value={editing.host} onChange={(e) => set('host', e.target.value)} placeholder={editing.type === 'paimon' ? '192.168.110.6' : '192.168.1.10'} /></Field>
             <Field label="端口"><input type="number" className={inputCls} value={editing.port} onChange={(e) => set('port', Number(e.target.value))} /></Field>
-            <Field label="数据库名/SID/服务名"><input className={inputCls} value={editing.dbName} onChange={(e) => set('dbName', e.target.value)} /></Field>
-            <Field label="用户名"><input className={inputCls} value={editing.user} onChange={(e) => set('user', e.target.value)} /></Field>
-            <Field label="密码（留空保持不变）"><input type="password" className={inputCls} value={(editing as any).password || ''} onChange={(e) => set('password', e.target.value)} /></Field>
-            <Field label="编码">
-              <select className={inputCls} value={editing.encoding} onChange={(e) => set('encoding', e.target.value)}>
-                <option>UTF-8</option><option>GBK</option>
-              </select>
+            <Field label={editing.type === 'paimon' ? '仓库路径（warehouse）' : '数据库名/SID/服务名'}><input className={inputCls} value={editing.dbName} onChange={(e) => set('dbName', e.target.value)} placeholder={editing.type === 'paimon' ? 'paimon' : ''} /></Field>
+            {editing.type !== 'paimon' && (
+              <>
+                <Field label="用户名"><input className={inputCls} value={editing.user} onChange={(e) => set('user', e.target.value)} /></Field>
+                <Field label="密码（留空保持不变）"><input type="password" className={inputCls} value={(editing as any).password || ''} onChange={(e) => set('password', e.target.value)} /></Field>
+                <Field label="编码">
+                  <select className={inputCls} value={editing.encoding} onChange={(e) => set('encoding', e.target.value)}>
+                    <option>UTF-8</option><option>GBK</option>
+                  </select>
+                </Field>
+              </>
+            )}
+            <Field label={editing.type === 'paimon' ? '连接参数(webhdfsPort=…&sqlGateway=…)' : '连接参数(k=v&k2=v)'} className={editing.type === 'paimon' ? 'col-span-2' : 'col-span-2'}>
+              <input className={inputCls} value={editing.connParams} onChange={(e) => set('connParams', e.target.value)} placeholder={editing.type === 'paimon' ? 'sqlGateway=http://192.168.110.6:8083' : 'oracle.sid=false'} />
             </Field>
-            <Field label="连接参数(k=v&k2=v)" className="col-span-2"><input className={inputCls} value={editing.connParams} onChange={(e) => set('connParams', e.target.value)} placeholder="oracle.sid=false" /></Field>
             <Field label="分组"><input className={inputCls} value={editing.group} onChange={(e) => set('group', e.target.value)} /></Field>
-            <Field label="最大活动连接数"><input type="number" className={inputCls} value={editing.maxActive} onChange={(e) => set('maxActive', Number(e.target.value))} /></Field>
-            <Field label="最小空闲连接数"><input type="number" className={inputCls} value={editing.minIdle} onChange={(e) => set('minIdle', Number(e.target.value))} /></Field>
-            <Field label="连接最大等待(ms)"><input type="number" className={inputCls} value={editing.maxWaitMs} onChange={(e) => set('maxWaitMs', Number(e.target.value))} /></Field>
+            {editing.type !== 'paimon' && (
+              <>
+                <Field label="最大活动连接数"><input type="number" className={inputCls} value={editing.maxActive} onChange={(e) => set('maxActive', Number(e.target.value))} /></Field>
+                <Field label="最小空闲连接数"><input type="number" className={inputCls} value={editing.minIdle} onChange={(e) => set('minIdle', Number(e.target.value))} /></Field>
+                <Field label="连接最大等待(ms)"><input type="number" className={inputCls} value={editing.maxWaitMs} onChange={(e) => set('maxWaitMs', Number(e.target.value))} /></Field>
+              </>
+            )}
             <Field label="查询超时(s)"><input type="number" className={inputCls} value={editing.queryTimeoutSec} onChange={(e) => set('queryTimeoutSec', Number(e.target.value))} /></Field>
             <Field label="描述" className="col-span-3"><input className={inputCls} value={editing.desc} onChange={(e) => set('desc', e.target.value)} /></Field>
           </div>

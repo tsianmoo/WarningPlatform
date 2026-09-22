@@ -208,7 +208,7 @@ function assignDs(body: any): DataSource {
     type: body.type || 'oracle',
     label: body.label || body.key || '',
     host: body.host || '',
-    port: Number(body.port || (body.type === 'oracle' ? 1521 : 5432)),
+    port: Number(body.port || (body.type === 'oracle' ? 1521 : body.type === 'paimon' ? 8165 : 5432)),
     dbName: body.dbName || '',
     user: body.user || '',
     passwordEnc: encSecret(body.password || ''),
@@ -240,12 +240,14 @@ function buildJdbcUrl(b: any): string {
   if (t === 'mysql' || t === 'starrocks') return `jdbc:mysql://${h}:${p}/${db}`;
   if (t === 'postgresql') return `jdbc:postgresql://${h}:${p}/${db}`;
   if (t === 'sqlserver') return `jdbc:sqlserver://${h}:${p};databaseName=${db}`;
+  if (t === 'paimon') return `hdfs://${h}:${p}/${db}`;
   return '';
 }
 
 async function handleDsCreate(req: NextRequest) {
   const body = await req.json();
-  if (!body.key || !body.host || !body.user) return fail('连接名称/主机/用户名 必填', 400);
+  if (!body.key || !body.host) return fail('连接名称/主机 必填', 400);
+  if (body.type !== 'paimon' && !body.user) return fail('用户名 必填', 400);
   const ds = assignDs(body);
   await store.save(TABLES.ds, ds);
   await audit(req, 'create', 'datasource', ds.id, ds.label, { key: ds.key, host: ds.host });
@@ -294,14 +296,17 @@ async function handleDsTest(req: NextRequest) {
   const body = await req.json();
   const timeoutMs = Number(body.timeoutMs || 10000);
   const ds: DataSource = assignDs({ ...body, id: body.id });
-  if (!ds.host || !ds.user) return fail('主机/用户名 必填', 400);
+  if (!ds.host || (ds.type !== 'paimon' && !ds.user)) return fail('主机/用户名 必填', 400);
   const type = ds.type;
   let health;
   if (type === 'oracle') {
     const drv = await getDriver('oracle');
     health = await drv.test(toConnCfg(ds), timeoutMs);
+  } else if (type === 'paimon') {
+    const drv = await getDriver('paimon');
+    health = await drv.test(toConnCfg(ds), timeoutMs);
   } else {
-    return fail(`驱动「${type}」尚未接入，当前仅支持 Oracle（其他类型接入中）`, 400);
+    return fail(`驱动「${type}」尚未接入，当前支持 Oracle、Paimon（其他类型接入中）`, 400);
   }
   // 记录健康状态（仅当是已保存的数据源）
   if (body.id) {
@@ -361,7 +366,10 @@ async function handleDsTable(req: NextRequest) {
   const table = String(body.table ?? '');
   if (!table) return fail('缺少表名', 400);
   const limit = Math.min(Number(body.limit) || 1000, 100000);
-  const sql = `SELECT * FROM ${qualIdent(schema, table, ds.type)} FETCH FIRST ${limit} ROWS ONLY`;
+  const sql =
+    ds.type === 'paimon'
+      ? `SELECT * FROM ${schema ? `\`${schema}\`.` : ''}\`${table}\` LIMIT ${limit}`
+      : `SELECT * FROM ${qualIdent(schema, table, ds.type)} FETCH FIRST ${limit} ROWS ONLY`;
   try {
     const drv = await getDriver(ds.type);
     const r = await drv.query(toConnCfg(ds), sql, { fetchSize: 1000, maxRows: limit, timeoutSec: Number(body.timeoutSec) || 30, noCount: true });
